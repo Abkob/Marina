@@ -407,6 +407,7 @@ export function useAIProposals() {
 
 export interface ScheduleDay {
   date: string;
+  routines?: Array<{ routine_id: string; title: string; date: string; minutes: number; preferred_time: string | null }>;
   tasks: Array<{ id: string; title: string; goal_id: string | null; parent_task_id: string | null; due_date: string; estimated_minutes: number | null; priority: string; status: string }>;
   meetings: Array<{ id: string; title: string; scheduled_at: string; duration_minutes: number | null }>;
   deadlines: ScheduleDeadlineInfo[];
@@ -427,6 +428,7 @@ export interface ScheduleDeadlineInfo {
 export interface DayAssignment {
   date: string;
   available_minutes: number;
+  routine_minutes?: number;
   used_minutes: number;
   task_ids: string[];
   task_minutes?: Record<string, number>;

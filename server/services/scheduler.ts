@@ -18,6 +18,8 @@ export interface SchedulerTask {
 export interface SchedulerMeeting {
   date: string;    // YYYY-MM-DD
   duration_minutes: number;
+  /** Routine time is reserved even when a day has a manual capacity override. */
+  routine?: boolean;
 }
 
 export interface SchedulerPrefs {
@@ -48,6 +50,7 @@ export interface SchedulerInput {
 export interface DayAssignment {
   date: string;
   available_minutes: number;
+  routine_minutes?: number;
   used_minutes: number;
   task_ids: string[];
   /** Exact minutes the scheduler allocated to each task on this day. */
@@ -228,8 +231,10 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
   today.setHours(0, 0, 0, 0);
   const overrideMap = new Map(overrides.map(o => [o.date, o.available_minutes]));
   const meetingMinutesByDay = new Map<string, number>();
+  const routineMinutesByDay = new Map<string, number>();
   for (const m of meetings) {
-    meetingMinutesByDay.set(m.date, (meetingMinutesByDay.get(m.date) ?? 0) + m.duration_minutes);
+    const destination = m.routine ? routineMinutesByDay : meetingMinutesByDay;
+    destination.set(m.date, (destination.get(m.date) ?? 0) + Math.max(0, m.duration_minutes));
   }
 
   const workDaySet = new Set(prefs.work_days);
@@ -252,9 +257,10 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     } else {
       avail = bufferedCapacity - (meetingMinutesByDay.get(ymd) ?? 0);
     }
-    avail = Math.max(0, avail);
+    const routineMinutes = routineMinutesByDay.get(ymd) ?? 0;
+    avail = Math.max(0, avail - routineMinutes);
 
-    days.push({ date: ymd, available_minutes: avail, used_minutes: 0, task_ids: [], task_minutes: {} });
+    days.push({ date: ymd, available_minutes: avail, ...(routineMinutes > 0 ? { routine_minutes: routineMinutes } : {}), used_minutes: 0, task_ids: [], task_minutes: {} });
   }
 
   const totalAvailable = days.reduce((s, d) => s + d.available_minutes, 0);

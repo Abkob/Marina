@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   DndContext, PointerSensor, useSensor, useSensors,
@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/core';
 import {
   Sparkles, Calendar, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, ChevronDown,
-  GripVertical, Check, Eye, EyeOff, BarChart2, CalendarDays, PanelLeftOpen, PanelRightClose, Play, Plus,
+  GripVertical, Check, Eye, EyeOff, BarChart2, CalendarDays, PanelLeftOpen, PanelRightClose, Play, Plus, Repeat2,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -35,6 +35,9 @@ import { FeasibilityReport } from './schedule/FeasibilityReport';
 import { WorkloadHorizon } from './schedule/WorkloadHorizon';
 import { ModalFrame } from '../components/ModalFrame';
 import { readActiveWorkTimer, writeActiveWorkTimer } from '../utils/workTimer';
+import { RoutinesPanel } from './routines/RoutinesPanel';
+import { RoutineComposer } from './routines/RoutineComposer';
+import type { DBRoutine } from '../types/routines';
 
 /**
  * Schedule workspace, Google-Calendar style: a week time-grid carrying
@@ -1192,8 +1195,24 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const { triggerToast, setCurrentTab, setWorkTaskId } = useAppStore();
   const qc = useQueryClient();
   const invalidate = useInvalidate();
-  const todayStr = fmtYMD(new Date());
+  const { data: prefs } = useSchedulePrefs();
+  const [clockDate, setClockDate] = useState(() => new Date());
+  useEffect(() => {
+    const tick = window.setInterval(() => setClockDate(new Date()), 60_000);
+    return () => window.clearInterval(tick);
+  }, []);
+  const todayStr = prefs?.timezone
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: prefs.timezone }).format(clockDate)
+    : fmtYMD(clockDate);
   const [focusedDate, setFocusedDate] = useState(todayStr);
+  const previousToday = useRef(todayStr);
+  useEffect(() => {
+    const previous = previousToday.current;
+    if (previous === todayStr) return;
+    previousToday.current = todayStr;
+    // Follow midnight / async timezone preferences only if the user was viewing today.
+    setFocusedDate(date => date === previous ? todayStr : date);
+  }, [todayStr]);
   const weekStart = mondayOf(focusedDate);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const { data: previewData, isLoading } = useSchedulePreview(weekStart, weekDays[6]);
@@ -1202,12 +1221,12 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const { data: allLinks = [] } = useAllEventTaskLinks();
   const { data: allMeetings = [] } = useAllMeetings();
   const { data: goals = [] } = useGoals();
-  const { data: prefs } = useSchedulePrefs();
   const [draftPreview, setDraftPreview] = useState<Draft | null>(null);
   const [dragTask, setDragTask] = useState<DBTask | null>(null);
   const [innerPage, setInnerPage] = useState<'plan' | 'month' | 'timeline' | 'feasibility'>(initialPage);
   const [composer, setComposer] = useState<ComposerSeed | null>(null);
   const [taskComposerDate, setTaskComposerDate] = useState<string | null>(null);
+  const [routineComposerOpen, setRoutineComposerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<'assist' | 'drafts' | null>(null);
   const [dayFlowOrders, setDayFlowOrders] = useState<Record<string, string[]>>(() => {
@@ -1357,7 +1376,8 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       const meetingMinutes = Math.round(meetings.reduce((sum, m) => sum + m.durationHours * 60, 0));
       const eventMinutes = Math.round(events.reduce((sum, p) => sum + p.event.duration_hours * 60, 0));
       const dayTaskMinutes = allDayTasks.reduce((sum, task) => sum + (task.estimated_minutes ?? 0), 0);
-      const bookedMinutes = meetingMinutes + eventMinutes + dayTaskMinutes;
+      const routineMinutes = (day?.routines ?? []).reduce((sum, routine) => sum + routine.minutes, 0);
+      const bookedMinutes = meetingMinutes + eventMinutes + dayTaskMinutes + routineMinutes;
       const freeMinutes = capacityMinutes - bookedMinutes;
       const workRows = new Map<string, {
         label: string;
@@ -1409,6 +1429,9 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       for (const task of allDayTasks) {
         const origin = taskOrigin(task);
         addWorkRow(origin.key, origin.label, task.estimated_minutes ?? 0, 'task', taskOriginDetail(origin), 20);
+      }
+      for (const routine of day?.routines ?? []) {
+        addWorkRow(`routine:${routine.routine_id}`, `Routine: ${routine.title}`, routine.minutes, 'routine', routine.preferred_time ? `Preferred slot ${routine.preferred_time}` : 'Flexible routine time reserved', 15);
       }
       for (const placed of events) {
         const links = linksByEvent.get(placed.event.id) ?? [];
@@ -1594,6 +1617,22 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       });
   };
 
+  const startRoutineFocus = (routine: DBRoutine, date: string) => {
+    const active = readActiveWorkTimer();
+    if (active) {
+      setCurrentTab('Work');
+      triggerToast('A focus timer is already running. Stop it before starting another.', 'info');
+      return;
+    }
+    if (date !== todayStr) {
+      triggerToast('Start focus on today’s routine; you can correct past check-ins separately.', 'info');
+      return;
+    }
+    writeActiveWorkTimer({ taskId: '', routineId: routine.id, routineTitle: routine.title, goalId: routine.goal_id, routineDate: date, sessionId: crypto.randomUUID(), startedAt: new Date().toISOString(), notes: routine.note });
+    setCurrentTab('Work');
+    triggerToast(`Focus started for "${routine.title}".`, 'success');
+  };
+
   /** Apply every Plan-assist suggestion in one go. */
   const placeAllSuggestions = async () => {
     try {
@@ -1765,6 +1804,9 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setRoutineComposerOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100">
+              <Repeat2 size={14} /> Add routine
+            </button>
             {statusInfo && scheduler && (
               <button
                 type="button"
@@ -1864,6 +1906,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
 
         {innerPage === 'plan' ? (
           <>
+            <RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => setRoutineComposerOpen(true)} onStartFocus={startRoutineFocus} />
             <WorkloadHorizon
               scheduler={scheduler}
               taskLookup={taskLookup}
@@ -1923,6 +1966,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                   days={weekDays}
                   events={placedEvents}
                   meetings={weekMeetings}
+                  routines={weekDays.flatMap(date => previewByDate.get(date)?.routines ?? [])}
                   linksByEvent={linksByEvent}
                   workStart={prefs?.work_start ?? 9}
                   workEnd={prefs?.work_end ?? 18}
@@ -2027,6 +2071,10 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
           </div>
         )}
       </DragOverlay>
+
+      {routineComposerOpen && (
+        <RoutineComposer goals={goals} date={focusedDate < todayStr ? todayStr : focusedDate} onClose={() => setRoutineComposerOpen(false)} onSaved={() => { setRoutineComposerOpen(false); triggerToast('Routine created. Its time is now reserved in your plan.', 'success'); }} />
+      )}
 
       {taskComposerDate && (
         <ModalFrame

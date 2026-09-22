@@ -22,7 +22,7 @@ router.get('/stats', async (req, res) => {
   if (to)   { params.push(to + 'T23:59:59'); dateFilter += ` AND ws.started_at <= $${params.length}`; }
 
   let goalFilter = '';
-  if (goal_id) { params.push(goal_id); goalFilter = ` AND t.goal_id = $${params.length}`; }
+  if (goal_id) { params.push(goal_id); goalFilter = ` AND COALESCE(ws.goal_id, t.goal_id) = $${params.length}`; }
 
   const [
     { rows: totalRows },
@@ -52,8 +52,8 @@ router.get('/stats', async (req, res) => {
     query(`
       SELECT g.id, g.title, SUM(ws.minutes)::int AS minutes, COUNT(DISTINCT ws.task_id)::int AS tasks_worked
       FROM work_sessions ws
-      JOIN tasks t ON t.id = ws.task_id
-      JOIN goals g ON g.id = t.goal_id
+      LEFT JOIN tasks t ON t.id = ws.task_id
+      JOIN goals g ON g.id = COALESCE(ws.goal_id, t.goal_id)
       WHERE ws.minutes IS NOT NULL${dateFilter}${goalFilter}
       GROUP BY g.id, g.title
       ORDER BY minutes DESC

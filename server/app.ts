@@ -20,6 +20,7 @@ import { deadlinesRouter } from './routes/deadlines.js';
 import { milestonesRouter } from './routes/milestones.js';
 import { schedulePrefsRouter } from './routes/schedule-prefs.js';
 import { workSessionsRouter } from './routes/work-sessions.js';
+import { routinesRouter } from './routes/routines.js';
 import { eventTaskLinksRouter } from './routes/event-task-links.js';
 import { journalRouter } from './routes/journal.js';
 import { embeddingsRouter } from './routes/embeddings.js';
@@ -113,6 +114,7 @@ export function createApp(): express.Express {
   app.use('/api/milestones', milestonesRouter);
   app.use('/api/schedule-prefs', schedulePrefsRouter);
   app.use('/api/work-sessions', workSessionsRouter);
+  app.use('/api/routines', routinesRouter);
   app.use('/api/event-task-links', eventTaskLinksRouter);
   app.use('/api/journal', journalRouter);
   app.use('/api/embeddings', embeddingsRouter);

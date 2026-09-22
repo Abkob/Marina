@@ -157,6 +157,7 @@ export interface DBEventTaskLink {
 export interface DBWorkSession {
   id: string;
   task_id: string | null;
+  routine_id?: string | null;          // routine focus is logged separately from one-off task estimates
   resource_id: string | null;
   goal_id: string | null;
   started_at: string;

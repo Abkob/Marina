@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { Check, Info, Link2, Lock, Users, X } from 'lucide-react';
+import { Check, Info, Link2, Lock, Repeat2, Users, X } from 'lucide-react';
 import type { DBEvent } from '../../db/schema';
 import type { DBEventTaskLinkFull } from '../../api/hooks';
 import { clampHour, fmtHourLabel, fmtTimeRange, packOverlaps, parseLocalDate, snapHour, type TimedBlock } from '../../utils/calendar';
@@ -58,7 +58,21 @@ export interface DayBreakdownItem {
   label: string;
   minutes: number;
   detail?: string;
-  tone?: 'capacity' | 'buffer' | 'meeting' | 'block' | 'task' | 'free' | 'overbooked';
+  tone?: 'capacity' | 'buffer' | 'meeting' | 'block' | 'task' | 'routine' | 'free' | 'overbooked';
+}
+
+export interface CalendarRoutine {
+  routine_id: string;
+  title: string;
+  date: string;
+  minutes: number;
+  preferred_time: string | null;
+}
+
+function routineHour(routine: CalendarRoutine): number {
+  if (!routine.preferred_time) return -1;
+  const [hours, minutes] = routine.preferred_time.split(':').map(Number);
+  return hours + minutes / 60;
 }
 
 export interface DayCapacityBreakdown {
@@ -73,6 +87,7 @@ interface WeekTimeGridProps {
   days: string[]; // 7 ISO dates, Monday-first
   events: PlacedEvent[];
   meetings: CalendarMeeting[];
+  routines?: CalendarRoutine[];
   linksByEvent: Map<string, DBEventTaskLinkFull[]>;
   workStart: number;
   workEnd: number;
@@ -168,6 +183,7 @@ export function DayFreeBadge({ breakdown, align = 'center', resetKey }: { breakd
                 item.tone === 'free' ? 'bg-emerald-400' :
                 item.tone === 'overbooked' ? 'bg-red-400' :
                 item.tone === 'meeting' ? 'bg-purple-400' :
+                item.tone === 'routine' ? 'bg-teal-400' :
                 item.tone === 'block' ? 'bg-indigo-400' :
                 item.tone === 'task' ? 'bg-amber-400' :
                 item.tone === 'buffer' ? 'bg-gray-300' :
@@ -398,11 +414,13 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
 
 // ── Day column ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, dayIdx, events, meetings, linksByEvent, isWorkDay, workStart, workEnd, isToday, isSelected, now, hourPx, gridHeight, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, days }: {
+function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelect, linksByEvent, isWorkDay, workStart, workEnd, isToday, isSelected, now, hourPx, gridHeight, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, days }: {
   date: string;
   dayIdx: number;
   events: PlacedEvent[];
   meetings: CalendarMeeting[];
+  routines: CalendarRoutine[];
+  onRoutineDaySelect?: (date: string) => void;
   linksByEvent: Map<string, DBEventTaskLinkFull[]>;
   isWorkDay: boolean;
   workStart: number;
@@ -433,9 +451,10 @@ function DayColumn({ date, dayIdx, events, meetings, linksByEvent, isWorkDay, wo
         start: m.startHour,
         end: m.startHour + Math.max(0.25, m.durationHours),
       })),
+      ...routines.map(routine => ({ id: `r:${routine.routine_id}`, start: routineHour(routine), end: routineHour(routine) + Math.max(routine.minutes / 60, 18 / hourPx) })),
     ];
     return packOverlaps(blocks);
-  }, [events, meetings]);
+  }, [events, meetings, routines, hourPx]);
 
   const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -490,6 +509,21 @@ function DayColumn({ date, dayIdx, events, meetings, linksByEvent, isWorkDay, wo
         );
       })}
 
+      {routines.map(routine => {
+        const start = routineHour(routine);
+        const pos = packed.get(`r:${routine.routine_id}`) ?? { col: 0, cols: 1 };
+        const top = hourToY(start, hourPx);
+        const height = Math.max(16, Math.min(routine.minutes / 60 * hourPx, gridHeight - top) - 2);
+        return <button key={routine.routine_id} type="button" onClick={event => { event.stopPropagation(); onRoutineDaySelect?.(date); }}
+          className="absolute z-10 overflow-hidden rounded-md border border-dashed border-teal-500 bg-teal-50 px-1.5 text-left text-teal-900"
+          style={{ top, height, left: `calc(${pos.col / pos.cols * 100}% + 2px)`, width: `calc(${100 / pos.cols}% - 4px)` }}
+          title={`Routine: ${routine.title} · ${routine.preferred_time} · ${routine.minutes}m reserved. Select the day to check in.`}
+          aria-label={`Routine ${routine.title} at ${routine.preferred_time}`}>
+          <span className="flex items-center gap-1 truncate text-[11px] font-semibold"><Repeat2 size={10} className="shrink-0" />{routine.title}</span>
+          {height > 32 && <span className="text-[9px]">{routine.preferred_time} · {routine.minutes}m routine</span>}
+        </button>;
+      })}
+
       {/* Events */}
       {events.map(p => (
         <EventBlock
@@ -522,7 +556,7 @@ function DayColumn({ date, dayIdx, events, meetings, linksByEvent, isWorkDay, wo
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
-export function WeekTimeGrid({ days, events, meetings, linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete }: WeekTimeGridProps) {
+export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete }: WeekTimeGridProps) {
   const now = useNowTick();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(() => scheduleHourPxForViewport(typeof window === 'undefined' ? DENSITY_REFERENCE_WIDTH : window.innerWidth));
@@ -585,6 +619,7 @@ export function WeekTimeGrid({ days, events, meetings, linksByEvent, workStart, 
                     </span>
                   </button>
                   <DayFreeBadge breakdown={dayBreakdowns?.get(d)} align={breakdownAlign} resetKey={breakdownResetKey} />
+                  {routines.some(routine => routine.date === d) && <button type="button" onClick={() => onDaySelect?.(d)} className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-teal-700" title="Routine time is included in this day’s capacity"><Repeat2 size={10} />{fmtMins(routines.filter(routine => routine.date === d).reduce((sum, routine) => sum + routine.minutes, 0))} routines</button>}
                 </div>
               );
             })}
@@ -623,6 +658,8 @@ export function WeekTimeGrid({ days, events, meetings, linksByEvent, workStart, 
               days={days}
               events={eventsByDate.get(d) ?? []}
               meetings={meetingsByDate.get(d) ?? []}
+              routines={routines.filter(routine => routine.date === d && routineHour(routine) >= GRID_START_HOUR && routineHour(routine) < GRID_END_HOUR)}
+              onRoutineDaySelect={onDaySelect}
               linksByEvent={linksByEvent}
               isWorkDay={workDays.includes(i + 1)}
               workStart={workStart}

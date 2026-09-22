@@ -263,6 +263,7 @@ export function WorkloadHorizon({
   const rangeTitle = mode === 'week' ? `${dateLabel(rangeStart)} – ${dateLabel(rangeEnd)}` : `Next 35 days · ${dateLabel(rangeStart)} – ${dateLabel(rangeEnd)}`;
   const utilisation = model.availableMinutes > 0 ? Math.round(model.plannedMinutes / model.availableMinutes * 100) : 0;
   const creditedHandled = model.creditedLoggedMinutes + model.creditedCommittedMinutes;
+  const routineMinutes = scheduler.capacity_days.filter(day => day.date >= rangeStart && day.date <= rangeEnd).reduce((sum, day) => sum + (day.routine_minutes ?? 0), 0);
   const explanation = pressureCount > 0
     ? `${duration(model.remainingMinutes)} of known work is still unfinished in this view.${model.unestimatedCount ? ` ${model.unestimatedCount} unestimated task${model.unestimatedCount === 1 ? ' is' : 's are'} visible but excluded from the hour total.` : ''}`
     : `${duration(model.remainingMinutes)} remains, and every estimated task in this view can currently be placed.`;
@@ -307,7 +308,7 @@ export function WorkloadHorizon({
           <Metric label="Known estimates" value={duration(model.estimateMinutes)} note="Actionable leaf tasks only; parents are not double-counted" tone="indigo" />
           <Metric label="Already handled" value={duration(creditedHandled)} note={`${duration(model.loggedMinutes)} worked · ${duration(model.committedMinutes)} recorded on calendar${model.commitmentOverageMinutes ? ` · ${duration(model.commitmentOverageMinutes)} exceeds its task estimate` : ''}`} tone="emerald" />
           <Metric label="Still left" value={duration(model.remainingMinutes)} note={`${duration(model.plannedMinutes)} suggested by the planner in this view · ${duration(model.remainingAfterRangeMinutes)} later`} tone={model.overdueCount || model.missedCount ? 'red' : 'slate'} />
-          <Metric label="Usable time in view" value={duration(model.availableMinutes)} note={`Planner uses ${utilisation}% · ${duration(model.freeMinutes)} open after fixed events`} tone={utilisation > 90 ? 'amber' : 'slate'} />
+          <Metric label="Usable time in view" value={duration(model.availableMinutes)} note={`Planner uses ${utilisation}% · ${duration(model.freeMinutes)} open after fixed events${routineMinutes ? ` and ${duration(routineMinutes)} of routines` : ''}`} tone={utilisation > 90 ? 'amber' : 'slate'} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold">

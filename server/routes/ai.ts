@@ -18,6 +18,7 @@ import {
 } from '../ollama.js';
 import { buildRetrievalContext } from '../services/retrieval.js';
 import { computeSchedule, type SchedulerResult } from '../services/scheduler.js';
+import { loadRoutineReservations, routineCapacity } from '../services/routinePlanning.js';
 import { layoutPlan, addDaysStr, dateToWeekPosServer, eventDateServer, fmtTimeStr, resolvePlanWindow, expandSeries, type PlanWindowParams, type SeriesParams } from '../services/planLayout.js';
 import { suggestEstimate } from '../services/estimateSuggest.js';
 import { buildPlanningBuckets, type PlanningTaskInput } from '../services/planningBuckets.js';
@@ -536,9 +537,10 @@ async function getScheduleContext(userQuery?: string) {
     const day = new Date(date + 'T00:00:00').getDay();
     return day === 0 ? 7 : day;
   };
-  const fixedByDate = new Map<string, { meeting_minutes: number; locked_block_minutes: number }>();
-  const addFixed = (date: string, key: 'meeting_minutes' | 'locked_block_minutes', minutes: number) => {
-    if (!fixedByDate.has(date)) fixedByDate.set(date, { meeting_minutes: 0, locked_block_minutes: 0 });
+  const contextRoutines = await loadRoutineReservations(todayStr, addDaysStr(todayStr, 13), todayStr);
+  const fixedByDate = new Map<string, { meeting_minutes: number; locked_block_minutes: number; routine_minutes: number }>();
+  const addFixed = (date: string, key: 'meeting_minutes' | 'locked_block_minutes' | 'routine_minutes', minutes: number) => {
+    if (!fixedByDate.has(date)) fixedByDate.set(date, { meeting_minutes: 0, locked_block_minutes: 0, routine_minutes: 0 });
     fixedByDate.get(date)![key] += minutes;
   };
   for (const meeting of meetings as Record<string, unknown>[]) {
@@ -551,6 +553,7 @@ async function getScheduleContext(userQuery?: string) {
   for (const eventMeeting of eventMeetings) {
     addFixed(eventMeeting.date, 'locked_block_minutes', eventMeeting.duration_minutes);
   }
+  for (const routine of contextRoutines) addFixed(routine.date, 'routine_minutes', routine.minutes);
   const overrideByDate = new Map((overrides as { date: string; available_minutes: number; note?: string | null }[]).map(o => [o.date, o]));
   const calendarLinksByEvent = new Map<string, typeof calendarEventLinks>();
   for (const link of calendarEventLinks) {
@@ -675,8 +678,8 @@ async function getScheduleContext(userQuery?: string) {
     const rawCapacityMinutes = override ? Number(override.available_minutes ?? 0) : (isWorkday ? dailyCapacity : 0);
     const bufferMinutes = override ? 0 : Math.max(0, Math.round(rawCapacityMinutes * bufferRatio));
     const effectiveCapacityMinutes = override ? rawCapacityMinutes : Math.max(0, rawCapacityMinutes - bufferMinutes);
-    const fixed = fixedByDate.get(date) ?? { meeting_minutes: 0, locked_block_minutes: 0 };
-    const fixedCommitmentMinutes = fixed.meeting_minutes + fixed.locked_block_minutes;
+    const fixed = fixedByDate.get(date) ?? { meeting_minutes: 0, locked_block_minutes: 0, routine_minutes: 0 };
+    const fixedCommitmentMinutes = fixed.meeting_minutes + fixed.locked_block_minutes + fixed.routine_minutes;
     const availableAfterFixedMinutes = Math.max(0, effectiveCapacityMinutes - fixedCommitmentMinutes);
 
     const originGroups = new Map<string, {
@@ -777,6 +780,7 @@ async function getScheduleContext(userQuery?: string) {
         fixed_commitment_minutes: fixedCommitmentMinutes,
         meeting_minutes: fixed.meeting_minutes,
         locked_block_minutes: fixed.locked_block_minutes,
+        routine_minutes: fixed.routine_minutes,
         available_after_fixed_minutes: availableAfterFixedMinutes,
         override_note: override?.note ?? null,
       },
@@ -1106,6 +1110,7 @@ async function getScheduleContext(userQuery?: string) {
         duration_minutes: Number((m as Record<string, unknown>).duration_minutes ?? 0),
       })),
       ...eventMeetings,
+      ...routineCapacity(contextRoutines),
     ],
     prefs: {
       // DB stores work_days as ISO 1=Mon…7=Sun; scheduler uses getDay() 0=Sun…6=Sat. Convert via % 7.
@@ -1120,6 +1125,7 @@ async function getScheduleContext(userQuery?: string) {
 
   const ctx = {
     today: todayStr,
+    routine_reservations: contextRoutines,
     schedule_prefs: {
       work_days: JSON.parse(prefs.work_days as string),
       work_start: prefs.work_start,
@@ -2937,6 +2943,10 @@ router.get('/schedule-preview', async (req, res) => {
       blocker_ids: blockerMap.get(t.id as string) ?? [],
     });
   });
+  const [displayRoutines, schedulerRoutines] = await Promise.all([
+    loadRoutineReservations(displayFromStr, displayToStr, todayStr),
+    loadRoutineReservations(todayStr, schedulerEndStr, todayStr),
+  ]);
   const schedulerResult = computeSchedule({
     tasks: schedulerInputTasks,
     meetings: [
@@ -2945,6 +2955,7 @@ router.get('/schedule-preview', async (req, res) => {
         duration_minutes: Number(m.duration_minutes ?? 0),
       })),
       ...previewEventMeetings,
+      ...routineCapacity(schedulerRoutines),
     ],
     prefs: {
       // DB stores work_days as ISO 1=Mon…7=Sun; scheduler uses getDay() 0=Sun…6=Sat. Convert via % 7.
@@ -3006,6 +3017,7 @@ router.get('/schedule-preview', async (req, res) => {
       deadline_titles: dayDeadlines.map(dl => String(dl.title ?? 'Deadline')),
       proposals: proposalsByDate[dateStr] ?? [],
       override: overridesByDate[dateStr] ?? null,
+      routines: displayRoutines.filter(routine => routine.date === dateStr),
     };
   });
 
@@ -3359,10 +3371,10 @@ async function loadSchedulerInputs(horizonDays: number) {
     taskById: new Map((schedTasks as Record<string, unknown>[]).map(t => [t.id as string, t])),
     tasks,
     notSchedulable,
-    meetings: (meetings as Record<string, unknown>[]).map(m => ({
+    meetings: [...(meetings as Record<string, unknown>[]).map(m => ({
       date: String(m.scheduled_at).slice(0, 10),
       duration_minutes: Number(m.duration_minutes ?? 0),
-    })),
+    })), ...routineCapacity(await loadRoutineReservations(todayStr, endStr, todayStr))],
     prefs: {
       work_days: (JSON.parse(prefs.work_days as string) as number[]).map(d => d % 7),
       daily_capacity_minutes: Number(prefs.daily_capacity_minutes ?? 480),
@@ -3413,6 +3425,13 @@ async function loadBusyWindow(fromStr: string, toStr: string) {
       title: String(ev.title ?? 'Block'),
       kind: 'block',
     });
+  }
+  const { rows: routinePrefs } = await query("SELECT timezone FROM user_schedule_prefs WHERE id='default'");
+  const routineToday = new Intl.DateTimeFormat('en-CA', { timeZone: String(routinePrefs[0]?.timezone || 'UTC') }).format(new Date());
+  for (const routine of await loadRoutineReservations(fromStr, toStr, routineToday)) {
+    if (!routine.preferred_time) continue;
+    const [hour, minute] = routine.preferred_time.split(':').map(Number);
+    busy.push({ date: routine.date, start_hour: hour + minute / 60, duration_hours: routine.minutes / 60, title: `Routine: ${routine.title}`, kind: 'block' });
   }
   return busy;
 }

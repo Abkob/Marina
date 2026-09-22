@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Circle, Clock, FileText, Paperclip, Play, Plus, Search,
   Square, Timer, Trash2, Upload, X,
@@ -17,7 +18,8 @@ import { addNoteFile, deleteNoteFile } from '../db/queries/noteFiles';
 import { formatTaskTime, getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
 import { getEffectiveTaskDueDate, getInheritedTaskDueDate } from '../utils/taskDates';
 import { isWorkSelectableTask } from '../utils/taskTree';
-import { readActiveWorkTimer, writeActiveWorkTimer, type ActiveWorkTimer } from '../utils/workTimer';
+import { readActiveWorkTimer, writeActiveWorkTimer, WORK_TIMER_STORAGE_KEY, type ActiveWorkTimer } from '../utils/workTimer';
+import { apiPost } from '../utils/apiFetch';
 
 function formatStopwatch(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -110,8 +112,10 @@ export function WorkView() {
     setWorkTaskId,
     triggerToast,
     showConfirm,
+    setCurrentTab,
   } = useAppStore();
   const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
   const { data: allTasks = [] } = useAllTasks();
   const { data: goals = [] } = useGoals();
   const { data: selectedTask } = useTask(workTaskId);
@@ -123,6 +127,11 @@ export function WorkView() {
   const [activeTimer, setActiveTimer] = useState<ActiveWorkTimer | null>(readActiveWorkTimer);
   const [nowMs, setNowMs] = useState(Date.now());
   const [timerNotes, setTimerNotes] = useState(activeTimer?.notes ?? '');
+  const [savingTimer, setSavingTimer] = useState(false);
+  const stoppingTimerRef = useRef(false);
+  const [adjustRoutineTime, setAdjustRoutineTime] = useState(false);
+  const [routineMinutesToSave, setRoutineMinutesToSave] = useState('');
+  const [routineTimeError, setRoutineTimeError] = useState('');
   const [manualMinutes, setManualMinutes] = useState('');
   const [manualNote, setManualNote] = useState('');
   const [manualWhen, setManualWhen] = useState(() => toDateTimeLocal(new Date()));
@@ -135,6 +144,20 @@ export function WorkView() {
   useEffect(() => {
     writeActiveWorkTimer(activeTimer);
   }, [activeTimer]);
+
+  useEffect(() => {
+    setAdjustRoutineTime(false);
+    setRoutineMinutesToSave('');
+    setRoutineTimeError('');
+  }, [activeTimer?.sessionId, activeTimer?.taskId]);
+
+  useEffect(() => {
+    const syncTimer = (event: StorageEvent) => {
+      if (event.key === WORK_TIMER_STORAGE_KEY) setActiveTimer(readActiveWorkTimer());
+    };
+    window.addEventListener('storage', syncTimer);
+    return () => window.removeEventListener('storage', syncTimer);
+  }, []);
 
   useEffect(() => {
     if (!activeTimer) return;
@@ -162,6 +185,8 @@ export function WorkView() {
 
   const currentTask = selectedTask ?? taskOptions.find(t => t.id === workTaskId) ?? null;
   const timerTask = activeTimer ? allTasks.find(t => t.id === activeTimer.taskId) ?? null : null;
+  const activeRoutine = activeTimer?.routineId ? activeTimer : null;
+  const timerTitle = activeRoutine?.routineTitle ?? timerTask?.title ?? 'your task';
   const currentGoal = currentTask?.goal_id ? goalById.get(currentTask.goal_id) ?? null : null;
   const effectiveDueDate = currentTask ? getEffectiveTaskDueDate(currentTask, allTasks) : null;
   const inheritedDueDate = currentTask ? getInheritedTaskDueDate(currentTask, allTasks) : null;
@@ -173,29 +198,84 @@ export function WorkView() {
 
   const startTimer = async () => {
     if (!currentTask || activeTimer) return;
-    await touchTask(currentTask.id).catch(() => {});
+    const existingTimer = readActiveWorkTimer();
+    if (existingTimer) {
+      setActiveTimer(existingTimer);
+      triggerToast('A focus timer is already running. Stop it before starting another.', 'info');
+      return;
+    }
     const next = { taskId: currentTask.id, startedAt: new Date().toISOString(), notes: timerNotes.trim() };
+    writeActiveWorkTimer(next);
     setActiveTimer(next);
     setTimerNotes('');
     triggerToast('Timer started.', 'success');
+    await touchTask(currentTask.id).catch(() => {});
   };
 
   const stopTimer = async () => {
-    if (!activeTimer) return;
+    if (!activeTimer || stoppingTimerRef.current) return;
     const started = new Date(activeTimer.startedAt);
     const ended = new Date();
-    const minutes = Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60_000));
-    await createSession.mutateAsync({
-      task_id: activeTimer.taskId,
-      goal_id: timerTask?.goal_id ?? null,
-      started_at: started.toISOString(),
-      ended_at: ended.toISOString(),
-      minutes,
-      notes: activeTimer.notes || undefined,
-      source: 'timer',
+    const elapsedMinutes = Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60_000));
+    let minutes = elapsedMinutes;
+    if (activeTimer.routineId && (adjustRoutineTime || elapsedMinutes > 1440)) {
+      const actualMinutes = Number(routineMinutesToSave);
+      if (!routineMinutesToSave || !Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 1440
+        || actualMinutes > Math.ceil((ended.getTime() - started.getTime()) / 60_000) + 1) {
+        setAdjustRoutineTime(true);
+        setRoutineTimeError('Enter the minutes you actually focused: 1–1440, no more than the elapsed session. Your timer has not been discarded.');
+        return;
+      }
+      minutes = actualMinutes;
+    }
+    setRoutineTimeError('');
+    stoppingTimerRef.current = true;
+    setSavingTimer(true);
+    try {
+      let savedMinutes = minutes;
+      if (activeTimer.routineId) {
+        const saved = await apiPost<{ minutes: number }>(`/api/routines/${encodeURIComponent(activeTimer.routineId)}/sessions`, {
+          id: activeTimer.sessionId,
+          date: activeTimer.routineDate,
+          started_at: started.toISOString(),
+          ended_at: ended.toISOString(),
+          minutes,
+          notes: activeTimer.notes || undefined,
+        });
+        savedMinutes = saved.minutes;
+        for (const key of ['routines', 'routine-entries', 'schedule-preview', 'work-sessions', 'work-session-stats']) {
+          void queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      } else {
+        await createSession.mutateAsync({
+          task_id: activeTimer.taskId,
+          goal_id: timerTask?.goal_id ?? null,
+          started_at: started.toISOString(),
+          ended_at: ended.toISOString(),
+          minutes,
+          notes: activeTimer.notes || undefined,
+          source: 'timer',
+        });
+      }
+      writeActiveWorkTimer(null);
+      setActiveTimer(null);
+      triggerToast(`Logged ${formatTaskTime(savedMinutes)}${activeTimer.routineId ? ' to your routine' : ''}.`, 'success');
+    } catch (error) {
+      triggerToast(`Time not saved. Your timer is still available; try Stop again. ${error instanceof Error ? error.message : ''}`.trim(), 'error');
+    } finally {
+      stoppingTimerRef.current = false;
+      setSavingTimer(false);
+    }
+  };
+
+  const discardRoutineTimer = () => {
+    if (!activeTimer?.routineId || stoppingTimerRef.current) return;
+    showConfirm('Discard this unsaved routine timer? No time from this timer will be logged. Previously saved sessions and routine history will stay unchanged.', () => {
+      if (stoppingTimerRef.current) return;
+      writeActiveWorkTimer(null);
+      setActiveTimer(null);
+      triggerToast('Unsaved timer discarded. Previously saved time is unchanged.', 'info');
     });
-    setActiveTimer(null);
-    triggerToast(`Logged ${formatTaskTime(minutes)}.`, 'success');
   };
 
   const logManualTime = async () => {
@@ -260,6 +340,7 @@ export function WorkView() {
   };
 
   const elapsed = activeTimer ? nowMs - new Date(activeTimer.startedAt).getTime() : 0;
+  const routineTimerTooLong = Boolean(activeRoutine) && Math.round(elapsed / 60_000) > 1440;
 
   return (
     <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-4 py-6 md:px-10">
@@ -270,7 +351,7 @@ export function WorkView() {
             <h1 className="font-headline text-2xl font-black text-gray-950">Work</h1>
           </div>
           <p className="text-xs text-gray-400">
-            {activeTimer && timerTask ? `Recording ${timerTask.title}` : 'Pick a task and start logging.'}
+            {activeTimer ? `Recording ${timerTitle}` : 'Pick a task, or start a routine from Schedule.'}
           </p>
         </div>
         {activeTimer && (
@@ -282,10 +363,11 @@ export function WorkView() {
             </div>
             <button
               onClick={stopTimer}
+              disabled={savingTimer}
               aria-label="Stop active timer and log time"
-              className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-950 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-gray-800"
+              className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-950 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-50"
             >
-              <Square size={12} /> Stop
+              <Square size={12} /> {savingTimer ? 'Saving…' : 'Stop'}
             </button>
           </div>
         )}
@@ -299,7 +381,7 @@ export function WorkView() {
               goals={goals}
               mode="select"
               includeCriticalPath
-              selectedTaskId={currentTask?.id ?? null}
+              selectedTaskId={activeRoutine ? null : currentTask?.id ?? null}
               onSelect={task => setWorkTaskId(task.id)}
               searchPlaceholder="Find a task or goal…"
             />
@@ -307,7 +389,48 @@ export function WorkView() {
         </aside>
 
         <main className="min-w-0 space-y-5">
-          {!currentTask ? (
+          {activeRoutine ? (
+            <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-sm sm:p-7" aria-label="Active routine focus session">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                Routine · {activeRoutine.goalId ? goalById.get(activeRoutine.goalId)?.title ?? 'Linked goal' : 'Standalone'}
+              </p>
+              <h2 className="font-headline text-2xl font-black text-gray-950">{activeRoutine.routineTitle}</h2>
+              <p className="mt-2 text-sm text-gray-600">Session for {activeRoutine.routineDate}. Your timer keeps running if you leave this page.</p>
+              <p className="my-6 font-mono text-4xl font-black tabular-nums text-indigo-950" aria-label="Routine elapsed time">{formatStopwatch(elapsed)}</p>
+              <label className="block text-sm font-semibold text-gray-800" htmlFor="routine-focus-notes">What are you reviewing or practising?</label>
+              <textarea
+                id="routine-focus-notes"
+                value={activeRoutine.notes}
+                disabled={savingTimer}
+                onChange={event => setActiveTimer(timer => timer ? { ...timer, notes: event.target.value } : timer)}
+                placeholder="Optional notes for this session"
+                className="mt-2 min-h-24 w-full resize-y rounded-xl border border-indigo-100 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
+              />
+              <p className="mt-3 text-xs leading-relaxed text-gray-600">Stopping saves time toward this day's routine. A minutes target is complete only when enough time is logged. For problems, pages or sessions, use “Done today” in Schedule when you finish your target.</p>
+              <div className="mt-4 rounded-xl border border-indigo-100 bg-white p-3">
+                {routineTimerTooLong && <p className="mb-3 text-sm text-amber-800">This timer has run for over 24 hours. If you forgot it running, enter the time you actually focused before saving. Nothing will be trimmed automatically.</p>}
+                {!routineTimerTooLong && <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={adjustRoutineTime} disabled={savingTimer} onChange={event => { setAdjustRoutineTime(event.target.checked); setRoutineTimeError(''); }} />
+                  Adjust focused minutes before saving
+                </label>}
+                {(adjustRoutineTime || routineTimerTooLong) && <div className="mt-2">
+                  <label htmlFor="routine-focus-minutes" className="block text-sm font-semibold text-gray-800">Minutes to save</label>
+                  <input id="routine-focus-minutes" type="number" min={1} max={1440} step={1} value={routineMinutesToSave} disabled={savingTimer}
+                    onChange={event => { setRoutineMinutesToSave(event.target.value); setRoutineTimeError(''); }}
+                    placeholder="Actual focused minutes" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-indigo-400" />
+                  <p className="mt-1 text-xs text-gray-500">Save 1–1440 minutes, up to the elapsed session time. The original start and stop timestamps are kept.</p>
+                </div>}
+                {routineTimeError && <p role="alert" className="mt-2 text-sm text-red-700">{routineTimeError}</p>}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button onClick={stopTimer} disabled={savingTimer} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-50" aria-label="Stop routine timer and log time">
+                  <Square size={14} /> {savingTimer ? 'Saving…' : 'Stop & save time'}
+                </button>
+                <button onClick={() => setCurrentTab('Schedule')} className="rounded-lg border border-indigo-200 bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Back to today's routines</button>
+                <button onClick={discardRoutineTimer} disabled={savingTimer} className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">Discard timer</button>
+              </div>
+            </section>
+          ) : !currentTask ? (
             <div className="rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center text-sm text-gray-300">
               Choose a task to open the work surface.
             </div>
@@ -368,10 +491,11 @@ export function WorkView() {
                     ) : activeTimer.taskId === currentTask.id ? (
                       <button
                         onClick={stopTimer}
+                        disabled={savingTimer}
                         aria-label="Stop timer and log time"
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-gray-800"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-50"
                       >
-                        <Square size={14} /> Stop & Log
+                        <Square size={14} /> {savingTimer ? 'Saving…' : 'Stop & Log'}
                       </button>
                     ) : (
                       <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
