@@ -1,3 +1,5 @@
+import { schedulePreviewRouter } from './schedule-preview.js';
+import { aiProposalsRouter } from './ai-proposals.js';
 import { activeProposals } from '../services/activeProposals.js';
 import { activeTaskSql, activeGoalSql, activeMilestoneSql, activeMeetingSql, activeEventSql, activeEntitySql, activeResourceSql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
@@ -45,6 +47,8 @@ import {
 } from '../services/taskTimeline.js';
 
 const router = Router();
+router.use(schedulePreviewRouter);
+router.use(aiProposalsRouter);
 
 /** Format a Date as YYYY-MM-DD using local (server) time. */
 const fmtYMD = (d: Date) =>
@@ -1461,6 +1465,90 @@ router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.' });
   }
+});
+
+// POST /api/ai/schedule/propose — turn the deterministic scheduler's current
+// day assignments into durable update_task proposals (start_date). The
+// schedule is NEVER auto-applied: the user previews and confirms each
+// proposal through the standard transactional proposal apply path.
+router.post('/schedule/propose', async (req, res) => {
+  const input = z.object({ horizon_days: z.number().int().min(1).max(35).optional() }).safeParse(req.body ?? {});
+  if (!input.success) return res.status(400).json({ error: 'horizon_days must be an integer from 1 to 35.' });
+  const horizonDays = input.data.horizon_days ?? 7;
+  const inp = await loadSchedulerInputs(horizonDays);
+  const todayStr = inp.todayStr;
+
+  const schedulerResult = computeSchedule({
+    start_date: todayStr,
+    tasks: inp.tasks,
+    meetings: inp.meetings,
+    prefs: inp.prefs,
+    overrides: inp.overrides,
+    horizon_days: horizonDays,
+  });
+
+  // First assigned day per task = proposed start_date
+  const firstDayByTask = new Map<string, string>();
+  for (const day of schedulerResult.day_assignments) {
+    for (const tid of day.task_ids) {
+      if (!firstDayByTask.has(tid)) firstDayByTask.set(tid, day.date);
+    }
+  }
+
+  const taskById = inp.taskById;
+  const now = new Date().toISOString();
+
+  // Re-proposing replaces prior pending scheduler proposals instead of accumulating.
+  await query(`DELETE FROM ai_action_proposals WHERE source_type='scheduler' AND status='pending'`);
+
+  const created: Array<Record<string, unknown>> = [];
+  for (const [taskId, startDate] of firstDayByTask) {
+    const task = taskById.get(taskId);
+    if (!task) continue;
+    // No-op moves are noise — only propose when the start date actually changes.
+    if ((task.start_date as string | null) === startDate) continue;
+    const assignedDays = schedulerResult.day_assignments.filter(d => d.task_ids.includes(taskId)).map(d => d.date);
+    const payload = { task_id: taskId, start_date: startDate };
+    const payloadStr = JSON.stringify(payload);
+    const idemKey = crypto.createHash('sha256').update(`update_task\0${payloadStr}`).digest('hex');
+    const explanation =
+      `Scheduler: start "${task.title}" on ${startDate}` +
+      (assignedDays.length > 1 ? ` (split across ${assignedDays.length} days: ${assignedDays.join(', ')})` : '') +
+      (task.due_date ? ` to meet its ${task.due_date} deadline` : '') +
+      `. Previous start: ${(task.start_date as string | null) ?? 'none'}.`;
+    const { rows: inserted } = await query(
+      `INSERT INTO ai_action_proposals (id, action_type, action_payload, explanation, confidence, status, source_type, source_id, created_at, idempotency_key)
+       VALUES ($1,'update_task',$2,$3,0.9,'pending','scheduler',NULL,$4,$5)
+       ON CONFLICT (action_type, idempotency_key) WHERE status='pending' AND idempotency_key IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [crypto.randomUUID(), payloadStr, explanation, now, idemKey],
+    );
+    if (inserted.length) {
+      created.push({
+        proposal_id: (inserted[0] as { id: string }).id,
+        task_id: taskId,
+        title: task.title,
+        before: { start_date: (task.start_date as string | null) ?? null },
+        after: { start_date: startDate },
+        assigned_days: assignedDays,
+        explanation,
+      });
+    }
+  }
+
+  res.json({
+    ok: true,
+    scheduler_result: {
+      status: schedulerResult.status,
+      gap_minutes: schedulerResult.gap_minutes,
+      unestimated_task_ids: schedulerResult.unestimated_task_ids,
+      tasks_overflow: schedulerResult.tasks_overflow,
+      impossible_reason: schedulerResult.impossible_reason ?? null,
+    },
+    not_schedulable: inp.notSchedulable,
+    proposals_created: created.length,
+    proposals: created,
+  });
 });
 
 // ── AI preferences adjuster ──────────────────────────────────────────────────
