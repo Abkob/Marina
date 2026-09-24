@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createRoutineSchema, updateRoutineSchema, routineCheckInSchema, routineIdSchema } from './routineContracts.js';
 
 // ─── Model action validation ─────────────────────────────────────────────────
 // The model's proposed actions are untrusted output. Strict discriminated
@@ -12,6 +13,9 @@ const isoDate = z.iso.date({ error: 'must be a valid YYYY-MM-DD date' });
 const taskEstimateMinutes = z.number().int().positive().max(365 * 24 * 60);
 
 export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
+  create_routine: createRoutineSchema,
+  update_routine: z.object({ routine_id: routineIdSchema, changes: updateRoutineSchema }).strict(),
+  check_in_routine: z.object({ routine_id: routineIdSchema, entry: routineCheckInSchema }).strict(),
   create_task: z.object({
     goal_id: z.string().optional(),
     parent_task_id: z.string().optional(),
@@ -111,9 +115,8 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
   }).strict().refine(params => params.source_date !== params.target_date, {
     message: 'source_date and target_date must differ',
   }),
-  // Routine stopgap: "every day 6–9am for a month" → a series of dated
-  // calendar blocks shown on the plan widget and applied in one transaction.
-  // (First-class routines with adherence tracking come later.)
+  // Repeating calendar events are separate from native tracked routines.
+  // Used only by the repeating-block preview, never to emulate create_routine.
   create_block_series: z.object({
     title: z.string().min(1).max(200),
     start_date: isoDate,

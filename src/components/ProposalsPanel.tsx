@@ -5,6 +5,9 @@ import { useAppStore } from '../store/useAppStore';
 import { apiPost } from '../utils/apiFetch';
 
 const ACTION_COLORS: Record<string, string> = {
+  create_routine: 'bg-teal-500/20 text-teal-300',
+  update_routine: 'bg-teal-500/20 text-teal-300',
+  check_in_routine: 'bg-teal-500/20 text-teal-300',
   create_task:      'bg-blue-500/20 text-blue-300',
   break_down_task:  'bg-cyan-500/20 text-cyan-300',
   update_task:      'bg-indigo-500/20 text-indigo-300',

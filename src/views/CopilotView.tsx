@@ -17,7 +17,7 @@ import './copilot/copilot.css';
 
 interface CopilotAction {
   id: string;
-  type: 'create_task' | 'break_down_task' | 'create_goal' | 'create_goal_with_tasks' | 'update_task' | 'update_goal' | 'create_milestone' | 'attach_resource' | 'move_schedule_items';
+  type: 'create_task' | 'break_down_task' | 'create_goal' | 'create_goal_with_tasks' | 'update_task' | 'update_goal' | 'create_milestone' | 'attach_resource' | 'move_schedule_items' | 'create_routine' | 'update_routine' | 'check_in_routine';
   description: string;
   params: Record<string, unknown>;
   status: 'pending' | 'confirmed' | 'skipped' | 'applying' | 'done' | 'error';
@@ -37,8 +37,9 @@ function statusFromProposal(proposalStatus: string | undefined): CopilotAction['
   }
 }
 
-/** Query keys affected by applying a task/goal/milestone proposal. */
+/** Query keys affected by applying a native workspace proposal. */
 const PROPOSAL_AFFECTED_KEYS = [
+  'routines', 'routine-entries',
   'goals', 'goals-health', 'goal-tasks', 'tasks', 'milestones',
   'proposals', 'ai-proposals', 'schedule-preview', 'data-readiness', 'org-inbox',
 ] as const;
@@ -176,6 +177,9 @@ function ActionCard({ action, onConfirm, onSkip }: {
   const isPending  = action.status === 'pending';
 
   const typeLabel = {
+    create_routine: 'New Routine',
+    update_routine: 'Update Routine',
+    check_in_routine: 'Routine Check-in',
     create_task: 'New Task',
     break_down_task: 'Break Down Task',
     create_goal: 'New Goal',
@@ -187,6 +191,9 @@ function ActionCard({ action, onConfirm, onSkip }: {
     move_schedule_items: 'Move Schedule Items',
   }[action.type];
   const typeDot = {
+    create_routine: 'bg-teal-400',
+    update_routine: 'bg-teal-400',
+    check_in_routine: 'bg-teal-400',
     create_task: 'bg-indigo-400',
     break_down_task: 'bg-cyan-400',
     create_goal: 'bg-purple-400',
@@ -237,6 +244,11 @@ function ActionCard({ action, onConfirm, onSkip }: {
             {p.target_date && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">to {String(p.target_date)}</span>}
             {Array.isArray(p.entity_types) && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{p.entity_types.join(', ')}</span>}
             {p.category    && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{String(p.category)}</span>}
+            {action.type === 'create_routine' && <>
+              <span className="text-xs text-slate-600">{String(p.target_count)} {String(p.target_unit)} · {p.cadence === 'weekly' ? `${p.weekly_target} times/week` : 'Each selected day'}</span>
+              {Array.isArray(p.weekdays) && <span className="text-xs text-slate-600">{p.weekdays.map(day => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Number(day) - 1]).join(', ')}</span>}
+              <span className="text-xs text-slate-600">{String(p.planned_minutes)} min reserved · {p.preferred_time ? String(p.preferred_time) : 'Anytime'}</span>
+            </>}
           </div>
         </div>
       </div>

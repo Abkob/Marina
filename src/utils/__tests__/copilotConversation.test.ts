@@ -158,6 +158,12 @@ describe('model-led conversation', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(result.conversation.tool_calls[1].status).toBe('failed');
   });
+  it('allows corrected arguments to reuse an ID when the earlier attempt returned no data', async () => {
+    const { run, execute } = setup([toolCall('retry', { invalid: true }), toolCall('retry'), final()]);
+    const result = await run();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.conversation.tool_calls.map(call => call.status)).toEqual(['failed', 'completed']);
+  });
 
   it('offers a model one format repair, then fails clearly without a canned reply', async () => {
     expect((await setup(['unreadable', final()]).run()).reply).toBe('Here is my actual explanation.');
@@ -186,6 +192,15 @@ describe('model-led conversation', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(complete).toHaveBeenCalledTimes(5);
     expect(new Set(complete.mock.calls.map(call => call[1]?.deadlineMs)).size).toBe(1);
+  });
+  it('keeps format/proposal repair attempts separate from the bounded read budget', async () => {
+    const { run, complete } = setup([
+      'bad json',
+      final({ actions: [{ type: 'create_task', params: { title: '' } }] }),
+      toolCall('one'), toolCall('two'), toolCall('three'), final(),
+    ]);
+    expect((await run()).reply).toBe('Here is my actual explanation.');
+    expect(complete).toHaveBeenCalledTimes(6);
   });
 
   it('does not expose oversized or disallowed tool context to the model', async () => {

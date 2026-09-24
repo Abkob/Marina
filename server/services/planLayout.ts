@@ -131,7 +131,7 @@ export function resolvePlanWindow(p: PlanWindowParams, todayStr: string, nowHour
   };
 }
 
-// ── Routine series expansion (stopgap until first-class routines) ────────────
+// ── Finite repeating calendar blocks (separate from tracked routines) ───────
 // "Every day 6–9am for a month" → concrete dated blocks the plan widget can
 // show and apply in one transaction. Pure and capped.
 

@@ -22,6 +22,20 @@ The Copilot now uses one conversation model with a bounded set of typed, read-on
 
 Scheduling arithmetic, archive filtering, schema checks, ID validation, and capacity calculations remain deterministic. They operate on explicit structured arguments, rather than deciding what a sentence means. A scoped plan includes only the requested tasks and descendants. Missing tasks cause an error instead of broadening the plan to unrelated work.
 
+## Native feature access
+
+`copilotFeatures.ts` supplies a compact product map alongside generated action schemas. Its tool/action references are tested against registered capabilities. It distinguishes native tracked routines from finite repeating calendar events and states which app features have no chat mutation available.
+
+`read_routines` retrieves current routine definitions and boundary-week check-ins, with explicit paging and archive filtering. Progress and reserved capacity use the same `routineProgress` and `routineReservations` functions as the UI and scheduler. `create_routine`, `update_routine`, and `check_in_routine` use the shared routine contracts and services inside the proposal's locked transaction. Applying creates a real routine or check-in; it does not generate task copies, calendar events or fabricated focus logs. The routine panels and capacity queries refresh after Apply. Existing cadence/targets remain immutable, matching the native feature; the model must explain that limitation rather than silently replacing the routine.
+
+`preview_repeating_blocks` is reserved for explicitly requested dated calendar events. The misleading `preview_routine` tool name and obsolete "routines come later" guidance have been removed. This change adds native capabilities, not sentence matching or deterministic intent routing.
+
+Invalid structured actions receive one model repair with the actual schema error and unchanged conversation. If the repair is still invalid, the request fails explicitly instead of showing a success claim beside a rejected proposal. New routine proposals must first read existing routines so duplicate detection uses current facts.
+
+`scripts/eval-copilot-routines.ts` exercises the real configured model with synthetic fixtures for daily/weekly routines, feature discovery, progress, check-ins, archive, unsupported edits, incomplete requests and repeating calendar events. All database-backed tools are replaced by synthetic reads; this evaluation cannot apply changes to real workspace data.
+
+On September 24, 2026, the final routine evaluation passed all nine cases with the configured Nemotron model. Earlier runs exposed invalid minute fields, misleading success claims after validation failures, and unnecessary read-tool date requirements; the contracts and repair path were corrected before the successful run. The full application check passed 642 tests, TypeScript, the production build and serverless checks. Provider overloads still occurred and used the existing bounded retry; passing these samples does not guarantee every future interpretation or wording choice.
+
 The transport is provider-compatible JSON with Zod validation, not native provider function calling. Calls share a three-minute deadline, three tool rounds, bounded observations, duplicate-read caching, one protocol repair attempt, and one retry for transient provider overload per model step. Provider or tool failures remain visible; they do not trigger a canned interpretation. Nemotron uses its provider's recommended sampling settings rather than a forced low temperature; see the [NVIDIA model card](https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b/modelcard).
 
 ## Why this approach

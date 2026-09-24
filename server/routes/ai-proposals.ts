@@ -9,6 +9,8 @@ import { eventDateServer, dateToWeekPosServer } from '../services/planLayout.js'
 import { generateEntitySummary } from '../services/summaryGenerator.js';
 import { markEmbeddingStale, queueEmbeddingUpsert } from '../services/embeddingLifecycle.js';
 import { runInBackground } from '../utils/background.js';
+import { createRoutine, updateRoutine, checkInRoutine, createRoutineSchema, updateRoutineSchema, routineCheckInSchema } from '../services/routines.js';
+import { activeGoalSql } from '../utils/archiveVisibility.js';
 
 // Durable proposals are shared by calendar, journal and Copilot UI controls.
 const router = Router();
@@ -75,12 +77,25 @@ router.post('/proposals/:id/apply', async (req, res) => {
       const { rows: found } = await client.query(`SELECT id FROM ${table} WHERE id=$1 AND ${activeEntitySql('$2::text', 'id')} FOR UPDATE`, [id, type]);
       if (!found.length) throw Object.assign(new Error(`Active ${type} not found`), { status: 404 });
     }
+    if (typeof payload.routine_id === 'string') {
+      const { rows: found } = await client.query(`SELECT id FROM routines WHERE id=$1 AND archived_at IS NULL AND ${activeGoalSql()} FOR UPDATE`, [payload.routine_id]);
+      if (!found.length) throw Object.assign(new Error('Active routine not found'), { status: 404 });
+    }
 
     const now = new Date().toISOString();
     const newId = crypto.randomUUID();
     actionType = proposal.action_type as string;
 
-    if (actionType === 'create_task') {
+    if (actionType === 'create_routine') {
+      const routine = await createRoutine(createRoutineSchema.parse(payload), client);
+      actionResult.id = routine.id;
+    } else if (actionType === 'update_routine') {
+      const routine = await updateRoutine(String(payload.routine_id), updateRoutineSchema.parse(payload.changes), client);
+      actionResult.id = routine.id;
+    } else if (actionType === 'check_in_routine') {
+      await checkInRoutine(String(payload.routine_id), routineCheckInSchema.parse(payload.entry), client);
+      actionResult.id = payload.routine_id;
+    } else if (actionType === 'create_task') {
       const { goal_id, parent_task_id, milestone_id, title, due_date, start_date, priority, estimated_minutes, status } = payload;
       const { rows: countRows } = await client.query('SELECT COUNT(*) as c FROM tasks WHERE goal_id=$1', [goal_id ?? null]);
       const count = Number((countRows[0] as Record<string, unknown>).c ?? 0);

@@ -6,6 +6,7 @@ import { searchResearchEvidence } from './researchRag.js';
 import { eventDateServer } from './planLayout.js';
 import type { ConversationTool } from './copilotConversation.js';
 import { WORKSPACE_SECTIONS, type WorkspaceSection } from './copilotWorkspaceGraph.js';
+import { readCopilotRoutines, readRoutinesSchema } from './copilotRoutines.js';
 
 export async function readCopilotClock() {
   const { rows } = await query<{ timezone: string | null }>("SELECT timezone FROM user_schedule_prefs WHERE id='default'");
@@ -32,6 +33,11 @@ export function createCopilotTools(dependencies: {
   overdueTasks: () => Promise<unknown>;
 }): Record<string, ConversationTool> {
   return {
+    read_routines: {
+      description: 'Read native saved routines, exact IDs, definitions, check-in history, deterministic weekly progress and capacity reservations. With no dates, returns today through the next six days; otherwise supply both from/to (max 32 days). Use before creating to detect duplicates, and before updating/checking in a named routine. Omit search to list all; page with next_after. Archived routines require include_archived=true; archived goal branches stay hidden. No writes.',
+      parameters: readRoutinesSchema,
+      execute: async args => ({ data: await readCopilotRoutines(args as z.infer<typeof readRoutinesSchema>, (await readCopilotClock()).today) }),
+    },
     workspace_context: {
       description: 'Read a compact workspace graph and capacity ledger. Choose sections to avoid unrelated data: tasks, capacity, attention, details, journal, resources. Default: tasks+capacity+attention; with search: tasks+details. The task overview is capped at 200; use find_tasks to search/page beyond it. Details expands search matches. Coverage is explicit, not a completeness claim. No writes.',
       parameters: z.object({ search: z.string().max(500).optional(), sections: z.array(z.enum(WORKSPACE_SECTIONS)).min(1).max(6).optional() }).strict(),
@@ -132,8 +138,8 @@ export function createCopilotTools(dependencies: {
       ), { message: 'Use an ordered date range of at most 90 days. Any hour window needs both start_hour and a later end_hour.' }),
       execute: async args => { const data = await dependencies.previewSchedule(args); return { data, artifact: { kind: 'plan', data, autoDisplay: true } }; },
     },
-    preview_routine: {
-      description: 'Compute a preview of explicitly requested repeating time blocks. Supply start/end dates, hours, and weekdays (1=Monday through 7=Sunday). Ask if recurrence or timing is unclear. This tool does not create a saved routine or events; the user applies its card.',
+    preview_repeating_blocks: {
+      description: 'Preview finite repeating calendar EVENTS, with no habit targets, check-ins or adherence. This is separate from native routines: use create_routine proposals for tracked habits. Supply start/end dates, hours, and weekdays (1=Monday through 7=Sunday). No writes until the user applies the card.',
       parameters: ActionParamsSchemas.create_block_series.refine((args: Record<string, unknown>) => (
         String(args.end_date) >= String(args.start_date) && Number(args.end_hour) > Number(args.start_hour)
         && Date.parse(String(args.end_date)) - Date.parse(String(args.start_date)) <= 119 * 86_400_000

@@ -1,48 +1,26 @@
 import crypto from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { activeGoalSql } from '../utils/archiveVisibility.js';
 import { z } from 'zod';
 import { query, transaction } from '../db.js';
 import type { DBRoutine, DBRoutineEntry } from '../../src/types/routines.js';
-import { addRoutineDays, isRoutineDate, routineEligibleOn } from '../../src/utils/routines.js';
+import { addRoutineDays, routineEligibleOn } from '../../src/utils/routines.js';
 import { localDateStr } from '../utils/localDate.js';
 
-const date = z.string().refine(isRoutineDate, 'Use a valid YYYY-MM-DD date');
-const uuid = z.string().uuid();
-const note = z.string().max(10000);
-export const routineIdSchema = uuid;
-export const routineRangeSchema = z.object({ from: date, to: date }).refine(v => v.from <= v.to, 'from must not be after to');
-export const createRoutineSchema = z.object({
-  title: z.string().trim().min(1).max(200), note: note.default(''), goal_id: z.string().trim().min(1).max(200).nullable().default(null),
-  cadence: z.enum(['daily', 'weekly']),
-  weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).refine(days => new Set(days).size === days.length, 'Weekdays must be unique'),
-  weekly_target: z.number().int().min(1).max(7).default(3),
-  target_count: z.number().int().min(1).max(10000), target_unit: z.enum(['minutes', 'problems', 'pages', 'sessions']),
-  planned_minutes: z.number().int().min(1).max(1440),
-  preferred_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null), start_date: date,
-}).strict().refine(v => v.cadence !== 'weekly' || v.weekly_target <= v.weekdays.length, 'Weekly target cannot exceed selected days')
-  .refine(v => v.target_unit !== 'minutes' || (v.target_count <= 1440 && v.planned_minutes === v.target_count), 'For minute targets, planned minutes must match the target and fit in one day')
-  .refine(v => !v.preferred_time || Number(v.preferred_time.slice(0, 2)) * 60 + Number(v.preferred_time.slice(3)) + v.planned_minutes <= 1440, 'The preferred time and planned duration must fit before midnight');
-export const updateRoutineSchema = z.object({ title: z.string().trim().min(1).max(200).optional(), note: note.optional(), archived: z.literal(true).optional() }).strict().refine(v => Object.keys(v).length > 0, 'No changes supplied');
-export const routineCheckInSchema = z.object({
-  date, status: z.enum(['completed', 'skipped', 'pending']), completed_count: z.number().int().min(0).max(10000).optional(), notes: note.optional(),
-}).strict();
-export const routineSessionSchema = z.object({
-  id: uuid, date, started_at: z.iso.datetime({ offset: true }), ended_at: z.iso.datetime({ offset: true }),
-  minutes: z.number().int().min(1).max(1440), notes: note.optional(),
-}).strict().refine(v => Date.parse(v.ended_at) >= Date.parse(v.started_at), 'Session end must follow start')
-  .refine(v => v.minutes <= Math.ceil((Date.parse(v.ended_at) - Date.parse(v.started_at)) / 60000) + 1, 'Minutes exceed elapsed session time');
+import { createRoutineSchema, updateRoutineSchema, routineCheckInSchema, routineSessionSchema } from './routineContracts.js';
+export * from './routineContracts.js';
 
 export class RoutineError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-async function routineTimezone(): Promise<string> {
-  const { rows } = await query("SELECT timezone FROM user_schedule_prefs WHERE id='default'");
+async function routineTimezone(client?: Pick<PoolClient, 'query'>): Promise<string> {
+  const { rows } = await (client ?? { query }).query("SELECT timezone FROM user_schedule_prefs WHERE id='default'");
   return typeof rows[0]?.timezone === 'string' ? rows[0].timezone : 'Asia/Beirut';
 }
 
-async function routineToday(): Promise<string> {
-  return localDateStr(await routineTimezone());
+async function routineToday(client?: Pick<PoolClient, 'query'>): Promise<string> {
+  return localDateStr(await routineTimezone(client));
 }
 
 export function isRoutinesSchemaMissing(error: unknown): boolean {
@@ -61,10 +39,10 @@ export async function listRoutineEntries(from: string, to: string): Promise<DBRo
   return rows as unknown as DBRoutineEntry[];
 }
 
-export async function createRoutine(input: z.infer<typeof createRoutineSchema>): Promise<DBRoutine> {
+export async function createRoutine(input: z.infer<typeof createRoutineSchema>, client?: Pick<PoolClient, 'query'>): Promise<DBRoutine> {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  const { rows } = await query(`INSERT INTO routines
+  const { rows } = await (client ?? { query }).query(`INSERT INTO routines
     (id,title,note,goal_id,cadence,weekdays,weekly_target,target_count,target_unit,planned_minutes,preferred_time,start_date,created_at,updated_at)
     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`,
   [id, input.title, input.note, input.goal_id, input.cadence, JSON.stringify(input.weekdays), input.weekly_target,
@@ -72,10 +50,10 @@ export async function createRoutine(input: z.infer<typeof createRoutineSchema>):
   return rows[0] as unknown as DBRoutine;
 }
 
-export async function updateRoutine(id: string, input: z.infer<typeof updateRoutineSchema>): Promise<DBRoutine> {
+export async function updateRoutine(id: string, input: z.infer<typeof updateRoutineSchema>, client?: Pick<PoolClient, 'query'>): Promise<DBRoutine> {
   const now = new Date().toISOString();
-  const cutoff = input.archived ? addRoutineDays(await routineToday(), 1) : null;
-  const { rows } = await query(`UPDATE routines SET title=COALESCE($2,title), note=COALESCE($3,note),
+  const cutoff = input.archived ? addRoutineDays(await routineToday(client), 1) : null;
+  const { rows } = await (client ?? { query }).query(`UPDATE routines SET title=COALESCE($2,title), note=COALESCE($3,note),
     archived_at=CASE WHEN $4 THEN COALESCE(archived_at,$5) ELSE archived_at END,
     archived_on=CASE WHEN $4 THEN COALESCE(archived_on,$6) ELSE archived_on END,updated_at=$5 WHERE id=$1 RETURNING *`,
   [id, input.title ?? null, input.note ?? null, input.archived ?? false, now, cutoff]);
@@ -93,9 +71,9 @@ function requireActionable(routine: DBRoutine | undefined, date: string, session
   if (!routineEligibleOn(routine, date)) throw new RoutineError(400, 'This date is not one of the routine’s selected days');
 }
 
-export async function checkInRoutine(id: string, input: z.infer<typeof routineCheckInSchema>): Promise<DBRoutineEntry | null> {
-  if (input.status === 'completed' && input.date > await routineToday()) throw new RoutineError(400, 'Future routine days cannot be completed yet');
-  return transaction(async client => {
+export async function checkInRoutine(id: string, input: z.infer<typeof routineCheckInSchema>, existingClient?: PoolClient): Promise<DBRoutineEntry | null> {
+  if (input.status === 'completed' && input.date > await routineToday(existingClient)) throw new RoutineError(400, 'Future routine days cannot be completed yet');
+  const apply = async (client: PoolClient) => {
     const { rows: routines } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
     const routine = routines[0] as DBRoutine | undefined;
     requireActionable(routine, input.date);
@@ -119,7 +97,8 @@ export async function checkInRoutine(id: string, input: z.infer<typeof routineCh
       ON CONFLICT (routine_id,date) DO UPDATE SET status=EXCLUDED.status,completed_count=EXCLUDED.completed_count,notes=EXCLUDED.notes,updated_at=EXCLUDED.updated_at RETURNING *`,
     [existing?.id ?? crypto.randomUUID(), id, input.date, status, minutes, count, input.notes ?? existing?.notes ?? '', now]);
     return rows[0] as DBRoutineEntry;
-  });
+  };
+  return existingClient ? apply(existingClient) : transaction(apply);
 }
 
 export async function logRoutineSession(id: string, input: z.infer<typeof routineSessionSchema>) {

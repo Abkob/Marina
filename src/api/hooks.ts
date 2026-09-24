@@ -980,6 +980,8 @@ export function useInvalidate() {
     aiProposals: () => {
       qc.invalidateQueries({ queryKey: ['ai-proposals'] });
       qc.invalidateQueries({ queryKey: ['proposals'] });
+      qc.invalidateQueries({ queryKey: ['routines'] });
+      qc.invalidateQueries({ queryKey: ['routine-entries'] });
       invalidateSchedulePreview();
     },
     schedulePreview: invalidateSchedulePreview,
