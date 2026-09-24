@@ -1840,7 +1840,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      {isPhone ? <MobileSchedule
+      {isPhone ? <MobileSchedule goals={goals} eventLinks={allLinks}
         date={focusedDate} today={todayStr} now={clockDate} timezone={prefs?.timezone}
         days={weekDays} events={placedEvents} meetings={weekMeetings} tasks={allTasks}
         previewByDate={previewByDate} assignmentsByDate={assignmentsByDate} blockedTaskIds={blockDates}

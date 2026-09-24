@@ -3,6 +3,7 @@ import { ArrowUpRight, CalendarDays, ChevronRight, RefreshCw } from 'lucide-reac
 import { useAllTasks, useGoals } from '../api/hooks';
 import { useAppStore } from '../store/useAppStore';
 import { parseLocalDate } from '../utils/calendar';
+import { taskContextMap } from '../utils/taskContext';
 
 /** A readable project timeline for phones, using the same task dates as Gantt. */
 export function MobileTimeline() {
@@ -12,6 +13,7 @@ export function MobileTimeline() {
   const [goalId, setGoalId] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
   const goals = goalsQuery.data ?? [];
+  const contexts = taskContextMap(tasksQuery.data ?? [], goals);
   const groups = useMemo(() => {
     const grouped = new Map<string, NonNullable<typeof tasksQuery.data>>();
     for (const task of tasksQuery.data ?? []) {
@@ -32,7 +34,7 @@ export function MobileTimeline() {
     <div className="space-y-6">{groups.map(([date, tasks]) => <section key={date}>
       <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800"><CalendarDays size={17} className="text-indigo-500" />{date ? parseLocalDate(date).toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric',year:'numeric'}) : 'No date yet'}</h2>
       <div className="ml-2 space-y-2 border-l-2 border-indigo-100 pl-4">{tasks.map(task => <button key={task.id} onClick={() => { if (task.goal_id) { navigateToGoal(task.goal_id); setFocusedTaskId(task.id); } else { setWorkTaskId(task.id); setCurrentTab('Work'); } }} className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-left" aria-label={`Open task ${task.title}`}>
-        <div className="min-w-0 flex-1"><p className={`text-sm font-semibold text-slate-900 ${task.completed ? 'line-through opacity-60' : ''}`}>{task.title}</p><p className="mt-1 text-xs text-slate-500">{goals.find(goal => goal.id === task.goal_id)?.title ?? 'Standalone task'}</p><p className="mt-2 text-xs font-medium text-indigo-600">{task.due_date ? 'Due date' : task.start_date ? 'Start date' : 'Unscheduled'}{task.estimated_minutes ? ` · ${task.estimated_minutes} min` : ''}</p></div><ChevronRight size={18} className="shrink-0 text-slate-400" />
+        <div className="min-w-0 flex-1"><p className={`text-sm font-semibold text-slate-900 ${task.completed ? 'line-through opacity-60' : ''}`}>{task.title}</p><p className="mt-1 truncate text-xs text-slate-500" title={contexts.get(task.id)}>{contexts.get(task.id) || 'Standalone task'}</p><p className="mt-2 text-xs font-medium text-indigo-600">{task.due_date ? 'Due date' : task.start_date ? 'Start date' : 'Unscheduled'}{task.estimated_minutes ? ` · ${task.estimated_minutes} min` : ''}</p></div><ChevronRight size={18} className="shrink-0 text-slate-400" />
       </button>)}</div>
     </section>)}</div>
     <button onClick={() => setCurrentTab('Schedule')} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-700">Open daily schedule<ArrowUpRight size={17} /></button>

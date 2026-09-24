@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Zap, Bell, X, Target, CheckSquare, FileText, BookOpen, Calendar, StickyNote } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAppStore } from '../store/useAppStore';
-import { useSearch, useOrgInbox } from '../api/hooks';
+import { useSearch, useOrgInbox, useAllTasks, useGoals } from '../api/hooks';
 import { apiFetch } from '../utils/apiFetch';
+import { taskContextMap } from '../utils/taskContext';
 
 interface ReadyResponse {
   status: 'ready' | 'degraded' | 'not_ready';
@@ -36,11 +37,14 @@ function useDebounced(value: string, ms: number): string {
 }
 
 export function GlobalSearch({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void } = {}) {
-  const { navigateToGoal, navigateToResource, setFocusedTaskId, setCurrentTab, triggerToast } = useAppStore();
+  const { navigateToGoal, navigateToResource, setFocusedTaskId, setWorkTaskId, setCurrentTab, triggerToast } = useAppStore();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const debouncedQ = useDebounced(q, 250);
   const { data, isFetching } = useSearch(debouncedQ);
+  const { data: tasks = [] } = useAllTasks();
+  const { data: goals = [] } = useGoals();
+  const contexts = useMemo(() => taskContextMap(tasks, goals), [tasks, goals]);
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +61,7 @@ export function GlobalSearch({ mobile = false, onNavigate }: { mobile?: boolean;
     onNavigate?.();
     if (r.entity_type === 'goal') return navigateToGoal(r.entity_id);
     if (r.entity_type === 'task' && r.goal_id) { navigateToGoal(r.goal_id); setFocusedTaskId(r.entity_id); return; }
+    if (r.entity_type === 'task') { setWorkTaskId(r.entity_id); setCurrentTab('Work'); return; }
     if (r.entity_type === 'resource') return navigateToResource(r.entity_id);
     if (r.entity_type === 'journal_entry') return setCurrentTab('Journal');
     if (r.entity_type === 'note') return setCurrentTab('Brain Dump');
@@ -108,6 +113,7 @@ export function GlobalSearch({ mobile = false, onNavigate }: { mobile?: boolean;
                 <Icon size={13} className="text-gray-400 mt-0.5 shrink-0" />
                 <span className="min-w-0">
                   <span className="block text-[12px] font-bold text-gray-900 truncate">{r.title}</span>
+                  {r.entity_type === 'task' && contexts.get(r.entity_id) && <span className="mt-0.5 block truncate text-xs text-slate-500" title={contexts.get(r.entity_id)}>{contexts.get(r.entity_id)}</span>}
                   <span className="block text-[10px] font-mono text-gray-400 uppercase">{r.entity_type.replace('_', ' ')}</span>
                   {r.snippet && <span className="block text-[10px] text-gray-500 truncate mt-0.5">{r.snippet}</span>}
                 </span>

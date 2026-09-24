@@ -1,4 +1,7 @@
 import { usePersistentDraft } from '../hooks/usePersistentDraft';
+import { MobileSheet } from '../components/MobileSheet';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
+import { taskContextMap } from '../utils/taskContext';
 import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -109,6 +112,7 @@ function WorkNoteItem({
 }
 
 export function WorkView() {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const {
     workTaskId,
@@ -173,6 +177,7 @@ export function WorkView() {
 
   const goalById = useMemo(() => new Map(goals.map(g => [g.id, g])), [goals]);
   const workTasks = useMemo(() => tasksReady ? getWorkTasks(allTasks, goals) : [], [allTasks, goals, tasksReady]);
+  const contexts = useMemo(() => taskContextMap(workTasks, goals), [workTasks, goals]);
   const taskOptions = useMemo(() => {
     return [...workTasks]
       .sort((a, b) => {
@@ -352,7 +357,7 @@ export function WorkView() {
 
   return (
     <div className="mobile-work mx-auto flex max-w-[1180px] flex-col gap-5 px-4 py-6 md:px-10">
-      <header className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between">
+      <header className={`work-page-header ${activeTimer ? 'work-timer-active' : ''} flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between`}>
         <div>
           <div className="mb-1 flex items-center gap-2">
             <Timer size={18} className="text-[#4648d4]" />
@@ -381,21 +386,14 @@ export function WorkView() {
         )}
       </header>
 
-      <button onClick={() => setTaskPickerOpen(open => !open)} aria-expanded={taskPickerOpen || (!currentTask && !activeRoutine)} aria-controls="work-task-picker" className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 lg:hidden"><span>{taskPickerOpen ? 'Close task picker' : currentTask ? 'Change task' : 'Choose a task'}</span><Search size={18} /></button>
+      <button onClick={() => setTaskPickerOpen(open => !open)} aria-haspopup={isMobile ? 'dialog' : undefined} aria-expanded={taskPickerOpen} className="flex w-full items-center justify-between gap-3 py-1 text-left text-sm font-medium text-slate-500 lg:hidden"><span>{currentTask ? 'Switch task' : 'Choose a task'}</span><Search size={18} /></button>
+      {isMobile && taskPickerOpen && <MobileSheet title="Choose a task" onClose={() => setTaskPickerOpen(false)}><TaskTree tasks={workTasks} goals={goals} mode="select" includeCriticalPath selectedTaskId={currentTask?.id} onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }} searchPlaceholder="Find a task or goal…" /></MobileSheet>}
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-        <aside id="work-task-picker" className={`min-w-0 ${taskPickerOpen || (!currentTask && !activeRoutine) ? "block" : "hidden lg:block"}`}>
+        {!isMobile && <aside id="work-task-picker" className={taskPickerOpen || (!currentTask && !activeRoutine) ? 'min-w-0 block' : 'min-w-0 hidden lg:block'}>
           <div className="mobile-work-task-picker lg:sticky lg:top-20 lg:max-h-[calc(100vh-140px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
-            <TaskTree
-              tasks={workTasks}
-              goals={goals}
-              mode="select"
-              includeCriticalPath
-              selectedTaskId={activeRoutine ? null : currentTask?.id ?? null}
-              onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }}
-              searchPlaceholder="Find a task or goal…"
-            />
+            <TaskTree tasks={workTasks} goals={goals} mode="select" includeCriticalPath selectedTaskId={activeRoutine ? null : currentTask?.id ?? null} onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }} searchPlaceholder="Find a task or goal…" />
           </div>
-        </aside>
+        </aside>}
 
         <div className="min-w-0 space-y-5">
           {activeRoutine ? (
@@ -448,8 +446,8 @@ export function WorkView() {
               <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-gray-400">
-                      {currentGoal?.title ?? 'Standalone task'}
+                    <p className="mb-2 text-xs text-slate-500">
+                      {contexts.get(currentTask.id) || currentGoal?.title || 'Standalone task'}
                     </p>
                     <div className="flex items-start gap-2">
                       <button onClick={toggleDone} className="mt-1 flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 hover:bg-emerald-50 hover:text-emerald-500" aria-label={currentTask.completed ? 'Reopen task' : 'Mark task complete'} aria-pressed={currentTask.completed}>
@@ -459,7 +457,7 @@ export function WorkView() {
                         <h2 className={`font-headline text-2xl font-black leading-tight text-gray-950 ${currentTask.completed ? 'line-through opacity-50' : ''}`}>
                           {currentTask.title}
                         </h2>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-gray-400">
+                        <details className="work-task-details mt-2" open={!isMobile}><summary className="min-h-11 cursor-pointer text-xs text-slate-500 md:hidden">Task details</summary><div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-gray-400">
                           <span>{currentTask.status.replace('_', ' ')}</span>
                           {effectiveDueDate && (
                             <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-500">
@@ -474,27 +472,27 @@ export function WorkView() {
                         </div>
                         <div className="mt-3">
                           <EntityTopicChips entityType="task" entityId={currentTask.id} />
-                        </div>
+                        </div></details>
                       </div>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col gap-2 md:w-56">
                     {!activeTimer ? (
                       <>
-                        <input
+                        <details className="work-timer-note" open={!isMobile}><summary className="min-h-11 cursor-pointer text-xs text-slate-500 md:hidden">Add a timer note</summary><input
                           aria-label="Timer note"
                           value={timerNotes}
                           onChange={e => setTimerNotes(e.target.value)}
                           placeholder="Timer note"
-                          className="rounded-lg border border-gray-200 bg-[#f8f9fa] px-3 py-2 text-xs outline-none focus:border-[#4648d4] focus:bg-white"
-                        />
+                          className="w-full rounded-lg border border-gray-200 bg-[#f8f9fa] px-3 py-2 text-xs outline-none focus:border-[#4648d4] focus:bg-white"
+                        /></details>
                         <button
                           onClick={startTimer}
                           disabled={currentTask.completed}
                           aria-label="Start timer for selected task"
-                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4648d4] px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-[#3436b0] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="work-start-focus inline-flex items-center justify-center gap-2 rounded-lg bg-[#4648d4] px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-[#3436b0] disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Play size={14} /> Start
+                          <Play size={16} /> Start focus
                         </button>
                       </>
                     ) : activeTimer.taskId === currentTask.id ? (
@@ -515,8 +513,8 @@ export function WorkView() {
                 </div>
               </section>
 
-              <section className="grid gap-5 xl:grid-cols-[1fr_300px]">
-                <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <section className="work-content grid gap-5 xl:grid-cols-[1fr_300px]">
+                <div className="work-notebook rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <FileText size={15} className="text-gray-500" />
@@ -541,7 +539,7 @@ export function WorkView() {
                     />
                   </div>
                   <div
-                    className={`rounded-xl border bg-[#f8f9fa] p-3 transition-colors ${dragging ? 'border-[#4648d4] bg-[#EEF2FF]' : 'border-gray-150'}`}
+                    className={`rounded-xl border bg-[#f8f9fa] p-3 transition-colors ${dragging ? 'border-[#4648d4] bg-[#EEF2FF]' : 'border-slate-200'}`}
                     onDragOver={e => { e.preventDefault(); setDragging(true); }}
                     onDragLeave={() => setDragging(false)}
                     onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}

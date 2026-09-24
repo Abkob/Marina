@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Target, Calendar, Archive, RotateCcw, CheckSquare, Square, Plus, AlertCircle, Clock, Trash2, Milestone } from 'lucide-react';
+import { Target, Calendar, Archive, RotateCcw, CheckSquare, Square, Plus, AlertCircle, Clock, Trash2, MoreHorizontal, ChevronRight, Milestone } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppStore } from '../store/useAppStore';
+import { MobileSheet } from '../components/MobileSheet';
+import { taskContextMap } from '../utils/taskContext';
 import { ProgressRing } from '../components/ProgressRing';
 import { useGoals, useAllGoals, useAllTasks, useInvalidate } from '../api/hooks';
 import { archiveGoal, restoreGoal, deleteGoal } from '../db/queries/goals';
@@ -58,6 +60,8 @@ function GoalCard({
   const { setSelectedGoalId, triggerToast, showConfirm } = useAppStore();
   const invalidate = useInvalidate();
   const isArchived = Boolean(goal.archived_at);
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const status = computeGoalStatus(goal, tasks);
   const timeStats = computeGoalTimeStats(tasks);
   const finishProjection = projectedFinishDate(timeStats);
@@ -104,6 +108,22 @@ function GoalCard({
   };
 
   const openGoal = () => setSelectedGoalId(goal.id);
+
+  if (isMobile) return <article className="border-b border-slate-100 py-4">
+    <div className="flex items-start gap-2"><button onClick={openGoal} aria-label={'Open goal ' + goal.title} className="min-w-0 flex-1 text-left">
+      <div className="flex items-center gap-2"><h3 className="min-w-0 flex-1 text-base font-semibold leading-6 text-slate-900">{goal.title}</h3><ChevronRight size={16} className="shrink-0 text-slate-300" /></div>
+      <p className="mt-1 text-xs text-slate-500">{metrics.progress}% complete · {finishEstimate.caption} {finishEstimate.label}</p>
+      <div className="mt-3 h-1 overflow-hidden rounded-full bg-slate-100"><div className={'h-full rounded-full ' + STATUS_BG[status]} style={{width: Math.min(100, Math.max(0, metrics.progress)) + '%'}} /></div>
+      {closestDue && <p className="mt-2 truncate text-xs text-amber-700">{closestDue.daysUntil < 0 ? 'Overdue' : closestDue.daysUntil === 0 ? 'Due today' : 'Coming up'} · {closestDue.task.title}{taskContextMap(tasks).get(closestDue.task.id) ? ' · ' + taskContextMap(tasks).get(closestDue.task.id) : ''}</p>}
+      {nextAction && !closestDue && <p className="mt-2 truncate text-xs text-slate-500">Next · {nextAction.title}</p>}
+    </button><button onClick={() => setActionsOpen(true)} aria-label={'Options for goal ' + goal.title} aria-haspopup="dialog" className="mobile-icon-button -mr-2 -mt-1 text-slate-400"><MoreHorizontal size={20} /></button></div>
+    {actionsOpen && <MobileSheet title={goal.title} onClose={() => setActionsOpen(false)}>
+      <button onClick={openGoal} className="min-h-14 w-full text-left text-sm font-medium">Open goal</button>
+      {nextAction && <button onClick={handleToggleNextAction} className="min-h-14 w-full text-left text-sm text-emerald-700">{nextAction.completed ? 'Reopen' : 'Complete'}: {nextAction.title}</button>}
+      <button onClick={event => { handleArchiveToggle(event); setActionsOpen(false); }} className="min-h-14 w-full text-left text-sm text-slate-600">{isArchived ? 'Restore goal' : 'Archive goal'}</button>
+      {isArchived && <button onClick={event => { handleDelete(event); setActionsOpen(false); }} className="min-h-14 w-full text-left text-sm text-red-600">Delete permanently</button>}
+    </MobileSheet>}
+  </article>;
 
   return (
     <motion.div
@@ -279,7 +299,12 @@ export function GoalsDashboard() {
 
   return (
     <div className="max-w-[1480px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
-      <div className="mobile-goals-header flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+      {isMobile ? <div className="mb-4 flex items-center justify-between gap-3">
+        <select aria-label="Goal status" value={goalsFilter} onChange={event => setGoalsFilter(event.target.value as typeof goalsFilter)} className="min-h-11 rounded-xl bg-slate-50 px-3 text-sm font-semibold text-slate-700">
+          <option value="Active">Active goals</option><option value="Completed">Completed goals</option><option value="Archived">Archived goals</option>
+        </select>
+        <button onClick={() => openNewGoalModal()} aria-label="Create new goal" className="flex min-h-11 items-center gap-1 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white"><Plus size={18} />New</button>
+      </div> : <div className="mobile-goals-header flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
           <h2 className="font-headline text-2xl font-bold text-black mb-1">Goals</h2>
           <p className="text-sm text-gray-500 max-w-xl">
@@ -309,9 +334,10 @@ export function GoalsDashboard() {
             <Plus size={18} /><span className="md:hidden">New</span>
           </button>
         </div>
-      </div>
+      </div>}
 
-      <div className="mobile-goal-stats grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <p className="mb-4 text-xs text-slate-500 md:hidden">{goalsFilter === 'Archived' ? `${archivedGoals.length} archived goals` : `${total} goals · ${needsAttn + atRisk} need attention`}</p>
+      <div className="mobile-goal-stats hidden grid-cols-2 md:grid md:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total Goals',     value: total,     color: 'text-black' },
           { label: 'On Track',        value: onTrack,   color: STATUS_TEXT.Safe },
@@ -338,7 +364,7 @@ export function GoalsDashboard() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
           {filtered.map((g) => (
             <GoalCard
               key={g.id}

@@ -1,10 +1,12 @@
 import { usePersistentDraft } from '../hooks/usePersistentDraft';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Circle, RefreshCw, Trash2, Link2, X, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Circle, PenLine, SlidersHorizontal, RefreshCw, Trash2, Link2, X, Check } from 'lucide-react';
 import { useJournalEntries, useJournalLinks, useInvalidate, useSearch, type DBJournalEntry, type DBJournalLink } from '../api/hooks';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch, apiPost, apiDelete } from '../utils/apiFetch';
+import { MobileSheet } from '../components/MobileSheet';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ProposalsPanel } from '../components/ProposalsPanel';
 import { EntityTopicChips } from '../components/EntityTopicChips';
 
@@ -219,12 +221,13 @@ function TagChips({ entry }: { entry: DBJournalEntry }) {
 }
 
 function EntryCard({ entry }: { entry: DBJournalEntry }) {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const invalidate = useInvalidate();
   const { triggerToast } = useAppStore();
 
-  const snippet = entry.summary ?? entry.raw_text.slice(0, 150);
+  const snippet = isMobile ? entry.raw_text.slice(0, 220) : entry.summary ?? entry.raw_text.slice(0, 150);
   const mood = entry.mood ? (MOOD_EMOJI[entry.mood] ?? entry.mood) : null;
   const isTerminalError = entry.ingestion_status === 'failed' || entry.ingestion_status === 'needs_review';
 
@@ -259,7 +262,7 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
   };
 
   return (
-    <div className="bg-surface rounded-xl border border-gray-800 overflow-hidden">
+    <div className="phone-journal-entry bg-surface rounded-xl border border-gray-800 overflow-hidden">
       <div
         role="button"
         tabIndex={0}
@@ -279,13 +282,13 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="text-xs font-mono font-bold text-white">{entry.entry_date}</span>
+            <span className="text-xs font-mono font-bold text-white">{isMobile ? (entry.created_at && !Number.isNaN(Date.parse(entry.created_at)) ? new Date(entry.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'Entry') : entry.entry_date}</span>
             {mood && <span className="text-base leading-none">{mood}</span>}
-            <StatusDot status={entry.ingestion_status} />
+            {(!isMobile || open || entry.ingestion_status !== 'processed') && <StatusDot status={entry.ingestion_status} />}
           </div>
-          <p className="text-sm text-gray-400 leading-relaxed line-clamp-2">{snippet}</p>
+          <p className="journal-snippet text-sm text-gray-400 leading-relaxed line-clamp-3">{snippet}</p>
         </div>
-        <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+        {(open || !isMobile) && <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
           {isTerminalError && (
             <button
               onClick={handleRetry}
@@ -306,7 +309,7 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
           >
             <Trash2 size={12} />
           </button>
-        </div>
+        </div>}
       </div>
 
       {open && (
@@ -343,6 +346,10 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
 }
 
 export function JournalView() {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [composing, setComposing] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const entryRef = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = usePersistentDraft('journal');
   const [entryDate, setEntryDate] = usePersistentDraft('journal-date');
   const [submitting, setSubmitting] = useState(false);
@@ -359,6 +366,7 @@ export function JournalView() {
     try {
       await apiPost('/api/journal', { raw_text: text.trim(), entry_date: entryDate || localToday() });
       setText('');
+      setComposing(false);
       invalidate.journal();
       triggerToast(!entryDate || entryDate === localToday()
         ? 'Logged — AI is extracting tasks, links, and time…'
@@ -374,8 +382,8 @@ export function JournalView() {
   const cutoff = range === 'all' ? '' : localDaysAgo(range === '7d' ? 7 : 30);
   const q = search.trim().toLowerCase();
   const filtered = (entries ?? []).filter(e => {
-    if (jumpDate) return e.entry_date === jumpDate;
-    if (cutoff && e.entry_date < cutoff) return false;
+    if (jumpDate && e.entry_date !== jumpDate) return false;
+    if (!jumpDate && cutoff && e.entry_date < cutoff) return false;
     if (q && !e.raw_text.toLowerCase().includes(q) && !(e.summary ?? '').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -387,22 +395,12 @@ export function JournalView() {
   const days = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
   const hiddenCount = (entries?.length ?? 0) - filtered.length;
 
-  return (
-    <div className="mobile-journal max-w-2xl mx-auto px-4 py-6 space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="font-headline text-2xl font-bold text-white mb-1">Journal</h1>
-          <p className="text-sm text-gray-500">Keep a record of your day and what you worked on.</p>
-        </div>
-      </div>
-
-      {/* Composer — supports backdating */}
-      <div className="bg-surface rounded-xl border border-gray-700 p-4 space-y-3">
-        <textarea
+  const composer = (<div className="bg-surface rounded-xl border border-gray-700 p-4 space-y-3">
+        <textarea ref={entryRef}
           aria-label="Journal entry text"
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="What did you work on? (e.g. 'Spent 45 minutes on the ECG paper draft…')"
+          placeholder="What is on your mind?"
           rows={3}
           className="w-full bg-transparent text-sm text-gray-200 placeholder-gray-600 resize-none outline-none leading-relaxed"
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit(); }}
@@ -432,10 +430,8 @@ export function JournalView() {
             {submitting ? 'Logging…' : 'Log entry'}
           </button>
         </div>
-      </div>
-
-      {/* Date navigation: range chips + jump-to-date + text search */}
-      <div className="flex items-center gap-2 flex-wrap">
+      </div>);
+  const filters = (<div className="flex items-center gap-2 flex-wrap">
         {(['7d', '30d', 'all'] as const).map(r => (
           <button
             key={r}
@@ -471,7 +467,22 @@ export function JournalView() {
             <button onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-gray-600 hover:bg-gray-900 hover:text-gray-300" aria-label="Clear journal search"><X size={11} /></button>
           )}
         </div>
+      </div>);
+
+  return (
+    <div className="mobile-journal max-w-2xl mx-auto px-4 py-6 space-y-5">
+      <div className="hidden items-start justify-between gap-3 md:flex">
+        <div>
+          <h1 className="font-headline text-2xl font-bold text-white mb-1">Journal</h1>
+          <p className="text-sm text-gray-500">Keep a record of your day and what you worked on.</p>
+        </div>
       </div>
+
+      {/* Composer — supports backdating */}
+      {isMobile ? <button onClick={() => setComposing(true)} className="flex min-h-16 w-full items-center gap-3 rounded-2xl bg-indigo-50 px-4 py-4 text-left text-indigo-700" aria-label="Write a journal entry"><PenLine size={22} /><span><span className="block font-semibold">{text ? 'Continue writing' : 'Write about today'}</span><span className="block text-xs font-normal text-indigo-500">{text ? 'Your draft is saved on this device' : 'A thought, a small win, a moment to remember'}</span></span></button> : composer}
+      {isMobile && composing && <MobileSheet title="Write an entry" onClose={() => setComposing(false)} initialFocusRef={entryRef}><div className="phone-journal-composer">{composer}</div><p className="mt-3 text-xs text-slate-400">Closing keeps your draft.</p></MobileSheet>}
+      {isMobile ? <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-700">{jumpDate ? humanDay(jumpDate) : range === 'all' ? 'All entries' : range === '7d' ? 'This week' : 'Recent entries'}{q ? ' · Filtered' : ''}</p><button aria-label="Filter journal" aria-haspopup="dialog" onClick={() => setFiltersOpen(true)} className="mobile-icon-button text-slate-500"><SlidersHorizontal size={19} /></button></div> : filters}
+      {isMobile && filtersOpen && <MobileSheet title="Find an entry" onClose={() => setFiltersOpen(false)}><div className="phone-journal-filters">{filters}</div><button onClick={() => setFiltersOpen(false)} className="mt-5 min-h-12 w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white">Show entries</button></MobileSheet>}
 
       {/* AI Proposals */}
       <ProposalsPanel />
@@ -489,14 +500,14 @@ export function JournalView() {
           <p className="text-sm">
             {entries?.length
               ? 'Nothing in this range — widen the filter or clear the search.'
-              : 'No journal entries yet. Write your first one above.'}
+              : 'Your story starts here. Write a little about today.'}
           </p>
         </div>
       ) : (
         <div className="space-y-5">
           {days.map(day => (
             <section key={day}>
-              <div className="sticky top-16 z-10 bg-canvas-bg/95 backdrop-blur py-1.5 mb-2 flex items-baseline gap-2">
+              <div className="journal-day-heading py-1.5 mb-2 flex items-baseline gap-2">
                 <h2 className="text-[12px] font-bold text-gray-300">{humanDay(day)}</h2>
                 <span className="text-[10px] font-mono text-gray-600">{day}</span>
                 {byDay.get(day)!.length > 1 && (

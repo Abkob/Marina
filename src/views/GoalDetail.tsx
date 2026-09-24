@@ -1,3 +1,6 @@
+import { MoreHorizontal } from 'lucide-react';
+import { MobileSheet } from '../components/MobileSheet';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { MobileDisclosure } from '../components/MobileDisclosure';
 import { ModalFrame } from '../components/ModalFrame';
 import { useState, useRef, useEffect } from 'react';
@@ -785,6 +788,9 @@ function TaskTreeRow({
   onUpdateActualTime: (taskId: string, minutes: number | null) => void;
   sequenceLocked?: boolean;
 }) {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const parentTitle = allTasks.find(parent => parent.id === task.parent_task_id)?.title;
   const spotlightTaskId = useAppStore(s => s.spotlightTaskId);
   const children = childrenByParent[task.id] ?? [];
   const resources = taskResources[task.id] ?? [];
@@ -816,7 +822,16 @@ function TaskTreeRow({
         highlighted ? 'bg-[#EEF2FF]/70 ring-1 ring-[#4648d4]/20' : ''
       }`}
     >
-      <div className="mobile-task-row flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-gray-50 transition-colors">
+      {isMobile ? <div className="flex items-center gap-1 border-b border-slate-100 py-2">
+        <button onClick={() => !sequenceLocked && onToggleSubtask(task)} disabled={sequenceLocked} aria-label={(task.completed ? 'Reopen task ' : 'Complete task ') + task.title} className="mobile-icon-button shrink-0 text-slate-400">{sequenceLocked ? <Lock size={18} /> : task.completed ? <CheckSquare size={20} className="text-emerald-500" /> : <Square size={20} />}</button>
+        <button onClick={() => onOpenFocus(task.id)} aria-label={'Open task ' + task.title} className="min-w-0 flex-1 py-1 text-left">
+          <span className={'block text-sm font-medium leading-5 text-slate-800' + (task.completed ? ' line-through opacity-50' : '')}>{task.title}</span>
+          {parentTitle && <span className="mt-0.5 block truncate text-xs text-slate-400" title={parentTitle}>{parentTitle}</span>}
+          {(effectiveDueDate || task.estimated_minutes) && <span className="mt-1 block text-xs text-slate-500">{effectiveDueDate ? 'Due ' + effectiveDueDate.slice(5,10) : ''}{effectiveDueDate && task.estimated_minutes ? ' · ' : ''}{task.estimated_minutes ? task.estimated_minutes + ' min' : ''}</span>}
+        </button>
+        <button onClick={() => setActionsOpen(true)} aria-label={'Options for task ' + task.title} className="mobile-icon-button shrink-0 text-slate-400"><MoreHorizontal size={18} /></button>
+        {children.length > 0 && <button onClick={() => setExpanded(v => !v)} aria-label={(expanded ? 'Collapse' : 'Expand') + ' subtasks of ' + task.title} aria-expanded={expanded} className="mobile-icon-button shrink-0 gap-1 text-slate-400"><span className="text-xs">{children.length}</span>{expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>}
+      </div> : <div className="mobile-task-row flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-gray-50 transition-colors">
         <button
           onClick={() => setExpanded(v => !v)}
           className={`shrink-0 transition-colors ${children.length === 0 ? 'text-gray-200 hover:text-gray-300' : 'text-gray-300 hover:text-[#4648d4]'}`}
@@ -927,10 +942,16 @@ function TaskTreeRow({
             <Trash2 size={11} />
           </button>
         </div>
-      </div>
+      </div>}
 
+      {actionsOpen && <MobileSheet title="Task actions" onClose={() => setActionsOpen(false)}>
+        <p className="mb-3 text-sm text-slate-500">{task.title}</p>
+        <button onClick={() => { setActionsOpen(false); onOpenFocus(task.id); }} className="min-h-14 w-full text-left text-sm">Edit task, dates & subtasks</button>
+        <button disabled={sequenceLocked} onClick={() => { setActionsOpen(false); task.status === 'in_progress' ? onDeactivate(task) : onResume(task); }} className="min-h-14 w-full text-left text-sm disabled:opacity-40">{sequenceLocked ? 'Waiting for the previous step' : task.status === 'in_progress' ? 'Pause task' : 'Start / resume task'}</button>
+        <button onClick={() => { setActionsOpen(false); onDeleteSubtask(task); }} className="min-h-14 w-full text-left text-sm text-red-600">Delete task</button>
+      </MobileSheet>}
       {/* Resource chips */}
-      {resources.length > 0 && (
+      {!isMobile && resources.length > 0 && (
         <div className="flex flex-wrap gap-1 ml-6">
           {resources.map(r => (
             <ResourceChip key={r.id} res={r} onDelete={() => onDeleteResource(r.id)} />
@@ -963,7 +984,7 @@ function TaskTreeRow({
       </AnimatePresence>
 
       <AnimatePresence initial={false}>
-        {expanded && (
+        {expanded && (!isMobile || children.length > 0) && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -994,10 +1015,10 @@ function TaskTreeRow({
                 onUpdateActualTime={onUpdateActualTime}
               />
             ))}
-            <GhostTaskRow
+            {!isMobile && <GhostTaskRow
               onAdd={title => onAddSubtask(task.id, title)}
               placeholder="Add child task…"
-            />
+            />}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1103,7 +1124,7 @@ function GoalMilestonesSection({
           </p>
           <div className="space-y-1">
             {unassignedTasks.map(t => (
-              <div key={t.id} className="group flex items-center gap-2 bg-white border border-gray-150 rounded-lg px-2.5 py-1.5">
+              <div key={t.id} className="group flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
                 <span className="text-gray-400 font-mono text-[10px] shrink-0">{t.kind === 'critical_path' ? '◆' : t.kind === 'ai_generated' ? '✦' : '○'}</span>
                 <span className="flex-1 text-xs text-gray-800 truncate">{t.title}</span>
                 {t.estimated_minutes
@@ -1366,6 +1387,8 @@ function MilestoneCard({
   onSetDependency: (taskId: string, blockerId: string | null) => Promise<void>;
   onDelete: (task: DBTask) => void;
 }) {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const spotlightTaskId = useAppStore(s => s.spotlightTaskId);
   const subtasks = [...(subtasksByParent[milestone.id] ?? [])].sort((a, b) =>
     (a.position ?? 0) - (b.position ?? 0) || a.title.localeCompare(b.title)
@@ -1450,12 +1473,15 @@ function MilestoneCard({
     <div
       id={`ms-${milestone.id}`}
       data-task-id={milestone.id}
-      className={`overflow-hidden rounded-xl border border-gray-150 bg-white shadow-sm transition-colors ${
+      className={`overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-colors ${
         highlighted ? 'ring-2 ring-[#4648d4]/20' : ''
       }`}
     >
-      {/* Milestone header — full row is the expand/collapse target */}
-      <div
+      {isMobile ? <div className="flex items-center gap-1 px-3 py-2">
+        <button onClick={() => onOpenFocus(milestone.id)} aria-label={'Open task ' + milestone.title} className="min-w-0 flex-1 py-2 text-left"><span className="block text-sm font-semibold leading-5 text-slate-800">{milestone.title}</span><span className="mt-1 block text-xs text-slate-500">{subtasks.length} subtasks · {statusLabel}{effectiveDueDate ? ' · Due ' + effectiveDueDate.slice(5,10) : ''}</span></button>
+        <button onClick={() => setActionsOpen(true)} aria-label={'Options for task ' + milestone.title} className="mobile-icon-button text-slate-400"><MoreHorizontal size={18} /></button>
+        <button onClick={() => setExpanded(value => !value)} aria-label={(expanded ? 'Collapse' : 'Expand') + ' subtasks of ' + milestone.title} aria-expanded={expanded} className="mobile-icon-button text-slate-500">{expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>
+      </div> : <div
         className="mobile-milestone-header group/mshdr w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#f8f9fa] transition-colors cursor-pointer select-none"
         onClick={() => setExpanded(v => !v)}
       >
@@ -1551,7 +1577,14 @@ function MilestoneCard({
         >
           <Trash2 size={12} />
         </button>
-      </div>
+      </div>}
+      {actionsOpen && <MobileSheet title="Task actions" onClose={() => setActionsOpen(false)}>
+        <p className="mb-3 text-sm text-slate-500">{milestone.title}</p>
+        <button onClick={() => { setActionsOpen(false); onOpenFocus(milestone.id); }} className="min-h-14 w-full text-left text-sm">Edit task & dates</button>
+        <button onClick={() => { setActionsOpen(false); onToggleSubtask(milestone); }} className="min-h-14 w-full text-left text-sm text-emerald-700">{dynStatus === 'Completed' ? 'Reopen task' : 'Mark complete'}</button>
+        <button onClick={() => { setActionsOpen(false); dynStatus === 'In Progress' ? onDeactivate(milestone) : onResume(milestone); }} className="min-h-14 w-full text-left text-sm">{dynStatus === 'In Progress' ? 'Pause task' : 'Start / resume task'}</button>
+        <button onClick={() => { setActionsOpen(false); onDelete(milestone); }} className="min-h-14 w-full text-left text-sm text-red-600">Delete task</button>
+      </MobileSheet>}
 
       {/* Expanded body */}
       <AnimatePresence initial={false}>
@@ -1565,7 +1598,28 @@ function MilestoneCard({
           >
             <div className="px-4 pb-3 border-t border-gray-100 pt-2">
               {/* Subtasks */}
-              {subtasks.length > 1 ? (
+              {isMobile ? <div>{rivers.flat().map(sub => (
+                  <TaskTreeRow
+                    key={sub.id} task={sub}
+                    allTasks={allTasks}
+                    childrenByParent={subtasksByParent}
+                    taskResources={taskResources}
+                    onToggleSubtask={onToggleSubtask}
+                    onDeleteSubtask={onDeleteSubtask}
+                    onUpdateSubtaskTitle={onUpdateSubtaskTitle}
+                    onAddSubtask={onAddSubtask}
+                    onAttachResource={onAttachResource}
+                    onAttachFiles={onAttachFiles}
+                    onDeleteResource={onDeleteResource}
+                    onDeactivate={onDeactivate}
+                    onResume={onResume}
+                    onOpenFocus={onOpenFocus}
+                    onUpdateDeadline={onUpdateDeadline}
+                    onUpdateTime={onUpdateTime}
+                    onUpdateTimeRollupMode={onUpdateTimeRollupMode}
+                    onUpdateActualTime={onUpdateActualTime}
+                    sequenceLocked={!sub.completed && (blockerIdsByTask.get(sub.id) ?? []).some(id => { const blocker = taskById.get(id); return blocker && !blocker.completed && blocker.status !== 'done'; })}
+                  />))}</div> : subtasks.length > 1 ? (
                 <DndContext
                   sensors={riverSensors}
                   collisionDetection={closestCenter}
@@ -1799,7 +1853,7 @@ function SortableTaskRow(props: Parameters<typeof TaskTreeRow>[0]) {
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className="relative group/sortable rounded-xl border border-gray-150 bg-white px-4 py-2 shadow-sm"
+      className="relative group/sortable rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm"
     >
       <button
         {...attributes}
@@ -2287,6 +2341,7 @@ function MeetingModal({
 
 // ─── Goal Detail ──────────────────────────────────────────────────────────────
 export function GoalDetail() {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const {
     selectedGoalId,
     setSelectedGoalId,
@@ -2825,12 +2880,11 @@ export function GoalDetail() {
           </p>
 
           {/* Topic memberships — the semantic clusters this goal belongs to */}
-          <div className="mt-2.5">
-            <EntityTopicChips entityType="goal" entityId={goal.id} />
-          </div>
+          {!isMobile && <div className="mt-2.5"><EntityTopicChips entityType="goal" entityId={goal.id} /></div>}
         </div>
 
         <MobileDisclosure title="Planning & dates" description={`${taskMetrics.progress}% complete · ${finishEstimate.label}`} storageKey="goal-planning"><div className="mobile-goal-status flex items-center gap-4 bg-white rounded-xl p-4 border border-gray-100 shadow-ambient shrink-0">
+          {isMobile && <EntityTopicChips entityType="goal" entityId={goal.id} />}
           <DetailRing progress={taskMetrics.progress} status={dynStatus} />
           <div>
             <div className="font-headline text-base font-bold text-gray-900 flex items-center gap-1.5">
@@ -3032,7 +3086,7 @@ export function GoalDetail() {
                 <div
                   key={t.id}
                   onClick={() => handleToggleAiTask(t)}
-                  className="bg-white rounded-lg p-3 border border-gray-150 flex items-start gap-3 cursor-pointer select-none hover:shadow-sm transition-shadow"
+                  className="bg-white rounded-lg p-3 border border-slate-200 flex items-start gap-3 cursor-pointer select-none hover:shadow-sm transition-shadow"
                 >
                   <button className="text-gray-300 hover:text-[#4648d4] shrink-0 mt-0.5">
                     {t.completed
@@ -3051,7 +3105,7 @@ export function GoalDetail() {
         )}
 
         {/* ── Deadlines ── */}
-        <div className="mt-6">
+        <MobileDisclosure title="Deadlines" description={deadlines.length + ' dates'} storageKey="goal-deadlines"><div className="mt-6">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-mono uppercase tracking-wider text-gray-400">Deadlines</span>
             <button
@@ -3103,10 +3157,10 @@ export function GoalDetail() {
               })}
             </div>
           )}
-        </div>
+        </div></MobileDisclosure>
 
         {/* ── Meetings ── */}
-        <div className="mt-4">
+        <MobileDisclosure title="Meetings" description={meetings.length + ' meetings'} storageKey="goal-meetings"><div className="mt-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-mono uppercase tracking-wider text-gray-400">Meetings</span>
             <button
@@ -3198,7 +3252,7 @@ export function GoalDetail() {
               })}
             </div>
           )}
-        </div>
+        </div></MobileDisclosure>
 
         {/* ── Resources ── */}
         <GoalResourcesSection

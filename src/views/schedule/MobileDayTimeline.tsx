@@ -280,7 +280,7 @@ export function MobileDayTimeline(props: Props) {
                 className="h-full w-full overflow-hidden rounded-xl px-2 py-1 text-left active:brightness-95">
                 <span className="block truncate text-xs font-semibold">{item.event?.locked && <Lock size={10} className="mr-1 inline" />}{item.title}</span>
                 <span className="block truncate text-[10px] opacity-70">{fmtTimeRange(start, duration)}</span>
-                {duration >= 1 && <span className="mt-1 block truncate text-[10px] opacity-60">{item.detail}</span>}
+                {duration >= 1 && <span className="mt-1 block truncate text-[10px] opacity-60" title={item.context}>{item.context || item.detail}</span>}
               </button>
               {editable && <>
                 <button data-calendar-resize="start" aria-label={`Change start time of ${item.title}`} title="Hold and drag to change the start time"

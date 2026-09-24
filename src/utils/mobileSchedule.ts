@@ -1,5 +1,6 @@
 import type { DayAssignment, ScheduleDay } from '../api/hooks';
-import type { DBEvent, DBTask } from '../db/schema';
+import type { DBEvent, DBEventTaskLink, DBGoal, DBTask } from '../db/schema';
+import { taskContextMap } from './taskContext';
 import type { CalendarMeeting, PlacedEvent } from '../views/schedule/WeekTimeGrid';
 
 export interface MobileScheduleItem {
@@ -10,26 +11,37 @@ export interface MobileScheduleItem {
   start: number | null;
   minutes: number;
   detail: string;
+  context?: string;
   event?: DBEvent;
   task?: DBTask;
   goalId?: string;
 }
 
 /** One shared list powers the phone's timeline, agenda and date indicators. */
-export function mobileScheduleItems({ date, events, meetings, tasks, day, assignment, blockedTaskIds }: {
+export function mobileScheduleItems({ date, events, meetings, tasks, goals, eventLinks = [], day, assignment, blockedTaskIds }: {
   date: string;
   events: PlacedEvent[];
   meetings: CalendarMeeting[];
   tasks: DBTask[];
+  goals?: DBGoal[];
+  eventLinks?: DBEventTaskLink[];
   day?: ScheduleDay;
   assignment?: DayAssignment;
   blockedTaskIds: Set<string>;
 }): MobileScheduleItem[] {
   const items: MobileScheduleItem[] = [];
+  const context = taskContextMap(tasks, goals);
+  const contextByEvent = new Map<string, Set<string>>();
+  for (const link of eventLinks) {
+    const label = context.get(link.task_id);
+    if (!label) continue;
+    if (!contextByEvent.has(link.event_id)) contextByEvent.set(link.event_id, new Set());
+    contextByEvent.get(link.event_id)!.add(label);
+  }
   for (const { event, date: eventDay } of events) {
     if (eventDay !== date) continue;
     items.push({ id: `event:${event.id}`, title: event.title, kind: 'event', date, start: event.start_hour,
-      minutes: event.duration_hours * 60, detail: event.type, event });
+      minutes: event.duration_hours * 60, detail: event.type, event, context: [...(contextByEvent.get(event.id) ?? [])].join(' · ') });
   }
   for (const meeting of meetings) {
     if (meeting.date !== date) continue;
@@ -53,7 +65,7 @@ export function mobileScheduleItems({ date, events, meetings, tasks, day, assign
     if (!due && (blocked || (!scheduled && !assigned.has(task.id)))) continue;
     items.push({ id: `task:${task.id}`, title: task.title, kind: 'task', date, start: null,
       minutes: assignment?.task_minutes?.[task.id] ?? task.estimated_minutes ?? 0,
-      detail: due ? 'Due today' : scheduled ? 'Scheduled task' : 'Suggested by your plan', task });
+      detail: due ? 'Due today' : scheduled ? 'Scheduled task' : 'Suggested by your plan', task, context: context.get(task.id) });
   }
   for (const deadline of day?.deadlines ?? []) {
     items.push({ id: `deadline:${deadline.id}`, title: deadline.title, kind: 'deadline', date, start: null,

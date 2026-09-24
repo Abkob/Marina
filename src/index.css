@@ -27,10 +27,10 @@
   .mobile-schedule-add { bottom: calc(var(--mobile-nav-height) + 12px); }
   .mobile-icon-button { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border-radius: 12px; }
   .mobile-icon-button:active { background: #f1f5f9; }
-  .mobile-day-scroll { height: max(220px, calc(100dvh - 525px - var(--safe-top) - var(--safe-bottom))); }
+  .mobile-day-scroll { height: max(260px, calc(var(--app-viewport-height, 100dvh) - 370px - var(--safe-top) - var(--safe-bottom))); }
   .mobile-schedule-compact { padding-left: 8px; padding-right: 8px; }
   .mobile-schedule-compact > header { margin-left: -8px; margin-right: -8px; padding: 4px 8px; }
-  .mobile-schedule-compact .mobile-day-scroll { height: max(220px, calc(var(--app-viewport-height, 100dvh) - 330px - var(--safe-top) - var(--safe-bottom))); }
+  .mobile-schedule-compact .mobile-day-scroll { height: max(260px, calc(var(--app-viewport-height, 100dvh) - 298px - var(--safe-top) - var(--safe-bottom))); }
   .mobile-gesture-surface { touch-action: pan-y pinch-zoom; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .mobile-gesture-surface button { touch-action: pan-y pinch-zoom; }
   .modal-overlay { z-index: 70; top: var(--app-viewport-top, 0px); bottom: auto; height: var(--app-viewport-height, 100dvh); padding: max(12px, var(--safe-top)) 8px max(8px, var(--safe-bottom)); overflow-y: auto; align-items: flex-end; }
@@ -128,6 +128,35 @@
   .mobile-work > header > div:first-child > div { display: none; }
   .mobile-work section { padding: 16px; }
   .mobile-work textarea[aria-label="Work journal note"] { min-height: 90px; }
+  .mobile-work .work-page-header:not(.work-timer-active) { display: none; }
+  .mobile-work .work-page-header > div:first-child { display: none; }
+  .mobile-work > .grid > div > section:first-child { padding: 4px 0 16px; border: 0; box-shadow: none; }
+  .mobile-work h2 { font-size: 22px; font-weight: 600; }
+  .mobile-work section section { padding: 0; }
+  .mobile-work .work-content { padding: 0; }
+  .mobile-work .work-notebook { padding: 16px 0 0; border: 0; border-top: 1px solid #f1f5f9; border-radius: 0; box-shadow: none; }
+  .mobile-work .work-timer-note { order: 2; }
+  .mobile-work .work-start-focus { min-height: 50px; font-size: 15px; text-transform: none; letter-spacing: 0; border-radius: 14px; }
+  .work-task-details > summary, .work-timer-note > summary { display: flex; align-items: center; gap: 8px; }
+  .work-task-details > summary::after, .work-timer-note > summary::after { content: '⌄'; color: #94a3b8; }
+  .task-tree-select { min-height: 56px; padding-top: 8px; padding-bottom: 8px; }
+  .task-tree-title { font-size: 14px; line-height: 20px; }
+  .task-tree-title > span:first-child { white-space: normal; }
+  .task-tree-title .task-context { font-size: 11px; line-height: 18px; }
+  .mobile-goals-header h2, .mobile-goals-header > div:first-child p { display: none; }
+  .mobile-goal-stats { display: none; }
+  .phone-journal-composer > div { border: 0; background: white; padding: 0; }
+  .phone-journal-composer textarea { min-height: 140px; max-height: 30dvh; color: #0f172a; font: 16px/1.65 var(--font-sans); }
+  .phone-journal-composer input, .phone-journal-filters input { background: #f8fafc; color: #334155; border-color: #e2e8f0; }
+  .phone-journal-filters > div { gap: 12px; }
+  .phone-journal-filters > div > div { flex-basis: 100%; }
+  .phone-journal-filters button { font-family: var(--font-sans); text-transform: none; letter-spacing: 0; border-color: #e2e8f0; }
+  .phone-journal-filters input { width: 100%; }
+  .mobile-journal pre { font-family: var(--font-sans); font-size: 15px; line-height: 1.7; }
+  .mobile-journal .journal-day-heading h2 { font-size: 14px; font-weight: 600; }
+  .mobile-journal .phone-journal-entry { background: white; border: 0; border-bottom: 1px solid #f1f5f9; border-radius: 0; }
+  .mobile-journal .phone-journal-entry > [role="button"] { padding: 12px 0; }
+  .mobile-journal .journal-snippet { color: #475569; font-size: 15px; line-height: 1.65; }
   .mobile-capture-tabs { position: sticky; top: var(--mobile-header-height); z-index: 20; padding: 8px 16px; background: #fff; }
   .mobile-capture-tabs > div { width: 100%; display: flex; background: #f1f5f9; border: 0; box-shadow: none; }
   .mobile-capture-tabs button { flex: 1; justify-content: center; font-family: var(--font-sans); text-transform: none; letter-spacing: 0; font-size: 13px; }

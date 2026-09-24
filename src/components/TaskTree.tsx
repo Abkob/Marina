@@ -6,6 +6,7 @@ import { buildTaskForest, filterForest, type TaskTreeNode } from '../utils/taskT
 import { useAppStore } from '../store/useAppStore';
 import { getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
 import { getDescendantTaskDeadlineSummary, type DescendantTaskDeadlineSummary } from '../utils/taskDates';
+import { taskContextMap } from '../utils/taskContext';
 
 /**
  * The one way tasks are found: goals as collapsible sections, tasks nested
@@ -38,8 +39,9 @@ function fmtMins(mins: number): string {
   return `${h}h${m ? ` ${m}m` : ''}`;
 }
 
-function RowBody({ task, depth, hasChildren, isOpen, onToggle, scheduledOn, muted, mutedReason, estimatedMinutes, loggedMinutes, childDeadlines }: {
+function RowBody({ task, context, depth, hasChildren, isOpen, onToggle, scheduledOn, muted, mutedReason, estimatedMinutes, loggedMinutes, childDeadlines }: {
   task: DBTask;
+  context?: string;
   depth: number;
   hasChildren: boolean;
   isOpen: boolean;
@@ -53,13 +55,15 @@ function RowBody({ task, depth, hasChildren, isOpen, onToggle, scheduledOn, mute
 }) {
   return (
     <>
-      <span style={{ width: depth * 14 }} className="shrink-0" />
+      <span style={{ width: Math.min(depth, 3) * 10 }} className="shrink-0" />
       {hasChildren ? (
         <button
           onClick={e => { e.stopPropagation(); onToggle(); }}
           onPointerDown={e => e.stopPropagation()}
           className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
           title={isOpen ? 'Collapse subtasks' : 'Expand subtasks'}
+          aria-label={`${isOpen ? 'Collapse' : 'Expand'} subtasks of ${task.title}`}
+          aria-expanded={isOpen}
         >
           <ChevronRight size={11} className={`transition-transform ${isOpen ? 'rotate-90' : ''}`} />
         </button>
@@ -67,10 +71,11 @@ function RowBody({ task, depth, hasChildren, isOpen, onToggle, scheduledOn, mute
         <span className="w-[15px] shrink-0" />
       )}
       <span
-        className={`min-w-0 flex-1 truncate text-[11px] ${muted ? 'text-gray-400' : 'text-gray-700'}`}
+        className={`task-tree-title min-w-0 flex-1 text-[11px] ${muted ? 'text-gray-400' : 'text-gray-700'}`}
         title={mutedReason ?? task.title}
       >
-        {task.title}
+        <span className="block truncate">{task.title}</span>
+        {context && <span className="task-context block truncate text-[10px] font-normal text-slate-400" title={context}>{context}</span>}
       </span>
       {scheduledOn && (
         <span className="flex shrink-0 items-center gap-0.5 font-mono text-[8px] text-[#4648d4]" title={`On your calendar: ${scheduledOn}`}>
@@ -146,7 +151,7 @@ function SelectableRow(props: Parameters<typeof RowBody>[0] & { selected: boolea
           props.onSelect();
         }
       }}
-      className={`flex w-full items-center gap-1 rounded px-1.5 py-1 text-left
+      className={`task-tree-select flex w-full items-center gap-1 rounded px-1.5 py-1 text-left
         ${props.selected ? 'bg-[#EEF2FF] ring-1 ring-[#4648d4]/30' : 'hover:bg-gray-50'}`}
     >
       <RowBody {...props} />
@@ -165,6 +170,7 @@ export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggab
   );
   const shown = useMemo(() => filterForest(forest, q), [forest, q]);
   const searching = q.trim().length > 0;
+  const contexts = useMemo(() => taskContextMap(tasks, goals), [tasks, goals]);
 
   const toggleGoal = (key: string) =>
     setOpenGoals(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -179,6 +185,7 @@ export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggab
     const muted = mode === 'drag' && !draggable;
     const common = {
       task,
+      context: task.parent_task_id ? contexts.get(task.id) : undefined,
       depth,
       hasChildren,
       isOpen,
