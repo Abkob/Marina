@@ -27,25 +27,26 @@ export const PROVIDER_MODE: ProviderMode = resolveMode();
 // ─── Chat provider ─────────────────────────────────────────────────────────────
 
 export const CHAT_HOST = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
-export const CHAT_MODEL_PRIMARY = process.env.AMINA_MAIN_MODEL ?? process.env.OLLAMA_MODEL ?? 'gemini-3.6-flash';
+export const CHAT_MODEL_PRIMARY = process.env.MARINA_MAIN_MODEL ?? process.env.OLLAMA_MODEL
+  ?? process.env.MARINA_NVIDIA_NEMOTRON_MODEL ?? 'nvidia/nemotron-3-super-120b-a12b';
 
 export function resolveLocalFallbackModel(
-  env: Partial<Pick<NodeJS.ProcessEnv, 'VERCEL' | 'AMINA_LOCAL_FALLBACK_MODEL'>> = process.env,
+  env: Partial<Pick<NodeJS.ProcessEnv, 'VERCEL' | 'MARINA_LOCAL_FALLBACK_MODEL'>> = process.env,
 ): string {
   // Vercel functions cannot reach a developer-machine Ollama daemon. Keeping a
   // local fallback there only delays the real cloud error and produces a
   // misleading qwen3 message, so cloud deployments deliberately have none.
   if (env.VERCEL === '1') return '';
-  return env.AMINA_LOCAL_FALLBACK_MODEL ?? 'qwen3:8b';
+  return env.MARINA_LOCAL_FALLBACK_MODEL ?? 'qwen3:8b';
 }
 
 export const CHAT_MODEL_FALLBACK = resolveLocalFallbackModel();
 export const NVIDIA_API_BASE = process.env.NVIDIA_API_BASE ?? 'https://integrate.api.nvidia.com/v1';
-export const NVIDIA_NEMOTRON_MODEL = process.env.AMINA_NVIDIA_NEMOTRON_MODEL
+export const NVIDIA_NEMOTRON_MODEL = process.env.MARINA_NVIDIA_NEMOTRON_MODEL
   ?? 'nvidia/nemotron-3-super-120b-a12b';
-export const NVIDIA_DEEPSEEK_MODEL = process.env.AMINA_NVIDIA_DEEPSEEK_MODEL
+export const NVIDIA_DEEPSEEK_MODEL = process.env.MARINA_NVIDIA_DEEPSEEK_MODEL
   ?? 'deepseek-ai/deepseek-v4-pro';
-export const NVIDIA_FALLBACK_MODEL = process.env.AMINA_NVIDIA_FALLBACK_MODEL
+export const NVIDIA_FALLBACK_MODEL = process.env.MARINA_NVIDIA_FALLBACK_MODEL
   ?? NVIDIA_DEEPSEEK_MODEL;
 
 /** NVIDIA Build models that can be selected for an individual Copilot turn. */
@@ -84,11 +85,11 @@ export const LOCAL_CHAT_ENABLED = [
 ].some(model => Boolean(model) && !isCloudChatModel(model));
 
 // Bounded chat request wait — callers must not hang forever on a wedged model.
-export const CHAT_TIMEOUT_MS = Number(process.env.AMINA_CHAT_TIMEOUT_MS ?? 180_000);
+export const CHAT_TIMEOUT_MS = Number(process.env.MARINA_CHAT_TIMEOUT_MS ?? 180_000);
 
 // ─── Embedding provider ────────────────────────────────────────────────────────
 
-export const EMBED_MODEL = process.env.AMINA_EMBEDDING_MODEL ?? 'gemini-embedding-2';
+export const EMBED_MODEL = process.env.MARINA_EMBEDDING_MODEL ?? 'gemini-embedding-2';
 export const EMBED_DIMENSION = 3072;
 
 // When true, raw journal/note/document text may be sent to the embedding provider.

@@ -35,7 +35,7 @@ const nvidia = process.env.NVIDIA_API_KEY
   ? new OpenAI({
       apiKey: process.env.NVIDIA_API_KEY,
       baseURL: NVIDIA_API_BASE,
-      timeout: Number(process.env.AMINA_NVIDIA_TIMEOUT_MS ?? 90_000),
+      timeout: Number(process.env.MARINA_NVIDIA_TIMEOUT_MS ?? 90_000),
       maxRetries: 0,
     })
   : null;
@@ -51,6 +51,10 @@ export interface ChatCallTrace {
   duration_ms: number;
   prompt_chars: number;
   fallback_used: boolean;
+  /** Provider-reported counts only; absent when the provider supplies no usage. */
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_input_tokens?: number;
 }
 
 export interface ChatOptions {
@@ -59,10 +63,13 @@ export interface ChatOptions {
   temperature?: number;
   max_tokens?: number;
   jsonMode?: boolean;
+  thinking?: boolean;
   onTrace?: (trace: ChatCallTrace) => void;
   allowFallback?: boolean;
   allowLocalFallback?: boolean;
   fallbackPromptCharLimit?: number;
+  /** Absolute deadline shared by every model call and fallback in one turn. */
+  deadlineMs?: number;
 }
 
 // ─── Model availability ──────────────────────────────────────────────────────
@@ -196,9 +203,11 @@ async function chatOnce(
 ): Promise<string> {
   let timer: NodeJS.Timeout | undefined;
   const abortController = isNvidiaChatModel(model) ? new AbortController() : null;
-  const requestTimeoutMs = isNvidiaChatModel(model)
-    ? Number(process.env.AMINA_NVIDIA_TIMEOUT_MS ?? 90_000)
+  const configuredTimeoutMs = isNvidiaChatModel(model)
+    ? Number(process.env.MARINA_NVIDIA_TIMEOUT_MS ?? 90_000)
     : CHAT_TIMEOUT_MS;
+  const requestTimeoutMs = Math.min(configuredTimeoutMs, opts.deadlineMs === undefined ? configuredTimeoutMs : Math.max(0, opts.deadlineMs - Date.now()));
+  if (requestTimeoutMs < 1000) throw new Error('Copilot reached the turn time limit. Please try again.');
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       abortController?.abort();
@@ -216,11 +225,11 @@ async function chatOnce(
       // Extended reasoning is useful for the substantive 8K-token Copilot
       // answer, but it makes tiny routing/JSON calls slow and can consume their
       // entire output allowance before the model emits the required JSON.
-      const thinkingEnabled = (isNemotron3
-        ? process.env.AMINA_NVIDIA_THINKING === 'true'
-        : process.env.AMINA_DEEPSEEK_THINKING === 'true')
+      const thinkingEnabled = (opts.thinking ?? (isNemotron3
+        ? process.env.MARINA_NVIDIA_THINKING === 'true'
+        : process.env.MARINA_DEEPSEEK_THINKING === 'true'))
         && maxTokens > 1_024;
-      const configuredReasoningBudget = Number(process.env.AMINA_NVIDIA_REASONING_BUDGET ?? 4_096);
+      const configuredReasoningBudget = Number(process.env.MARINA_NVIDIA_REASONING_BUDGET ?? 4_096);
       // NVIDIA counts reasoning against the generated-token allowance. Always
       // reserve at least 2K tokens for the actual JSON/final answer so a long
       // thought process cannot terminate the response mid-object.
@@ -231,11 +240,12 @@ async function chatOnce(
       const request = {
         model,
         messages,
-        temperature: Number(process.env.AMINA_NVIDIA_TEMPERATURE ?? 1),
-        top_p: Number(process.env.AMINA_NVIDIA_TOP_P ?? 0.95),
+        temperature: opts.temperature ?? Number(process.env.MARINA_NVIDIA_TEMPERATURE ?? 1),
+        top_p: Number(process.env.MARINA_NVIDIA_TOP_P ?? 0.95),
         max_tokens: maxTokens,
         ...(opts.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
         stream: true,
+        stream_options: { include_usage: true },
         chat_template_kwargs: isNemotron3
           ? { enable_thinking: thinkingEnabled }
           : { thinking: thinkingEnabled },
@@ -253,7 +263,9 @@ async function chatOnce(
         });
         let content = '';
         let reasoningChars = 0;
+        let usage: OpenAI.CompletionUsage | undefined;
         for await (const chunk of stream) {
+          if (chunk.usage) usage = chunk.usage;
           const delta = chunk.choices?.[0]?.delta as
             | (OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & {
                 reasoning_content?: string | null;
@@ -262,9 +274,9 @@ async function chatOnce(
           if (delta?.reasoning_content) reasoningChars += delta.reasoning_content.length;
           if (delta?.content) content += delta.content;
         }
-        return { content, reasoningChars };
+        return { content, reasoningChars, usage };
       })();
-      const { content, reasoningChars } = await Promise.race([streamedResult, timeout]);
+      const { content, reasoningChars, usage } = await Promise.race([streamedResult, timeout]);
       const text = content.trim();
       if (!text) throw new Error(`NVIDIA model ${model} returned an empty response`);
       const durationMs = Date.now() - startedAt;
@@ -274,6 +286,8 @@ async function chatOnce(
         duration_ms: durationMs,
         prompt_chars: promptChars,
         fallback_used: model !== (opts.model ?? CHAT_MODEL),
+        ...(usage ? { input_tokens: usage.prompt_tokens, output_tokens: usage.completion_tokens,
+          ...(usage.prompt_tokens_details?.cached_tokens !== undefined ? { cached_input_tokens: usage.prompt_tokens_details.cached_tokens } : {}) } : {}),
       });
       console.log(
         `[nvidia] ${model} ok in ${Math.round(durationMs / 1000)}s `
@@ -331,14 +345,14 @@ async function chatOnce(
           ...(model.startsWith('qwen3') ? { think: false } : {}),
           // Keep the model resident between calls — a cold reload plus prompt
           // evaluation costs minutes on this hardware and blows the timeout.
-          keep_alive: process.env.AMINA_KEEP_ALIVE ?? '60m',
+          keep_alive: process.env.MARINA_KEEP_ALIVE ?? '60m',
           options: {
             temperature: opts.temperature ?? 0.3,
             num_predict: opts.max_tokens ?? 8192,
             // Ollama defaults num_ctx to 4096, silently truncating our prompts:
             // the copilot context budget alone allows ~13K tokens. Truncation
             // made the model return unusable output with no error.
-            num_ctx: Number(process.env.AMINA_NUM_CTX ?? 16384),
+            num_ctx: Number(process.env.MARINA_NUM_CTX ?? 16384),
           },
         }),
         timeout,

@@ -130,7 +130,7 @@ describe('WorkloadHorizon', () => {
     fireEvent.click(explanationToggle);
 
     expect(screen.getByRole('button', { name: 'Hide schedule explanation' })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('How Amina calculated this')).toBeInTheDocument();
+    expect(screen.getByText('How Marina calculated this')).toBeInTheDocument();
     expect(screen.getByText(/later hours cannot repair an earlier deadline/i)).toBeInTheDocument();
     expect(screen.getByText(/old date stays red, but the work is carried/i)).toBeInTheDocument();
     expect(screen.getByText(/Courses › Physics 210 › Finish studying/)).toBeInTheDocument();

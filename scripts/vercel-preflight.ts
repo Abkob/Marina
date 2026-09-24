@@ -24,8 +24,8 @@ if (process.argv.includes('--env')) {
   } catch { /* invalid or absent */ }
   add('Managed PostgreSQL URL', databaseOk, 'DATABASE_URL must point to non-local PostgreSQL');
   add('Private Blob token', value('BLOB_READ_WRITE_TOKEN').length > 20, 'BLOB_READ_WRITE_TOKEN is configured');
-  add('Access password', value('AMINA_ACCESS_PASSWORD').length >= 12, 'AMINA_ACCESS_PASSWORD is at least 12 characters');
-  add('Session secret', value('AMINA_SESSION_SECRET').length >= 32, 'AMINA_SESSION_SECRET is at least 32 characters');
+  add('Access password', value('MARINA_ACCESS_PASSWORD').length >= 12, 'MARINA_ACCESS_PASSWORD is at least 12 characters');
+  add('Session secret', value('MARINA_SESSION_SECRET').length >= 32, 'MARINA_SESSION_SECRET is at least 32 characters');
   add('Cron secret', value('CRON_SECRET').length >= 16, 'CRON_SECRET is at least 16 characters');
   add('Public app URL', /^https:\/\//i.test(value('APP_URL')), 'APP_URL uses HTTPS');
 
@@ -38,7 +38,7 @@ if (process.argv.includes('--env')) {
     add('Google OAuth state secret', value('GOOGLE_OAUTH_STATE_SECRET').length >= 32, 'GOOGLE_OAUTH_STATE_SECRET is at least 32 characters');
   }
 
-  const primaryModel = value('AMINA_MAIN_MODEL');
+  const primaryModel = value('MARINA_MAIN_MODEL');
   const cloudModelOk = primaryModel.startsWith('gemini-')
     ? Boolean(value('GEMINI_API_KEY'))
     : Boolean(value('NVIDIA_API_KEY')) && primaryModel.includes('/');

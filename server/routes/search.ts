@@ -1,3 +1,4 @@
+import { activeEntitySql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
 import { query } from '../db.js';
 import { embedQuery, EMBED_DIMENSION, EMBED_MODEL } from '../embeddingProvider.js';
@@ -20,19 +21,19 @@ interface SearchHit {
 
 async function hydrate(entityType: string, entityId: string): Promise<{ title: string; snippet: string | null; extra: Record<string, unknown> } | null> {
   if (entityType === 'goal') {
-    const { rows } = await query('SELECT title, description, status FROM goals WHERE id=$1', [entityId]);
+    const { rows } = await query(`SELECT title, description, status FROM goals WHERE id=$1 AND ${activeEntitySql("'goal'", 'goals.id')}`, [entityId]);
     if (!rows.length) return null;
     const g = rows[0] as Record<string, unknown>;
     return { title: String(g.title ?? ''), snippet: g.description ? String(g.description).slice(0, 200) : null, extra: { status: g.status } };
   }
   if (entityType === 'task') {
-    const { rows } = await query('SELECT title, description, status, due_date, goal_id FROM tasks WHERE id=$1', [entityId]);
+    const { rows } = await query(`SELECT title, description, status, due_date, goal_id FROM tasks WHERE id=$1 AND ${activeEntitySql("'task'", 'tasks.id')}`, [entityId]);
     if (!rows.length) return null;
     const t = rows[0] as Record<string, unknown>;
     return { title: String(t.title ?? ''), snippet: t.description ? String(t.description).slice(0, 200) : null, extra: { status: t.status, due_date: t.due_date, goal_id: t.goal_id } };
   }
   if (entityType === 'resource') {
-    const { rows } = await query('SELECT title, description, url FROM resources WHERE id=$1', [entityId]);
+    const { rows } = await query(`SELECT title, description, url FROM resources WHERE id=$1 AND ${activeEntitySql("'resource'", 'resources.id')}`, [entityId]);
     if (!rows.length) return null;
     const r = rows[0] as Record<string, unknown>;
     return { title: String(r.title ?? ''), snippet: r.description ? String(r.description).slice(0, 200) : null, extra: { url: r.url } };
@@ -50,13 +51,13 @@ async function hydrate(entityType: string, entityId: string): Promise<{ title: s
     return { title: `Journal — ${j.entry_date}`, snippet: j.summary ? String(j.summary).slice(0, 200) : null, extra: {} };
   }
   if (entityType === 'meeting') {
-    const { rows } = await query('SELECT title, summary, scheduled_at FROM meetings WHERE id=$1', [entityId]);
+    const { rows } = await query(`SELECT title, summary, scheduled_at FROM meetings WHERE id=$1 AND ${activeEntitySql("'meeting'", 'meetings.id')}`, [entityId]);
     if (!rows.length) return null;
     const m = rows[0] as Record<string, unknown>;
     return { title: String(m.title ?? ''), snippet: m.summary ? String(m.summary).slice(0, 200) : null, extra: {} };
   }
   if (entityType === 'milestone') {
-    const { rows } = await query('SELECT title, description, due_date, goal_id FROM goal_milestones WHERE id=$1', [entityId]);
+    const { rows } = await query(`SELECT title, description, due_date, goal_id FROM goal_milestones WHERE id=$1 AND ${activeEntitySql("'milestone'", 'goal_milestones.id')}`, [entityId]);
     if (!rows.length) return null;
     const ms = rows[0] as Record<string, unknown>;
     return { title: String(ms.title ?? ''), snippet: ms.description ? String(ms.description).slice(0, 200) : null, extra: { due_date: ms.due_date, goal_id: ms.goal_id } };
@@ -66,7 +67,7 @@ async function hydrate(entityType: string, entityId: string): Promise<{ title: s
     const { rows } = await query(
       `SELECT rc.content, rc.page_start, rc.page_end, rc.resource_id, r.title AS resource_title, r.url
        FROM resource_chunks rc LEFT JOIN resources r ON r.id = rc.resource_id
-       WHERE rc.id=$1`,
+       WHERE rc.id=$1 AND ${activeEntitySql("'resource'", "r.id")}`,
       [entityId],
     );
     if (!rows.length) return null;
@@ -88,14 +89,14 @@ async function keywordSearch(q: string, types: string[], limit: number): Promise
   const hits: SearchHit[] = [];
 
   const queries: { type: string; sql: string }[] = [
-    { type: 'goal', sql: `SELECT id, title, description as snippet, status, NULL as url, NULL as due_date, NULL as goal_id FROM goals WHERE (title ILIKE $1 OR description ILIKE $1) AND archived_at IS NULL LIMIT $2` },
-    { type: 'task', sql: `SELECT id, title, description as snippet, status, NULL as url, due_date, goal_id FROM tasks WHERE (title ILIKE $1 OR description ILIKE $1) AND completed=false LIMIT $2` },
-    { type: 'resource', sql: `SELECT id, title, description as snippet, NULL as status, url, NULL as due_date, NULL as goal_id FROM resources WHERE title ILIKE $1 OR description ILIKE $1 LIMIT $2` },
+    { type: 'goal', sql: `SELECT id, title, description as snippet, status, NULL as url, NULL as due_date, NULL as goal_id FROM goals WHERE ${activeEntitySql("'goal'", 'goals.id')} AND ((title ILIKE $1 OR description ILIKE $1) AND archived_at IS NULL) LIMIT $2` },
+    { type: 'task', sql: `SELECT id, title, description as snippet, status, NULL as url, due_date, goal_id FROM tasks WHERE ${activeEntitySql("'task'", 'tasks.id')} AND ((title ILIKE $1 OR description ILIKE $1) AND completed=false) LIMIT $2` },
+    { type: 'resource', sql: `SELECT id, title, description as snippet, NULL as status, url, NULL as due_date, NULL as goal_id FROM resources WHERE ${activeEntitySql("'resource'", 'resources.id')} AND (title ILIKE $1 OR description ILIKE $1) LIMIT $2` },
     { type: 'note', sql: `SELECT id, title, LEFT(content,200) as snippet, NULL as status, NULL as url, NULL as due_date, NULL as goal_id FROM notes WHERE title ILIKE $1 OR content ILIKE $1 LIMIT $2` },
     { type: 'journal_entry', sql: `SELECT id, entry_date::TEXT as title, LEFT(summary,200) as snippet, NULL as status, NULL as url, NULL as due_date, NULL as goal_id FROM journal_entries WHERE summary ILIKE $1 LIMIT $2` },
-    { type: 'meeting', sql: `SELECT id, title, LEFT(summary,200) as snippet, NULL as status, NULL as url, NULL as due_date, NULL as goal_id FROM meetings WHERE title ILIKE $1 OR summary ILIKE $1 LIMIT $2` },
-    { type: 'milestone', sql: `SELECT id, title, description as snippet, NULL as status, NULL as url, due_date, goal_id FROM goal_milestones WHERE title ILIKE $1 OR description ILIKE $1 LIMIT $2` },
-    { type: 'resource_chunk', sql: `SELECT rc.id, r.title || COALESCE(' (p. ' || rc.page_start || ')', '') as title, LEFT(rc.content,200) as snippet, NULL as status, r.url, NULL as due_date, NULL as goal_id FROM resource_chunks rc LEFT JOIN resources r ON r.id = rc.resource_id WHERE rc.content ILIKE $1 LIMIT $2` },
+    { type: 'meeting', sql: `SELECT id, title, LEFT(summary,200) as snippet, NULL as status, NULL as url, NULL as due_date, NULL as goal_id FROM meetings WHERE ${activeEntitySql("'meeting'", 'meetings.id')} AND (title ILIKE $1 OR summary ILIKE $1) LIMIT $2` },
+    { type: 'milestone', sql: `SELECT id, title, description as snippet, NULL as status, NULL as url, due_date, goal_id FROM goal_milestones WHERE ${activeEntitySql("'milestone'", 'goal_milestones.id')} AND (title ILIKE $1 OR description ILIKE $1) LIMIT $2` },
+    { type: 'resource_chunk', sql: `SELECT rc.id, r.title || COALESCE(' (p. ' || rc.page_start || ')', '') as title, LEFT(rc.content,200) as snippet, NULL as status, r.url, NULL as due_date, NULL as goal_id FROM resource_chunks rc LEFT JOIN resources r ON r.id = rc.resource_id WHERE rc.content ILIKE $1 AND ${activeEntitySql("'resource'", "r.id")} LIMIT $2` },
   ];
 
   const perType = Math.ceil(limit / types.length);
@@ -144,7 +145,7 @@ router.get('/', async (req, res) => {
     const sql = `
       SELECT e.entity_type, e.entity_id, 1 - (e.embedding_3072 <=> $1::halfvec) as score
       FROM embeddings e
-      WHERE e.is_stale = false
+      WHERE e.is_stale = false AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
         AND e.embedding_3072 IS NOT NULL
         AND e.embedding_model = $2
         AND e.embedding_dimension = $3

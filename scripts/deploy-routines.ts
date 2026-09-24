@@ -17,7 +17,7 @@ if (apply && process.env.CONFIRM_ROUTINES_MIGRATION !== '1') throw new Error('Se
 const { createPortableBackupArchive } = await import('../server/services/portableBackup.js');
 const { verifyPortableBackup } = await import('./lib/portableBackup.js');
 const { getPool } = await import('../server/db.js');
-const destination = path.resolve('backups', `amina-before-routines-${new Date().toISOString().replace(/:/g, '-')}-${crypto.randomBytes(4).toString('hex')}.amina-backup.zip`);
+const destination = path.resolve('backups', `marina-before-routines-${new Date().toISOString().replace(/:/g, '-')}-${crypto.randomBytes(4).toString('hex')}.marina-backup.zip`);
 await fsp.mkdir(path.dirname(destination), { recursive: true });
 
 try {
@@ -30,7 +30,7 @@ try {
     try {
       await client.query('BEGIN');
       await client.query("SET LOCAL lock_timeout = '10s'");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('amina-schema-deploy'))");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('marina-schema-deploy'))");
       // Short transaction protects the comparison from concurrent user changes.
       await client.query('LOCK TABLE goals, tasks, events, work_sessions IN SHARE MODE');
       const fingerprint = async () => {

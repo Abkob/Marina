@@ -2,7 +2,7 @@ export const isVercelRuntime = process.env.VERCEL === '1';
 export const isProduction = process.env.NODE_ENV === 'production';
 
 export function isAuthenticationRequired(): boolean {
-  return isVercelRuntime || isProduction || process.env.AMINA_AUTH_REQUIRED === 'true';
+  return isVercelRuntime || isProduction || process.env.MARINA_AUTH_REQUIRED === 'true';
 }
 
 export function isBlobStorageConfigured(): boolean {

@@ -307,7 +307,7 @@ let lastResult: ObsidianVaultSyncResult | null = null;
 let lastError: string | null = null;
 
 export function getObsidianVaultDir(): string {
-  const configured = process.env.OBSIDIAN_VAULT_DIR || process.env.AMINA_OBSIDIAN_VAULT_DIR;
+  const configured = process.env.OBSIDIAN_VAULT_DIR || process.env.MARINA_OBSIDIAN_VAULT_DIR;
   return path.resolve(process.cwd(), configured || 'obsidian-vault');
 }
 

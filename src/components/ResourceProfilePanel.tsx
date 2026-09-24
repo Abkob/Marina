@@ -1,3 +1,4 @@
+import { ModalFrame } from './ModalFrame';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Database, ExternalLink, FileText, Globe, Lightbulb, Link, Package, Plus, Trash2, Users, X } from 'lucide-react';
@@ -93,13 +94,6 @@ export function ResourceProfilePanel({
 
   useEffect(() => { load(); const id = setInterval(load, 2000); return () => clearInterval(id); }, [resourceId]);
 
-  // Close on Escape
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
   const save = async (patch: Partial<Pick<DBResource, 'title' | 'type' | 'url' | 'info'>>) => {
     if (!resource) return;
     await updateResource(resource.id, patch);
@@ -133,24 +127,7 @@ export function ResourceProfilePanel({
   if (!resource) return null;
 
   return (
-    <>
-      {/* Backdrop */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]"
-        onClick={onClose}
-      />
-
-      {/* Slide-over panel */}
-      <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[500px] flex-col border-l border-gray-200 bg-white shadow-2xl"
-      >
+<ModalFrame titleId="resource-panel-title" onClose={onClose} overlayClassName="bg-black/20 md:!justify-end md:!p-0" className="mobile-sheet flex h-full w-full max-w-[500px] flex-col border-l border-gray-200 bg-white shadow-2xl"><h2 id="resource-panel-title" className="sr-only">Resource details</h2>
         {/* Header */}
         <div className="flex items-start gap-3 border-b border-gray-100 px-5 py-4">
           <div className="mt-0.5">
@@ -176,7 +153,7 @@ export function ResourceProfilePanel({
               </span>
             </div>
           </div>
-          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-gray-300 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+          <button aria-label="Close resource details" onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-gray-300 hover:bg-gray-100 hover:text-gray-600 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -310,7 +287,6 @@ export function ResourceProfilePanel({
             )}
           </div>
         </div>
-      </motion.div>
-    </>
+    </ModalFrame>
   );
 }

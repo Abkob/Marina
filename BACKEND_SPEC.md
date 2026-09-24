@@ -1,4 +1,4 @@
-# Amina OS — Backend Feature Spec
+# Marina OS — Backend Feature Spec
 
 > Living document. Add a new section each time a backend feature is requested.  
 > Every feature has: description, data contract, query/function signatures, and test cases.  
@@ -42,7 +42,7 @@
 
 ## BE-01 — Core DB Schema & Tables ✅
 
-**10 tables in `AminaDB extends Dexie`:**
+**10 tables in `MarinaDB extends Dexie`:**
 
 | Table | Key fields | Purpose |
 |---|---|---|

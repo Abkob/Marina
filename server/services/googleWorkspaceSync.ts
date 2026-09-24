@@ -1,4 +1,5 @@
 import { query } from '../db.js';
+import { LEGACY_BRAND, LEGACY_LABEL } from '../utils/brandCompatibility.js';
 import { refreshGoogleAccessToken } from './googleWorkspaceAuth.js';
 import { calculateGoalTaskMetrics } from '../../src/utils/goalTaskMetrics.js';
 
@@ -119,11 +120,11 @@ export interface GoogleSyncStats {
   tasks_created: number;
   tasks_hidden_in_google: number;
   tasks_updated_in_google: number;
-  tasks_updated_in_amina: number;
+  tasks_updated_in_marina: number;
   tasks_imported: number;
   calendar_events_created: number;
   calendar_events_updated_in_google: number;
-  calendar_items_updated_in_amina: number;
+  calendar_items_updated_in_marina: number;
   calendar_items_imported: number;
   conflicts: number;
   skipped: number;
@@ -145,11 +146,11 @@ function emptyStats(): GoogleSyncStats {
     tasks_created: 0,
     tasks_hidden_in_google: 0,
     tasks_updated_in_google: 0,
-    tasks_updated_in_amina: 0,
+    tasks_updated_in_marina: 0,
     tasks_imported: 0,
     calendar_events_created: 0,
     calendar_events_updated_in_google: 0,
-    calendar_items_updated_in_amina: 0,
+    calendar_items_updated_in_marina: 0,
     calendar_items_imported: 0,
     conflicts: 0,
     skipped: 0,
@@ -230,15 +231,15 @@ function zonedParts(dateTime: string, timeZone: string) {
 }
 
 function taskListTitle(goal: Pick<GoalRow, 'title'>): string {
-  return `Amina · ${goal.title}`.slice(0, 1024);
+  return `Marina · ${goal.title}`.slice(0, 1024);
 }
 
 function taskMarker(taskId: string): string {
-  return `Amina task: ${taskId}`;
+  return `Marina task: ${taskId}`;
 }
 
 function markerTaskId(notes: string | undefined): string | null {
-  return notes?.match(/(?:^|\n)Amina task: ([0-9a-f-]{36})(?:\n|$)/i)?.[1] ?? null;
+  return notes?.match(new RegExp(`(?:^|\\n)(?:Marina|${LEGACY_LABEL}) task: ([0-9a-f-]{36})(?:\\n|$)`, 'i'))?.[1] ?? null;
 }
 
 function sortedTasks(tasks: TaskRow[]): TaskRow[] {
@@ -265,7 +266,7 @@ export interface GoogleTaskProjection {
 }
 
 /**
- * Google Tasks supports one subtask level. Amina keeps its full hierarchy,
+ * Google Tasks supports one subtask level. Marina keeps its full hierarchy,
  * while Google shows each root plus the currently actionable leaves beneath
  * it. An intermediate task becomes visible once it has no unfinished
  * descendants left.
@@ -364,7 +365,7 @@ export function buildGoogleTaskPayload(
     task.description?.trim() || null,
     goalTitle ? `Goal: ${goalTitle}` : 'One-off task',
     parentTitle ? `Parent: ${parentTitle}` : null,
-    pathTitles.length > 1 ? `Amina path: ${pathTitles.join(' > ')}` : null,
+    pathTitles.length > 1 ? `Marina path: ${pathTitles.join(' > ')}` : null,
     task.estimated_minutes ? `Estimate: ${Math.round(task.estimated_minutes / 6) / 10} hours` : null,
     taskMarker(task.id),
   ].filter(Boolean).join('\n');
@@ -382,7 +383,7 @@ export function googleTaskDisplayTitle(taskTitle: string, pathTitles: string[]):
   return (immediateParent ? `${immediateParent}: ${taskTitle}` : taskTitle).slice(0, 1024);
 }
 
-export function aminaTaskTitleFromGoogle(
+export function marinaTaskTitleFromGoogle(
   remoteTitle: string | undefined,
   currentTaskTitle: string,
   pathTitles: string[],
@@ -404,11 +405,11 @@ export function buildGoogleCalendarPayload(
     const date = isoDate(item.row.start_date)!;
     return {
       summary: item.row.title,
-      description: `All-day task from Amina.\n${taskMarker(item.row.id)}`,
+      description: `All-day task from Marina.\n${taskMarker(item.row.id)}`,
       start: { date },
       end: { date: addDays(date, 1) },
       transparency: 'transparent',
-      extendedProperties: { private: { aminaManaged: '1', aminaKind: 'task_day', aminaId: item.row.id } },
+      extendedProperties: { private: { marinaManaged: '1', marinaKind: 'task_day', marinaId: item.row.id } },
     };
   }
   if (item.kind === 'meeting') {
@@ -417,20 +418,20 @@ export function buildGoogleCalendarPayload(
     const startHour = Number(time.slice(0, 2)) + Number(time.slice(3, 5)) / 60;
     return {
       summary: item.row.title,
-      description: item.row.notes || 'Meeting synced from Amina.',
+      description: item.row.notes || 'Meeting synced from Marina.',
       location: item.row.location || undefined,
       start: { dateTime: localDateTime(date, startHour), timeZone },
       end: { dateTime: localDateTime(date, startHour + item.row.duration_minutes / 60), timeZone },
-      extendedProperties: { private: { aminaManaged: '1', aminaKind: 'meeting', aminaId: item.row.id } },
+      extendedProperties: { private: { marinaManaged: '1', marinaKind: 'meeting', marinaId: item.row.id } },
     };
   }
   const date = concreteEventDate(item.row)!;
   return {
     summary: item.row.title,
-    description: item.row.description || 'Schedule block synced from Amina.',
+    description: item.row.description || 'Schedule block synced from Marina.',
     start: { dateTime: localDateTime(date, item.row.start_hour), timeZone },
     end: { dateTime: localDateTime(date, item.row.start_hour + item.row.duration_hours), timeZone },
-    extendedProperties: { private: { aminaManaged: '1', aminaKind: 'event', aminaId: item.row.id } },
+    extendedProperties: { private: { marinaManaged: '1', marinaKind: 'event', marinaId: item.row.id } },
   };
 }
 
@@ -567,6 +568,7 @@ async function ensureTaskList(
   const existing = links.get(key);
   let remote = existing ? remoteLists.find(list => list.id === existing.remote_id) : undefined;
   if (!remote) remote = remoteLists.find(list => list.title === title);
+  if (!remote) remote = remoteLists.find(list => list.title === title.replace(/^Marina · /, `${LEGACY_LABEL} · `));
   if (!remote) {
     remote = await googleApi<GoogleTaskList>(accessToken, `${GOOGLE_TASKS_BASE}/users/@me/lists`, {
       method: 'POST', body: JSON.stringify({ title }),
@@ -603,7 +605,7 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
     listByGoal.set(goal.id, await ensureTaskList(accessToken, 'goal', goal.id, taskListTitle(goal), goal.updated_at, links, remoteLists, stats));
   }
   if (tasks.some(task => !task.goal_id)) {
-    listByGoal.set(null, await ensureTaskList(accessToken, 'system', 'one-offs', 'Amina · One-offs', null, links, remoteLists, stats));
+    listByGoal.set(null, await ensureTaskList(accessToken, 'system', 'one-offs', 'Marina · One-offs', null, links, remoteLists, stats));
   }
 
   for (const [goalId, list] of listByGoal) {
@@ -614,7 +616,7 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
     const remoteById = new Map(remoteTasks.map(task => [task.id, task]));
     const linkedRemoteIds = new Set<string>();
 
-    // Restore a lost link from Amina's marker before treating a Google task as new.
+    // Restore a lost link from Marina's marker before treating a Google task as new.
     for (const remote of remoteTasks) {
       if (remote.deleted) continue;
       const markedId = markerTaskId(remote.notes);
@@ -654,7 +656,7 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
         link = await saveLink({ existing: link, entityType: 'task', entityId: task.id, remoteType: 'task',
           remoteContainerId: list.id, remoteId: remote.id, remoteEtag: remote.etag,
           remoteUpdatedAt: remote.updated, localUpdatedAt: task.updated_at, status: 'remote_deleted',
-          conflict: { message: 'Deleted in Google. The Amina task was kept and needs a decision.' } });
+          conflict: { message: 'Deleted in Google. The Marina task was kept and needs a decision.' } });
         links.set(key, link);
         linkedRemoteIds.add(remote.id);
         stats.conflicts += 1;
@@ -680,7 +682,7 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
         if (localChanged && remoteChanged) {
           link = await saveLink({ existing: link, entityType: 'task', entityId: task.id, remoteType: 'task', remoteContainerId: list.id,
             remoteId: remote.id, remoteEtag: remote.etag, remoteUpdatedAt: remote.updated, localUpdatedAt: task.updated_at,
-            status: 'conflict', conflict: { fields: ['title', 'due_date', 'completed'], message: 'Changed in Amina and Google since the last sync.' } });
+            status: 'conflict', conflict: { fields: ['title', 'due_date', 'completed'], message: 'Changed in Marina and Google since the last sync.' } });
           links.set(key, link);
           stats.conflicts += 1;
         } else if (remoteChanged) {
@@ -698,7 +700,7 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
           }
           const nextStatus = completed ? 'done' : 'todo';
           const updatedAt = remote.updated ?? new Date().toISOString();
-          const nextTitle = aminaTaskTitleFromGoogle(remote.title, task.title, projection.path_titles);
+          const nextTitle = marinaTaskTitleFromGoogle(remote.title, task.title, projection.path_titles);
           await query(
             `UPDATE tasks SET title=$1,due_date=$2,target_date=$2,completed=$3,status=$4,updated_at=$5 WHERE id=$6`,
             [nextTitle, remoteDate, completed, nextStatus, updatedAt, task.id],
@@ -711,7 +713,7 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
           link = await saveLink({ existing: link, entityType: 'task', entityId: task.id, remoteType: 'task', remoteContainerId: list.id,
             remoteId: remote.id, remoteEtag: remote.etag, remoteUpdatedAt: remote.updated, localUpdatedAt: updatedAt });
           links.set(key, link);
-          stats.tasks_updated_in_amina += 1;
+          stats.tasks_updated_in_marina += 1;
         } else if (localChanged) {
           remote = await googleApi<GoogleTask>(accessToken,
             `${GOOGLE_TASKS_BASE}/lists/${encodeURIComponent(list.id)}/tasks/${encodeURIComponent(remote.id)}`,
@@ -754,8 +756,8 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
       linkedRemoteIds.add(remote.id);
     }
 
-    // A task typed directly into an Amina-owned Google list becomes an Amina
-    // task. Google deletions are intentionally never allowed to delete Amina.
+    // A task typed directly into an Marina-owned Google list becomes an Marina
+    // task. Google deletions are intentionally never allowed to delete Marina.
     for (const remote of remoteTasks) {
       if (remote.deleted || linkedRemoteIds.has(remote.id) || markerTaskId(remote.notes)) continue;
       const parentLink = remote.parent
@@ -793,9 +795,9 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
       stats.tasks_imported += 1;
     }
 
-    // Re-evaluate after Google completions were pulled into Amina. Hidden
+    // Re-evaluate after Google completions were pulled into Marina. Hidden
     // intermediate tasks are removed only from Google's projection; their
-    // Amina rows and full parent relationships remain untouched.
+    // Marina rows and full parent relationships remain untouched.
     projections = buildGoogleTaskProjections(localTasks);
     for (const task of [...localTasks].reverse()) {
       const projection = projections.get(task.id);
@@ -830,9 +832,17 @@ async function syncTasks(accessToken: string, links: Map<string, LinkRow>, stats
 }
 
 async function ensureCalendar(accessToken: string, connection: ConnectionRow, timeZone: string): Promise<string> {
+  if (connection.calendar_name === `${LEGACY_LABEL} Schedule`) {
+    connection.calendar_name = 'Marina Schedule';
+    await query('UPDATE google_sync_connections SET calendar_name=$1 WHERE id=$2', [connection.calendar_name, CONNECTION_ID]);
+  }
   if (connection.calendar_id) {
     try {
-      await googleApi(accessToken, `${GOOGLE_CALENDAR_BASE}/calendars/${encodeURIComponent(connection.calendar_id)}`);
+      const url = `${GOOGLE_CALENDAR_BASE}/calendars/${encodeURIComponent(connection.calendar_id)}`;
+      const remote = await googleApi<{ summary?: string }>(accessToken, url);
+      if (remote.summary === `${LEGACY_LABEL} Schedule`) {
+        await googleApi(accessToken, url, { method: 'PATCH', body: JSON.stringify({ summary: connection.calendar_name, description: 'Marina goals, tasks, meetings, and focus blocks.' }) });
+      }
       return connection.calendar_id;
     } catch (error) {
       if ((error as { status?: number }).status !== 404) throw error;
@@ -840,7 +850,7 @@ async function ensureCalendar(accessToken: string, connection: ConnectionRow, ti
   }
   const calendar = await googleApi<{ id: string }>(accessToken, `${GOOGLE_CALENDAR_BASE}/calendars`, {
     method: 'POST',
-    body: JSON.stringify({ summary: connection.calendar_name, description: 'Amina goals, tasks, meetings, and focus blocks.', timeZone }),
+    body: JSON.stringify({ summary: connection.calendar_name, description: 'Marina goals, tasks, meetings, and focus blocks.', timeZone }),
   });
   await query('UPDATE google_sync_connections SET calendar_id=$1,updated_at=$2 WHERE id=$3',
     [calendar.id, new Date().toISOString(), CONNECTION_ID]);
@@ -904,8 +914,8 @@ async function syncCalendar(accessToken: string, connection: ConnectionRow, link
   // Restore mappings from Calendar private metadata when possible.
   for (const remote of remoteEvents) {
     const meta = remote.extendedProperties?.private;
-    const kind = meta?.aminaKind as EntityType | undefined;
-    const id = meta?.aminaId;
+    const kind = (meta?.marinaKind ?? meta?.[`${LEGACY_BRAND}Kind`]) as EntityType | undefined;
+    const id = meta?.marinaId ?? meta?.[`${LEGACY_BRAND}Id`];
     if (!id || !kind || !['event', 'meeting', 'task_day'].includes(kind)) continue;
     const key = linkKey('calendar_event', kind, id);
     if (!links.has(key)) {
@@ -940,7 +950,7 @@ async function syncCalendar(accessToken: string, connection: ConnectionRow, link
       link = await saveLink({ existing: link, entityType: item.kind, entityId: item.row.id, remoteType: 'calendar_event',
         remoteContainerId: calendarId, remoteId: remote.id, remoteEtag: remote.etag,
         remoteUpdatedAt: remote.updated, localUpdatedAt: item.row.updated_at, status: 'remote_deleted',
-        conflict: { message: 'Deleted in Google Calendar. The Amina item was kept and needs a decision.' } });
+        conflict: { message: 'Deleted in Google Calendar. The Marina item was kept and needs a decision.' } });
       links.set(key, link);
       linkedRemoteIds.add(remote.id);
       stats.conflicts += 1;
@@ -962,7 +972,7 @@ async function syncCalendar(accessToken: string, connection: ConnectionRow, link
         link = await saveLink({ existing: link, entityType: item.kind, entityId: item.row.id, remoteType: 'calendar_event',
           remoteContainerId: calendarId, remoteId: remote.id, remoteEtag: remote.etag,
           remoteUpdatedAt: remote.updated, localUpdatedAt: item.row.updated_at, status: 'conflict',
-          conflict: { fields: ['title', 'date', 'time'], message: 'Changed in Amina and Google since the last sync.' } });
+          conflict: { fields: ['title', 'date', 'time'], message: 'Changed in Marina and Google since the last sync.' } });
         links.set(key, link);
         stats.conflicts += 1;
       } else if (remoteChanged) {
@@ -992,7 +1002,7 @@ async function syncCalendar(accessToken: string, connection: ConnectionRow, link
           remoteContainerId: calendarId, remoteId: remote.id, remoteEtag: remote.etag,
           remoteUpdatedAt: remote.updated, localUpdatedAt: updatedAt });
         links.set(key, link);
-        stats.calendar_items_updated_in_amina += 1;
+        stats.calendar_items_updated_in_marina += 1;
       } else if (localChanged) {
         remote = await googleApi<GoogleCalendarEvent>(accessToken,
           `${GOOGLE_CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(remote.id)}`,
@@ -1010,7 +1020,7 @@ async function syncCalendar(accessToken: string, connection: ConnectionRow, link
   for (const remote of remoteEvents) {
     if (remote.status === 'cancelled' || linkedRemoteIds.has(remote.id)) continue;
     const meta = remote.extendedProperties?.private;
-    if (meta?.aminaManaged === '1') {
+    if (meta?.marinaManaged === '1' || meta?.[`${LEGACY_BRAND}Managed`] === '1') {
       stats.skipped += 1;
       continue;
     }
@@ -1070,7 +1080,7 @@ export async function getGoogleSyncConnectionStatus() {
   return {
     connected: true as const,
     account_email: connection.account_email,
-    calendar_name: connection.calendar_name,
+    calendar_name: connection.calendar_name === `${LEGACY_LABEL} Schedule` ? 'Marina Schedule' : connection.calendar_name,
     initial_sync_complete: connection.initial_sync_complete,
     auto_sync_enabled: connection.auto_sync_enabled,
     last_synced_at: connection.last_synced_at,

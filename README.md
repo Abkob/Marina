@@ -1,6 +1,6 @@
-# Amina
+# Marina
 
-Amina is a private React/Vite workspace backed by an Express API and PostgreSQL. It can run locally as a long-lived server or on Vercel as a Vite frontend plus one serverless Express function.
+Marina is a private React/Vite workspace backed by an Express API and PostgreSQL. It can run locally as a long-lived server or on Vercel as a Vite frontend plus one serverless Express function.
 
 ## Safety model
 
@@ -10,6 +10,52 @@ Amina is a private React/Vite workspace backed by an Express API and PostgreSQL.
 - Database schema deployment and file migration are explicit, confirmation-gated commands.
 - `npm run db:check` is read-only and reports table counts, orphan relationships, extensions, and missing local files.
 - Local dumps, environment files, uploads, vault files, and temporary data are excluded from Git and Vercel builds.
+
+## iPhone Home Screen app
+
+On an iPhone, Marina opens directly to a mobile Schedule with an agenda, a tappable
+day timeline, a week strip, and a month/date picker. Open events to edit their
+date, time or duration. Open tasks to move them, block time, start focus, or use
+the existing completion flow. Desktop keeps the full weekly planning workspace.
+
+The bottom bar opens Schedule, Goals, Work and Capture. **More** is a searchable
+menu for every other page, including the phone's chronological Timeline. The
+mobile header includes workspace search and back buttons for goal, task and
+resource details. Settings uses expandable groups; Work's task picker and
+Copilot's conversation/goal panels collapse to leave room for the current task.
+Phone layouts work in portrait and landscape, respect screen safe areas, and
+keep forms and chat above the on-screen keyboard.
+
+Use the minimize/expand button beside **Today** to collapse the calendar controls.
+Compact mode starts enabled on narrow phones such as the iPhone 13 mini, removes
+the extra heading and week strip, and fits the Day timeline above the bottom bar.
+The compact setting and Day/Agenda choice are saved on the device. Tap the date
+to open the full date picker in either mode.
+
+Work excludes archived goals and every task below them. Restoring a goal makes
+its tasks available again; an existing unsaved timer can still be stopped and saved.
+
+In **Day**, hold an event briefly, then drag it to move it. Hold the top or bottom
+handle and drag to change its start or end. Hold empty time and drag to select a
+new block's length. The preview snaps to 15 minutes, scrolls near the timeline's
+edges, and saves existing blocks on release; **Undo** restores the previous time.
+Swiping horizontally changes the day, or changes the week/month when swiping
+their date pickers. Ordinary vertical scrolling and browser pinch zoom remain
+available. Locked blocks cannot be dragged, and interrupted gestures never save.
+
+After deploying, open the Vercel site in **Safari → Share → Add to Home Screen**.
+Keep **Open as Web App** enabled if shown, then tap **Add**. The icon launches
+`/?view=schedule` in standalone mode. Use the same workspace password if asked.
+Apple's [Home Screen guide](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios)
+explains the installation steps.
+
+The calendar uses the existing authenticated API and schedule timezone. It refreshes
+when reopened, when connectivity returns, and every minute while visible; a manual
+refresh is also available. An internet connection is required for loading and saving;
+no service worker caches private schedules or queues offline changes.
+
+PNG Home Screen icons are in `public/icons/`; regenerate them on Windows with
+`powershell -File scripts/generate-app-icons.ps1` after changing the icon artwork.
 
 ## Local development
 
@@ -33,14 +79,14 @@ npm run check
 Integration tests require a separate database whose name contains `test`; the guard refuses to use any other database.
 
 ```powershell
-$env:DATABASE_URL_TEST = 'postgresql://user:password@localhost:5433/amina_test'
+$env:DATABASE_URL_TEST = 'postgresql://user:password@localhost:5433/marina_test'
 npm run test:integration
 ```
 
 ## Complete database + file backups
 
 Open **Settings → Complete disaster backup → Download everything**. A successful
-`.amina-backup.zip` contains:
+`.marina-backup.zip` contains:
 
 - `database/schema.sql` and JSONL for every row in every public application table;
 - every Resource upload and task-note attachment referenced by the database;
@@ -60,7 +106,7 @@ explicitly delete it. Locally, the ZIP is written atomically under `backups/`.
 Always verify a downloaded copy before relying on it:
 
 ```powershell
-npm run backup:verify -- "C:\path\to\amina-complete-....amina-backup.zip"
+npm run backup:verify -- "C:\path\to\marina-complete-....marina-backup.zip"
 ```
 
 The equivalent local command (it creates and immediately verifies the ZIP) is:
@@ -83,7 +129,7 @@ For a local restore (files are copied to a new directory under `server/uploads/`
 ```powershell
 $env:TARGET_DATABASE_URL = 'postgresql://user:password@host/new_empty_database?sslmode=require'
 $env:CONFIRM_PORTABLE_RESTORE = '1'
-npm run backup:restore -- "C:\path\to\amina-complete-....amina-backup.zip"
+npm run backup:restore -- "C:\path\to\marina-complete-....marina-backup.zip"
 Remove-Item Env:CONFIRM_PORTABLE_RESTORE
 ```
 
@@ -107,8 +153,8 @@ Run this on the machine that still has the local database and uploads. Keep the 
 
 ```powershell
 npm run db:check
-pg_dump --format=custom --no-owner --no-acl --dbname="$env:DATABASE_URL" --file="backups/amina-before-vercel.dump"
-pg_restore --list "backups/amina-before-vercel.dump" | Select-Object -First 20
+pg_dump --format=custom --no-owner --no-acl --dbname="$env:DATABASE_URL" --file="backups/marina-before-vercel.dump"
+pg_restore --list "backups/marina-before-vercel.dump" | Select-Object -First 20
 ```
 
 Save the `db:check` JSON so source and target counts can be compared.
@@ -119,7 +165,7 @@ Create a new, empty managed PostgreSQL database that supports both `pgcrypto` an
 
 ```powershell
 $env:TARGET_DATABASE_URL = 'postgresql://user:password@managed-host/database?sslmode=require'
-pg_restore --no-owner --no-acl --dbname="$env:TARGET_DATABASE_URL" "backups/amina-before-vercel.dump"
+pg_restore --no-owner --no-acl --dbname="$env:TARGET_DATABASE_URL" "backups/marina-before-vercel.dump"
 $env:DATABASE_URL = $env:TARGET_DATABASE_URL
 npm run db:check
 ```
@@ -161,16 +207,16 @@ Import the GitHub repository and deploy the safety branch as a preview first. Se
 
 - `DATABASE_URL`, `DATABASE_POOL_MAX=3`
 - `APP_URL` (use the current preview URL during preview testing)
-- `AMINA_ACCESS_PASSWORD`, `AMINA_SESSION_SECRET`
+- `MARINA_ACCESS_PASSWORD`, `MARINA_SESSION_SECRET`
 - Optional Google sync: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
   `GOOGLE_REDIRECT_URI`, `GOOGLE_TOKEN_ENCRYPTION_KEY`,
   `GOOGLE_OAUTH_STATE_SECRET`
 - `CRON_SECRET`
 - `BLOB_READ_WRITE_TOKEN`
-- `PROVIDER_MODE=hybrid`, `GEMINI_API_KEY`, `AMINA_MAIN_MODEL`
-- `AMINA_EMBEDDING_MODEL`, `AMINA_EMBEDDING_DIMENSION`
+- `PROVIDER_MODE=hybrid`, `GEMINI_API_KEY`, `MARINA_MAIN_MODEL`
+- `MARINA_EMBEDDING_MODEL`, `MARINA_EMBEDDING_DIMENSION`
 - `ALLOW_CLOUD_RAW_TEXT=false`
-- `AMINA_AUTO_BACKUP=false`, `OBSIDIAN_VAULT_SYNC=false`
+- `MARINA_AUTO_BACKUP=false`, `OBSIDIAN_VAULT_SYNC=false`
 
 Generate secrets instead of reusing passwords:
 
@@ -202,16 +248,16 @@ Do not run `npm run migrate` for Vercel; that command is only for the old SQLite
 
 ### Google Tasks + Calendar sync
 
-The Settings page can connect one Google account. Amina creates one Google
-Tasks list per active goal, an `Amina · One-offs` list, and a dedicated
-`Amina Schedule` secondary calendar. The first sync always shows a count
+The Settings page can connect one Google account. Marina creates one Google
+Tasks list per active goal, an `Marina · One-offs` list, and a dedicated
+`Marina Schedule` secondary calendar. The first sync always shows a count
 preview and requires explicit confirmation. Google deletions never delete
-Amina rows automatically; simultaneous edits are recorded as conflicts.
-Because Google Tasks supports only one subtask level, Amina keeps the complete
+Marina rows automatically; simultaneous edits are recorded as conflicts.
+Because Google Tasks supports only one subtask level, Marina keeps the complete
 task tree locally and projects each root plus its actionable leaf descendants
 into Google. Intermediate parents reappear after their unfinished descendants
 are completed. Flattened leaves are named `Parent: Child` in Google, and every
-projected leaf carries its full Amina path in notes.
+projected leaf carries its full Marina path in notes.
 
 In Google Cloud, enable the Google Tasks API and Google Calendar API, then
 create an OAuth 2.0 Web application with this redirect URI:
@@ -220,10 +266,10 @@ create an OAuth 2.0 Web application with this redirect URI:
 https://your-project.vercel.app/api/google/oauth/callback
 ```
 
-Use the least-privilege Tasks scope and `calendar.app.created`; Amina can only
+Use the least-privilege Tasks scope and `calendar.app.created`; Marina can only
 manage the secondary calendar it creates. Google Tasks does not provide push
 notifications, so the open app polls every two minutes and syncs immediately
-after Amina edits. Portable Amina backups intentionally omit Google OAuth
+after Marina edits. Portable Marina backups intentionally omit Google OAuth
 tokens and remote mapping IDs; reconnect Google after a restore.
 
 ## Operational limits

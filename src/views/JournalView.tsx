@@ -1,3 +1,4 @@
+import { usePersistentDraft } from '../hooks/usePersistentDraft';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Circle, RefreshCw, Trash2, Link2, X, Check } from 'lucide-react';
@@ -100,7 +101,7 @@ function EntryLinks({ entryId }: { entryId: string }) {
       {!links?.length
         ? <p className="text-xs text-gray-500 italic">No linked entities yet — AI extraction adds them, or link manually below.</p>
         : (
-          <table className="w-full text-[11px] font-mono border-collapse mt-1">
+          <div className="overflow-x-auto" role="region" aria-label="Journal linked records" tabIndex={0}><table className="w-full text-[11px] font-mono border-collapse mt-1">
             <thead>
               <tr className="text-gray-500 text-left">
                 <th className="pb-1 pr-3 font-normal">Type</th>
@@ -138,7 +139,7 @@ function EntryLinks({ entryId }: { entryId: string }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       <ManualLinkAdder entryId={entryId} onLinked={() => refetch()} />
     </>
@@ -342,8 +343,8 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
 }
 
 export function JournalView() {
-  const [text, setText] = useState('');
-  const [entryDate, setEntryDate] = useState(() => localToday());
+  const [text, setText] = usePersistentDraft('journal');
+  const [entryDate, setEntryDate] = usePersistentDraft('journal-date');
   const [submitting, setSubmitting] = useState(false);
   const [range, setRange] = useState<'7d' | '30d' | 'all'>('30d');
   const [jumpDate, setJumpDate] = useState('');
@@ -356,10 +357,10 @@ export function JournalView() {
     if (!text.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await apiPost('/api/journal', { raw_text: text.trim(), entry_date: entryDate });
+      await apiPost('/api/journal', { raw_text: text.trim(), entry_date: entryDate || localToday() });
       setText('');
       invalidate.journal();
-      triggerToast(entryDate === localToday()
+      triggerToast(!entryDate || entryDate === localToday()
         ? 'Logged — AI is extracting tasks, links, and time…'
         : `Logged for ${entryDate} — AI is extracting…`, 'success');
     } catch (err) {
@@ -387,11 +388,11 @@ export function JournalView() {
   const hiddenCount = (entries?.length ?? 0) - filtered.length;
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+    <div className="mobile-journal max-w-2xl mx-auto px-4 py-6 space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="font-headline text-2xl font-bold text-white mb-1">Journal</h1>
-          <p className="text-sm text-gray-500">Every day is a book. The AI extracts tasks, links, and time from every entry.</p>
+          <p className="text-sm text-gray-500">Keep a record of your day and what you worked on.</p>
         </div>
       </div>
 
@@ -411,13 +412,13 @@ export function JournalView() {
             <input
               aria-label="Journal entry date"
               type="date"
-              value={entryDate}
+              value={entryDate || localToday()}
               max={localToday()}
               onChange={e => setEntryDate(e.target.value || localToday())}
               className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-indigo-500"
               title="Log for a different day (backdate)"
             />
-            {entryDate !== localToday() && (
+            {entryDate && entryDate !== localToday() && (
               <button onClick={() => setEntryDate(localToday())} className="text-[10px] font-mono text-indigo-400 hover:underline" aria-label="Set journal date to today">today</button>
             )}
             <span className="text-[10px] font-mono text-gray-600 hidden sm:inline">Cmd+Enter to log</span>

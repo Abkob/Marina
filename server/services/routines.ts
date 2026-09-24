@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { activeGoalSql } from '../utils/archiveVisibility.js';
 import { z } from 'zod';
 import { query, transaction } from '../db.js';
 import type { DBRoutine, DBRoutineEntry } from '../../src/types/routines.js';
@@ -51,7 +52,7 @@ export function isRoutinesSchemaMissing(error: unknown): boolean {
 }
 
 export async function listRoutines(): Promise<DBRoutine[]> {
-  const { rows } = await query('SELECT * FROM routines ORDER BY created_at, id');
+  const { rows } = await query(`SELECT * FROM routines WHERE ${activeGoalSql()} ORDER BY created_at, id`);
   return rows as unknown as DBRoutine[];
 }
 

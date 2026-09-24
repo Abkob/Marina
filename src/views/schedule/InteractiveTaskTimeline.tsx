@@ -202,13 +202,13 @@ export function InteractiveTaskTimeline({ diagnostics, taskLookup, goalTitles, a
   const explanation = !selectedDiagnostic || !step
     ? ''
     : isUnknown
-      ? 'Amina knows the date, but not the size of the work. Add even a rough estimate to unlock the time calculation.'
+      ? 'Marina knows the date, but not the size of the work. Add even a rough estimate to unlock the time calculation.'
       : step.kind === 'start'
         ? isOverdue
           ? `Today arrived with ${duration(step.remaining)} still unfinished. Because the deadline is already behind us, no future work can make that old cutoff feasible.`
           : `${duration(step.remaining)} is unscheduled at the starting line. Move forward to see exactly how each work slice reduces it.`
         : step.kind === 'work'
-          ? `On ${dateLabel(step.date, true)}, Amina gives this task ${duration(step.allocated)}. The amount left falls from ${duration(step.before)} to ${duration(step.remaining)}.`
+          ? `On ${dateLabel(step.date, true)}, Marina gives this task ${duration(step.allocated)}. The amount left falls from ${duration(step.before)} to ${duration(step.remaining)}.`
           : isOverflow
             ? `The cutoff arrives with ${duration(step.remaining)} unfinished. That remaining red amount is exactly why the whole schedule is marked impossible.`
             : step.remaining === 0

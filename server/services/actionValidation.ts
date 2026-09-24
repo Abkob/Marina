@@ -5,7 +5,7 @@ import { z } from 'zod';
 // schemas reject unknown action types and unknown fields before anything is
 // stored as a proposal.
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD');
+const isoDate = z.iso.date({ error: 'must be a valid YYYY-MM-DD date' });
 // Long-running study/research tasks already exist in the product and are
 // intentionally split across many sessions. The old 24-hour cap rejected
 // legitimate updates such as "this task needs 60 hours".
@@ -92,6 +92,7 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
   // a day, or "the next N hours" (resolved against the server clock).
   plan_schedule: z.object({
     task_id: z.string().min(1).optional(),
+    task_ids: z.array(z.string().min(1)).min(1).max(30).optional(),
     max_daily_minutes: z.number().int().min(15).max(960).optional(),
     horizon_days: z.number().int().min(1).max(90).optional(),
     from_date: isoDate.optional(),

@@ -84,45 +84,45 @@ function SingleDayPlanAgenda({ plan, blocks, status, busy, onApply, onDiscard, o
   const total = active.reduce((sum, block) => sum + (block.planned_minutes ?? Math.round(block.duration_hours * 60)), 0);
   const interactive = status === 'pending';
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-indigo-400/20 bg-[#111120] text-left shadow-xl shadow-black/20">
-      <div className="flex items-center gap-3 border-b border-white/8 bg-indigo-500/[0.07] px-4 py-3.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-200"><Clock3 size={16} /></span>
+    <div className="mt-2 overflow-hidden rounded-2xl border border-indigo-400/20 bg-white text-left shadow-sm">
+      <div className="flex items-center gap-3 border-b border-slate-200 bg-indigo-500/[0.07] px-4 py-3.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-700"><Clock3 size={16} /></span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-white">{parseLocalDate(plan.from).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
-          <p className="mt-0.5 text-[11px] text-gray-400">{active.length} block{active.length !== 1 ? 's' : ''} · {fmtMins(total)} planned</p>
+          <p className="text-sm font-bold text-slate-900">{parseLocalDate(plan.from).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">{active.length} block{active.length !== 1 ? 's' : ''} · {fmtMins(total)} planned</p>
         </div>
-        <span className={`rounded-full border px-2 py-1 font-mono text-[9px] font-bold uppercase ${plan.scheduler.status === 'feasible' ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/20 bg-amber-500/10 text-amber-200'}`}>{plan.scheduler.status}</span>
+        <span className={`rounded-full border px-2 py-1 font-mono text-[9px] font-bold uppercase ${plan.scheduler.status === 'feasible' ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-700' : 'border-amber-400/20 bg-amber-500/10 text-amber-700'}`}>{plan.scheduler.status}</span>
       </div>
       <div className="space-y-2 p-3">
         {active.map(block => (
-          <div key={`${block.index}-${block.task_id ?? block.title}`} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.035] px-3 py-3">
+          <div key={`${block.index}-${block.task_id ?? block.title}`} className="copilot-plan-block flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
             <div className="w-24 shrink-0">
-              <p className="font-mono text-[11px] font-bold text-indigo-200">{fmtTimeRange(block.start_hour, block.duration_hours)}</p>
-              <p className="mt-0.5 font-mono text-[9px] text-gray-500">{fmtMins(block.planned_minutes ?? Math.round(block.duration_hours * 60))}</p>
+              <p className="font-mono text-[11px] font-bold text-indigo-700">{fmtTimeRange(block.start_hour, block.duration_hours)}</p>
+              <p className="mt-0.5 font-mono text-[9px] text-slate-500">{fmtMins(block.planned_minutes ?? Math.round(block.duration_hours * 60))}</p>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-gray-100">{block.title}</p>
-              {block.due_date && <p className="mt-0.5 text-[10px] text-gray-500">Due {fmtShortDate(block.due_date)}</p>}
+              <p className="truncate text-[13px] font-semibold text-slate-900">{block.title}</p>
+              {block.due_date && <p className="mt-0.5 text-[10px] text-slate-500">Due {fmtShortDate(block.due_date)}</p>}
             </div>
             {interactive && <div className="flex items-center gap-1">
-              <button onClick={() => onMove(block.index, block.date, snapHour(Math.max(0, block.start_hour - 0.5)))} className="rounded-lg border border-white/8 bg-white/5 px-2 py-1 text-[10px] text-gray-400 hover:text-white">−30m</button>
-              <button onClick={() => onMove(block.index, block.date, snapHour(Math.min(23.5, block.start_hour + 0.5)))} className="rounded-lg border border-white/8 bg-white/5 px-2 py-1 text-[10px] text-gray-400 hover:text-white">+30m</button>
-              <button onClick={() => onRemove(block.index)} className="rounded-lg p-1.5 text-gray-500 hover:bg-red-500/10 hover:text-red-300"><X size={13} /></button>
+              <button onClick={() => onMove(block.index, block.date, snapHour(Math.max(0, block.start_hour - 0.5)))} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-500 hover:text-slate-900">−30m</button>
+              <button onClick={() => onMove(block.index, block.date, snapHour(Math.min(23.5, block.start_hour + 0.5)))} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-500 hover:text-slate-900">+30m</button>
+              <button onClick={() => onRemove(block.index)} aria-label={`Remove ${block.title} from plan`} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-500/10 hover:text-red-700"><X size={13} /></button>
             </div>}
           </div>
         ))}
-        {!active.length && <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-gray-500">No work fits in this window.</div>}
+        {!active.length && <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">No work fits in this window.</div>}
         {plan.unplaced.length > 0 && <div className="rounded-xl border border-amber-400/15 bg-amber-500/[0.06] p-3">
-          <p className="text-[11px] font-semibold text-amber-200">Still unplaced</p>
-          {plan.unplaced.slice(0, 5).map(item => <div key={item.task_id} className="mt-1.5 flex gap-2 text-[11px] text-gray-400"><span className="min-w-0 flex-1 truncate">{item.title}</span><span className="font-mono">{fmtMins(item.minutes)}</span></div>)}
+          <p className="text-[11px] font-semibold text-amber-700">Still unplaced</p>
+          {plan.unplaced.slice(0, 5).map(item => <div key={item.task_id} className="mt-1.5 flex gap-2 text-[11px] text-slate-500"><span className="min-w-0 flex-1 truncate">{item.title}</span><span className="font-mono">{fmtMins(item.minutes)}</span></div>)}
         </div>}
       </div>
-      <div className="flex items-center gap-2 border-t border-white/8 px-4 py-3">
+      <div className="flex items-center gap-2 border-t border-slate-200 px-4 py-3">
         {interactive ? <>
-          <button onClick={onApply} disabled={busy || !active.length} className="flex items-center gap-1.5 rounded-lg bg-indigo-500 px-3.5 py-2 text-[11px] font-semibold text-white hover:bg-indigo-400 disabled:opacity-40"><Check size={13} /> Apply {active.length} block{active.length !== 1 ? 's' : ''}</button>
-          <button onClick={onDiscard} disabled={busy} className="rounded-lg px-3 py-2 text-[11px] font-medium text-gray-400 hover:bg-white/5 hover:text-white">Discard</button>
-          {removed > 0 && <button onClick={onRestore} className="ml-auto text-[10px] text-indigo-300">Restore {removed}</button>}
-        </> : <p className="text-[11px] text-gray-400">{status === 'applied' ? 'Added to your schedule' : 'Proposal discarded'}</p>}
+          <button onClick={onApply} disabled={busy || !active.length} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-40"><Check size={13} /> Apply {active.length} block{active.length !== 1 ? 's' : ''}</button>
+          <button onClick={onDiscard} disabled={busy} className="rounded-lg px-3 py-2 text-[11px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900">Discard</button>
+          {removed > 0 && <button onClick={onRestore} className="ml-auto text-[10px] text-indigo-700">Restore {removed}</button>}
+        </> : <p className="text-[11px] text-slate-500">{status === 'applied' ? 'Added to your schedule' : 'Proposal discarded'}</p>}
       </div>
     </div>
   );

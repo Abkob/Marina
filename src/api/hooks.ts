@@ -914,6 +914,8 @@ export function useInvalidate() {
 
   return {
     goals: () => {
+      // Goal archive/restore affects all active lists and linked recommendations.
+      void qc.invalidateQueries();
       qc.invalidateQueries({ queryKey: ['goals'] });
       qc.invalidateQueries({ queryKey: ['goals-health'] });
       invalidateSchedulePreview();

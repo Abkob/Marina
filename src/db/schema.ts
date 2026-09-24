@@ -40,7 +40,7 @@ export interface DBGoal {
   hard_deadline?: string | null;       // when it MUST be done
   deadline_type?: 'soft' | 'hard' | 'estimated' | null;
   deadline_confidence?: 'low' | 'medium' | 'high' | null;
-  scheduling_enabled?: boolean;        // may Amina place this on the calendar
+  scheduling_enabled?: boolean;        // may Marina place this on the calendar
   estimated_minutes?: number | null;
   plan_status?: PlanStatus;
 }

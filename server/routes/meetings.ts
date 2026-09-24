@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeMeetingSql } from '../utils/archiveVisibility.js';
 import { query, transaction } from '../db.js';
 
 const router = Router();
@@ -8,7 +9,7 @@ router.get('/', async (req, res) => {
   const { goal_id } = req.query;
   const { rows } = goal_id
     ? await query('SELECT * FROM meetings WHERE goal_id=$1 ORDER BY scheduled_at ASC', [goal_id])
-    : await query('SELECT * FROM meetings ORDER BY scheduled_at ASC LIMIT 500');
+    : await query(`SELECT * FROM meetings WHERE ${activeMeetingSql()} ORDER BY scheduled_at ASC LIMIT 500`);
   res.json(rows);
 });
 

@@ -1,7 +1,7 @@
 // Production guard — called before every AI provider call.
 // Throws if the context contains data that must never leave the server.
 
-export function assertSafeAIContext(ctx: unknown): void {
+export function assertSafeAIContext(ctx: unknown, maxChars = 50_000): void {
   const str = JSON.stringify(ctx);
 
   // Raw journal text must never appear in AI context
@@ -24,7 +24,7 @@ export function assertSafeAIContext(ctx: unknown): void {
   if (/"archived_at"\s*:\s*"\d{4}/.test(str)) {
     throw new Error('Context safety: archived_at present — archived goals must be filtered out');
   }
-  if (str.length >= 50_000) {
-    throw new Error(`Context safety: context too large (${str.length} chars, limit 50,000)`);
+  if (str.length >= maxChars) {
+    throw new Error(`Context safety: context too large (${str.length} chars, limit ${maxChars.toLocaleString('en-US')})`);
   }
 }

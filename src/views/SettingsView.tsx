@@ -1,3 +1,5 @@
+import { MobileSettingsSection } from '../components/MobileSettingsSection';
+import { MobileDisplaySettings } from '../components/MobileDisplaySettings';
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Calendar, AlertTriangle, CheckCircle, Info, Database, RefreshCw, Download, ShieldCheck } from 'lucide-react';
@@ -367,7 +369,7 @@ function SchedulePrefsSection({ onSave }: { onSave: (msg: string) => void }) {
         {/* Work days */}
         <div>
           <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-2">Work Days</label>
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {DAYS.map((label, i) => {
               const val = i + 1;
               return (
@@ -389,7 +391,7 @@ function SchedulePrefsSection({ onSave }: { onSave: (msg: string) => void }) {
         </div>
 
         {/* Work hours */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label htmlFor="settings-work-start" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Start Time</label>
             <input id="settings-work-start" type="time" value={workStart} onChange={e => setWorkStart(e.target.value)}
@@ -403,7 +405,7 @@ function SchedulePrefsSection({ onSave }: { onSave: (msg: string) => void }) {
         </div>
 
         {/* Deep work window */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label htmlFor="settings-deep-start" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Deep Work Start</label>
             <input id="settings-deep-start" type="time" value={deepStart} onChange={e => setDeepStart(e.target.value)}
@@ -867,7 +869,7 @@ function DBInventorySection() {
       {!data && !loading && <p className="text-xs text-gray-400">No data yet.</p>}
       {loading && <p className="text-xs text-gray-400">Loading…</p>}
       {data && (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
           {rows.map(r => (
             <div key={r.key} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
               <span className="text-[11px] text-gray-600">{r.label}</span>
@@ -978,7 +980,7 @@ function GoogleWorkspaceSection() {
   };
 
   const disconnect = () => {
-    showConfirm('Disconnect Google? Amina will keep all of your Google tasks and calendar events, but live updates will stop.', async () => {
+    showConfirm('Disconnect Google? Marina will keep all of your Google tasks and calendar events, but live updates will stop.', async () => {
       setBusy('disconnect');
       try {
         await apiFetch('/api/google/connection', { method: 'DELETE' });
@@ -1006,7 +1008,7 @@ function GoogleWorkspaceSection() {
             <div>
               <h3 className="text-sm font-black text-slate-900">Google Tasks + Calendar</h3>
               <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-500">
-                Amina stays the organized home. Google becomes the always-available copy you can check and update anywhere.
+                Marina stays the organized home. Google becomes the always-available copy you can check and update anywhere.
               </p>
             </div>
           </div>
@@ -1022,9 +1024,9 @@ function GoogleWorkspaceSection() {
         <div className="grid gap-2 sm:grid-cols-2">
           {[
             ['Goals', 'One Google Tasks list per goal'],
-            ['Tasks', 'Flattened leaves appear as Parent: Child; full paths stay in Amina'],
-            ['One-offs', 'Collected in an Amina · One-offs list'],
-            ['Schedule', 'Focus blocks and meetings use Amina Schedule'],
+            ['Tasks', 'Flattened leaves appear as Parent: Child; full paths stay in Marina'],
+            ['One-offs', 'Collected in an Marina · One-offs list'],
+            ['Schedule', 'Focus blocks and meetings use Marina Schedule'],
             ['All-day work', 'Tasks without a time stay as all-day items'],
             ['Changes', 'Dates, titles, completion, and time edits sync back'],
           ].map(([label, text]) => (
@@ -1076,7 +1078,7 @@ function GoogleWorkspaceSection() {
                       ))}
                     </div>
                     <p className="mt-3 text-[11px] leading-relaxed text-indigo-800">
-                      First sync creates dedicated Amina lists and one Amina Schedule calendar. It never deletes existing Google or Amina data.
+                      First sync creates dedicated Marina lists and one Marina Schedule calendar. It never deletes existing Google or Marina data.
                     </p>
                     <button
                       type="button"
@@ -1094,7 +1096,7 @@ function GoogleWorkspaceSection() {
               <div className="rounded-xl border border-slate-200 p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold text-slate-800">{status.calendar_name || 'Amina Schedule'}</p>
+                    <p className="text-xs font-bold text-slate-800">{status.calendar_name || 'Marina Schedule'}</p>
                     <p className="mt-0.5 text-[11px] text-slate-500">
                       {status.sync_running ? 'Syncing now…' : lastSync ? `Last synced ${lastSync}` : 'Ready for the first update'}
                       {status.conflicts ? ` · ${status.conflicts} conflict${status.conflicts === 1 ? '' : 's'} need review` : ''}
@@ -1123,7 +1125,7 @@ function GoogleWorkspaceSection() {
                   disabled={busy !== null || !status.initial_sync_complete}
                   className="h-4 w-4 accent-blue-600"
                 />
-                Live sync while Amina is open
+                Live sync while Marina is open
               </label>
               <button type="button" onClick={disconnect} disabled={busy !== null} className="text-[11px] font-semibold text-slate-400 hover:text-red-600 disabled:opacity-40">
                 Disconnect Google
@@ -1134,7 +1136,7 @@ function GoogleWorkspaceSection() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3.5">
             <div>
               <p className="text-xs font-bold text-slate-800">Connect your Google account</p>
-              <p className="mt-0.5 text-[11px] text-slate-500">You will approve Google Tasks and Amina’s own secondary calendar.</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">You will approve Google Tasks and Marina’s own secondary calendar.</p>
             </div>
             <button
               type="button"
@@ -1149,7 +1151,7 @@ function GoogleWorkspaceSection() {
         )}
 
         <p className="text-[10px] leading-relaxed text-slate-400">
-          Google Calendar supports fast change notifications. Google Tasks currently requires polling, so Amina checks about every two minutes while open and immediately after your Amina edits. Google deletions never delete Amina data automatically.
+          Google Calendar supports fast change notifications. Google Tasks currently requires polling, so Marina checks about every two minutes while open and immediately after your Marina edits. Google deletions never delete Marina data automatically.
         </p>
       </div>
     </section>
@@ -1195,23 +1197,29 @@ export function SettingsView() {
   return (
     <div className="max-w-[700px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
       <div className="mb-8 border-b border-gray-100 pb-4">
-        <h2 className="font-headline text-2xl font-black text-black mb-1">Marina OS Preferences</h2>
+        <h2 className="font-headline text-2xl font-black text-black mb-1">Settings</h2>
         <p className="text-sm text-gray-500">
-          Configure personal co-pilot workspace triggers, prompt models, and storage.
+          Your schedule, connected accounts and workspace preferences.
         </p>
       </div>
 
       <div className="space-y-6">
-        {/* Work Schedule */}
+        <MobileDisplaySettings />
+        <MobileSettingsSection title="Your schedule" description="Working hours and day overrides">
+{/* Work Schedule */}
         <SchedulePrefsSection onSave={msg => triggerToast(msg, 'success')} />
 
         {/* Schedule Day Overrides */}
         <ScheduleOverridesSection onSave={(msg, type) => triggerToast(msg, type ?? 'success')} />
 
-        {/* Google Tasks + Calendar */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Connected accounts" description="Google Calendar and Tasks" defaultOpen={false}>
+{/* Google Tasks + Calendar */}
         <GoogleWorkspaceSection />
 
-        {/* Copilot Metadata */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Copilot" description="Model and workspace status" defaultOpen={false}>
+{/* Copilot Metadata */}
         <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
           <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-black mb-3">
             Copilot Metadata
@@ -1264,7 +1272,9 @@ export function SettingsView() {
           </div>
         </div>
 
-        {/* Goal Umbrellas */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Organization" description="Goal categories and entity names" defaultOpen={false}>
+{/* Goal Umbrellas */}
         <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
           <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-black mb-3">Goal Umbrellas</h3>
 
@@ -1275,7 +1285,7 @@ export function SettingsView() {
               value={categoryInput}
               onChange={(e) => setCategoryInput(e.target.value)}
               placeholder="New umbrella"
-              className="flex-1 text-xs font-sans rounded-lg border border-gray-200 p-2.5 focus:ring-1 focus:ring-black outline-none"
+              className="min-w-0 flex-1 text-xs font-sans rounded-lg border border-gray-200 p-2.5 focus:ring-1 focus:ring-black outline-none"
             />
             <button
               type="submit"
@@ -1312,7 +1322,9 @@ export function SettingsView() {
         {/* Entity Aliases */}
         <EntityAliasesSection />
 
-        {/* Data Readiness */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Data and backups" description="Storage, backups and data health" defaultOpen={false}>
+{/* Data Readiness */}
         <DataReadinessSection />
 
         {/* DB Inventory */}
@@ -1320,6 +1332,8 @@ export function SettingsView() {
         <BackupsSection />
         <DBInventorySection />
 
+        </MobileSettingsSection>
+        <MobileSettingsSection title="About Marina" description="Technical information" defaultOpen={false}>
         {/* Tech Stack */}
         <div className="bg-[#EEF2FF] border border-[#4648d4]/10 p-5 rounded-xl">
           <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-[#4648d4] mb-3">Tech Stack</h3>
@@ -1340,6 +1354,7 @@ export function SettingsView() {
             ))}
           </div>
         </div>
+        </MobileSettingsSection>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -18,10 +19,11 @@ import { uploadResourceFile } from '../db/queries/resources';
 function Bench({ icon: Icon, title, subtitle, children }: {
   icon: typeof Activity; title: string; subtitle: string; children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const mobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [open, setOpen] = useState(!mobile);
   return (
     <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 text-left">
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${title}`} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 text-left">
         <Icon size={15} className="text-[#4648d4] shrink-0" />
         <span className="text-[13px] font-bold text-gray-900">{title}</span>
         <span className="text-[11px] text-gray-400 flex-1 truncate">{subtitle}</span>
@@ -490,10 +492,10 @@ export function TestingView() {
     <div className="max-w-[900px] mx-auto px-4 md:px-10 py-6 animate-fade-in space-y-4">
       <div>
         <h2 className="font-headline text-2xl font-bold text-black flex items-center gap-2">
-          <FlaskConical size={20} /> Testing
+          <FlaskConical size={20} /> Diagnostics
         </h2>
         <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mt-1">
-          Manual workbench — every button hits the real production pipeline
+          Check connections and troubleshoot your workspace.
         </p>
       </div>
       <SystemBench />

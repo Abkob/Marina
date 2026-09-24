@@ -1,4 +1,5 @@
 import { query } from '../db.js';
+import { activeResourceSql } from '../utils/archiveVisibility.js';
 
 export interface ResearchEvidence {
   paper_id: string;
@@ -28,6 +29,7 @@ export async function searchResearchEvidence(text: string, limit = 8): Promise<R
        FROM research_papers rp
        JOIN resources r ON r.id = rp.resource_id
        JOIN resource_chunks rc ON rc.resource_id = r.id
+      WHERE ${activeResourceSql('r.id')}
       ORDER BY r.updated_at DESC NULLS LAST, rc.chunk_index ASC
       LIMIT 1000`,
   );

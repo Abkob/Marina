@@ -203,6 +203,8 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
   };
 
   const save = async () => {
+    if (!date) { triggerToast('Choose a date for this block.', 'error'); return; }
+    if (startHour + duration > 24) { triggerToast('This block must end by midnight. Shorten it or choose an earlier start.', 'error'); return; }
     const finalTitle = title.trim() || linked?.title || 'Untitled block';
     const { week_start, day_index } = dateToWeekPos(date);
     setBusy(true);
@@ -277,7 +279,7 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
       onClose={onClose}
       titleId="event-composer-title"
       overlayClassName="bg-black/40"
-      className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
+      className="mobile-sheet w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
     >
         <h2 id="event-composer-title" className="sr-only">
           {isEdit ? 'Edit calendar block' : 'Add calendar block'}
@@ -295,7 +297,7 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
           <button
             onClick={onClose}
             aria-label="Close calendar block editor"
-            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-black"
+            className="mt-1 flex h-11 w-11 md:h-8 md:w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-black"
           >
             <X size={16} />
           </button>
@@ -303,10 +305,12 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
 
         <div className="space-y-3">
           {/* When */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Clock size={14} className="shrink-0 text-gray-400" />
+            <input aria-label="Block date" type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="min-w-0 max-w-full rounded-lg border border-gray-200 bg-white p-1.5 outline-none focus:ring-1 focus:ring-[#4648d4] md:hidden" />
             <select aria-label="Block day" value={date} onChange={e => setDate(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-[#4648d4]">
+              className="hidden rounded-lg border border-gray-200 bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-[#4648d4] md:block">
               {(days.includes(date) ? days : [date, ...days]).map(d => <option key={d} value={d}>{fmtDayOption(d)}</option>)}
             </select>
             <select aria-label="Block start time" value={startHour} onChange={e => setStartHour(Number(e.target.value))}
@@ -327,7 +331,7 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
           )}
 
           {/* Type */}
-          <div className="flex items-center gap-1.5 pl-6">
+          <div className="flex flex-wrap items-center gap-1.5 pl-6">
             {TYPES.map(t => (
               <button
                 key={t}

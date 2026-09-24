@@ -21,9 +21,9 @@ describe.skipIf(SKIP_INTEGRATION)('complete portable backup (integration)', () =
 
   beforeAll(async () => {
     await startTestServer();
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'amina-portable-test-'));
+    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'marina-portable-test-'));
     sourceFile = path.join(tempDir, 'proof.txt');
-    archiveFile = path.join(tempDir, 'proof.amina-backup.zip');
+    archiveFile = path.join(tempDir, 'proof.marina-backup.zip');
     await fsp.writeFile(sourceFile, 'portable backup file proof\n', 'utf8');
     const { query } = await import('../db.js');
     const now = new Date().toISOString();

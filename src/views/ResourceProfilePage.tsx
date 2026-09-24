@@ -1,3 +1,4 @@
+import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useEffect, useState } from 'react';
 import { ChevronLeft, Trash2 } from 'lucide-react';
 import {
@@ -86,9 +87,10 @@ export function ResourceProfilePage({ resourceId }: { resourceId: string }) {
     // Find the task's goal from graph data
     const taskNode = graphData.nodes.find(n => n.id === taskId);
     const goalId   = taskNode?.meta?.goal_id as string | undefined;
-    if (goalId) setSelectedGoalId(goalId);
-    setFocusedTaskId(taskId);
-    setCurrentTab('Goals');
+    if (goalId) {
+      navigateToGoal(goalId);
+      setFocusedTaskId(taskId);
+    }
   };
 
   const handleGoalClick = (goalId: string) => {
@@ -118,7 +120,7 @@ export function ResourceProfilePage({ resourceId }: { resourceId: string }) {
       <div className="flex items-center gap-2 px-8 pt-5 pb-2">
         <button
           onClick={() => setFocusedResourceId(null)}
-          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest
+          className="mobile-duplicate-back inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest
             text-gray-400 hover:text-gray-700 transition-colors"
           aria-label="back to library"
         >
@@ -169,14 +171,14 @@ export function ResourceProfilePage({ resourceId }: { resourceId: string }) {
       )}
 
       {/* Stats bar */}
-      <ResourceStatsBar stats={stats} />
+      <MobileDisclosure title="Reading activity" storageKey="resource-activity"><ResourceStatsBar stats={stats} /><ResourceActivityChart logs={logs} refs={refs} /></MobileDisclosure>
 
       <div className="px-8 pb-10 space-y-8">
         {/* Activity chart */}
-        <ResourceActivityChart logs={logs} refs={refs} />
+
 
         {/* Connection graph */}
-        <div>
+        <MobileDisclosure title="Connections" storageKey="resource-connections"><div>
           <p className="mb-3 font-mono text-[9px] font-bold uppercase tracking-widest text-gray-400">
             Connection Graph
           </p>
@@ -185,7 +187,7 @@ export function ResourceProfilePage({ resourceId }: { resourceId: string }) {
             onTaskClick={handleTaskClick}
             onResourceClick={handleResourceClick}
           />
-        </div>
+        </div></MobileDisclosure>
 
         {/* Two-column content */}
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">

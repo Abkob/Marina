@@ -27,8 +27,8 @@ export class MarinaDB extends Dexie {
   tags!:        EntityTable<DBTag,        'id'>;
   entity_tags!: EntityTable<DBEntityTag,  'id'>;
 
-  constructor() {
-    super('amina-os-v3');
+  constructor(name = 'marina-os-v3') {
+    super(name);
 
     this.version(1).stores({
       // Primary key first, then all indexed columns
@@ -122,7 +122,27 @@ export class MarinaDB extends Dexie {
       tags:            'id, &name',
       entity_tags:     'id, entity_id, tag_id, [entity_id+entity_type]',
     });
+    this.version(5).stores({ brand_migrations: 'id' });
   }
 }
 
 export const db = new MarinaDB();
+db.on('ready', async () => {
+  const legacyName = 'amina-os-v3';
+  if (await db.table('brand_migrations').get('device-brand')) return;
+  if (!await Dexie.exists(legacyName)) return;
+  const legacy = new Dexie(legacyName);
+  try {
+    await legacy.open();
+    const copies = await Promise.all(legacy.tables.filter(table => table.name !== 'brand_migrations').map(async table => ({ name: table.name, rows: await table.toArray() })));
+    await db.transaction('rw', db.tables, async () => {
+      for (const { name, rows } of copies) {
+        const table = db.table(name);
+        const existing = new Set(await table.toCollection().primaryKeys());
+        const missing = rows.filter(row => !existing.has(row.id));
+        if (missing.length) await table.bulkAdd(missing);
+      }
+      await db.table('brand_migrations').put({ id: 'device-brand' });
+    });
+  } finally { legacy.close(); }
+});

@@ -3,26 +3,27 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkView } from '../WorkView';
 import { readActiveWorkTimer, writeActiveWorkTimer, type ActiveWorkTimer } from '../../utils/workTimer';
+import type { DBGoal, DBTask } from '../../db/schema';
 
 const mocks = vi.hoisted(() => ({
   post: vi.fn(), create: vi.fn(), invalidate: vi.fn(), toast: vi.fn(), navigate: vi.fn(), confirm: vi.fn(),
-  tasks: [] as { id: string; title: string; status: string; completed: boolean }[],
+  tasks: [] as DBTask[], goals: [] as DBGoal[], selected: 'task-1' as string | null, select: vi.fn(), goalsLoading: false,
 }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: mocks.invalidate }) }));
 vi.mock('../../api/hooks', () => ({
   useAllTasks: () => ({ data: mocks.tasks }),
-  useGoals: () => ({ data: [{ id: 'physics', title: 'Physics 210' }] }),
-  useTask: () => ({ data: mocks.tasks[0] }),
+  useAllGoals: () => ({ data: mocks.goalsLoading ? [] : mocks.goals, isPlaceholderData: mocks.goalsLoading }),
+  useTask: () => ({ data: mocks.tasks.find(task => task.id === mocks.selected) }),
   useTaskNotes: () => ({ data: [] }), useTaskWorkSessions: () => ({ data: [] }),
   useCreateWorkSession: () => ({ mutateAsync: mocks.create }),
   useDeleteWorkSession: () => ({ mutateAsync: vi.fn() }),
   useInvalidate: () => ({}), useNoteFiles: () => ({ data: [] }),
 }));
 vi.mock('../../store/useAppStore', () => ({
-  useAppStore: () => ({ workTaskId: 'task-1', setWorkTaskId: vi.fn(), triggerToast: mocks.toast, showConfirm: mocks.confirm, setCurrentTab: mocks.navigate }),
+  useAppStore: () => ({ workTaskId: mocks.selected, setWorkTaskId: mocks.select, triggerToast: mocks.toast, showConfirm: mocks.confirm, setCurrentTab: mocks.navigate }),
 }));
 vi.mock('../../utils/apiFetch', () => ({ apiPost: mocks.post }));
-vi.mock('../../components/TaskTree', () => ({ TaskTree: () => <div>Task choices</div> }));
+vi.mock('../../components/TaskTree', () => ({ TaskTree: ({ tasks }: { tasks: DBTask[] }) => <div aria-label="Task choices">{tasks.map(task => <span key={task.id}>{task.title}</span>)}</div> }));
 vi.mock('../../components/EntityTopicChips', () => ({ EntityTopicChips: () => null }));
 vi.mock('../../components/FileViewerModal', () => ({ FileViewerModal: () => null }));
 vi.mock('../../db/queries/tasks', () => ({ addTaskNote: vi.fn(), deleteTaskNote: vi.fn(), toggleTask: vi.fn(), touchTask: vi.fn().mockResolvedValue(undefined) }));
@@ -49,8 +50,47 @@ describe('routine focus in Work', () => {
       },
     });
     mocks.tasks = [];
+    mocks.goals = [{ id: 'physics', title: 'Physics 210' } as DBGoal];
+    mocks.selected = 'task-1';
+    mocks.goalsLoading = false;
     mocks.post.mockResolvedValue({ minutes: 20 });
     mocks.create.mockResolvedValue({ id: 'saved-task-session' });
+  });
+
+  it('removes an archived branch and replaces its persisted Work selection without discarding an unsaved timer', () => {
+    mocks.tasks = [
+      { id: 'parent', goal_id: 'physics', title: 'Archived parent', kind: 'critical_path' },
+      { id: 'task-1', goal_id: null, parent_task_id: 'parent', title: 'Archived child', status: 'todo', kind: 'manual' },
+      { id: 'active', goal_id: null, title: 'Visible work', status: 'in_progress', kind: 'manual' },
+    ] as DBTask[];
+    mocks.goals[0].archived_at = '2026-09-24';
+    const timer = { taskId: 'task-1', startedAt: routineTimer().startedAt, notes: '' };
+    writeActiveWorkTimer(timer);
+    render(<WorkView />);
+    expect(screen.queryByText('Archived parent')).not.toBeInTheDocument();
+    expect(screen.queryByText('Archived child')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Archived child' })).not.toBeInTheDocument();
+    expect(screen.getByText('Visible work')).toBeInTheDocument();
+    expect(mocks.select).toHaveBeenCalledWith('active');
+    expect(readActiveWorkTimer()).toEqual(timer);
+    expect(screen.getByRole('button', { name: 'Stop active timer and log time' })).toBeInTheDocument();
+  });
+
+  it('waits for goals before replacing a selection, clears an archived-only selection, and offers restored tasks again', () => {
+    mocks.tasks = [{ id: 'task-1', goal_id: 'physics', title: 'Saved task', status: 'todo', kind: 'manual' }] as DBTask[];
+    mocks.goalsLoading = true;
+    const { rerender } = render(<WorkView />);
+    expect(mocks.select).not.toHaveBeenCalled();
+    mocks.goalsLoading = false;
+    mocks.goals = [{ ...mocks.goals[0], archived_at: '2026-09-24' }];
+    rerender(<WorkView />);
+    expect(mocks.select).toHaveBeenLastCalledWith(null);
+    expect(screen.queryByText('Saved task')).not.toBeInTheDocument();
+    mocks.selected = null;
+    mocks.goals = [{ ...mocks.goals[0], archived_at: null }];
+    rerender(<WorkView />);
+    expect(mocks.select).toHaveBeenLastCalledWith('task-1');
+    expect(screen.getByText('Saved task')).toBeInTheDocument();
   });
 
   it('restores a routine with no task and explains that logging time is not always completion', () => {

@@ -461,7 +461,7 @@ export function FeasibilityReport({
                   {diagnostic.outcome === 'unestimated' ? (
                     <div className="rounded-xl border border-amber-200 bg-white p-4">
                       <p className="text-sm font-bold text-amber-800">No honest time math is possible yet.</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">Add a rough estimate. Amina will subtract logged focus time and calendar work automatically on the next refresh.</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">Add a rough estimate. Marina will subtract logged focus time and calendar work automatically on the next refresh.</p>
                     </div>
                   ) : (
                     <>

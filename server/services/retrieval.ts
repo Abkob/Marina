@@ -1,3 +1,4 @@
+import { activeTaskSql, activeEntitySql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
 import {
   embedQuery,
@@ -75,7 +76,7 @@ async function sqlRetrieval(opts: RetrievalOptions): Promise<EntityCard[]> {
     ) ws ON ws.task_id = t.id
     LEFT JOIN entity_summaries es_plan ON es_plan.entity_type='task' AND es_plan.entity_id=t.id AND es_plan.summary_type='planning'
     LEFT JOIN entity_summaries es_sem ON es_sem.entity_type='task' AND es_sem.entity_id=t.id AND es_sem.summary_type='semantic'
-    WHERE t.completed = false
+    WHERE t.completed = false AND ${activeTaskSql('t.id')}
       AND t.status <> 'done'
       AND (g.archived_at IS NULL OR t.goal_id IS NULL)
       AND (
@@ -147,7 +148,7 @@ async function graphRetrieval(seedEntityIds: string[], depth = 1): Promise<Entit
          CASE WHEN source_id = ANY($1) THEN target_type ELSE source_type END as neighbor_type
        FROM edges
        WHERE (source_id = ANY($1) OR target_id = ANY($1))
-         AND relationship = ANY($2)`,
+         AND relationship = ANY($2) AND ${activeEntitySql('source_type', 'source_id')} AND ${activeEntitySql('target_type', 'target_id')}`,
       [frontier, PLANNING_RELATIONSHIPS],
     ) as { rows: { neighbor_id: string; neighbor_type: string }[] };
 
@@ -174,7 +175,7 @@ async function graphRetrieval(seedEntityIds: string[], depth = 1): Promise<Entit
      FROM tasks t
      LEFT JOIN (SELECT task_id, SUM(minutes) as logged FROM work_sessions WHERE minutes IS NOT NULL GROUP BY task_id) ws ON ws.task_id=t.id
      LEFT JOIN entity_summaries es ON es.entity_type='task' AND es.entity_id=t.id AND es.summary_type='planning'
-     WHERE t.id = ANY($1) AND t.completed = false`,
+     WHERE t.id = ANY($1) AND t.completed = false AND ${activeTaskSql('t.id')}`,
     [neighbors],
   );
 
@@ -217,7 +218,7 @@ async function vectorRetrieval(
              es.summary_text as planning_summary
       FROM embeddings e
       LEFT JOIN entity_summaries es ON es.entity_type=e.entity_type AND es.entity_id=e.entity_id AND es.summary_type='planning'
-      WHERE e.is_stale = false
+      WHERE e.is_stale = false AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
         AND e.embedding_3072 IS NOT NULL
         AND e.embedding_model = $2
         AND e.embedding_dimension = $3
@@ -272,7 +273,7 @@ async function enrichCards(cards: EntityCard[]): Promise<EntityCard[]> {
 
   const { rows: blockerEdges } = await query(
     `SELECT target_id as task_id, source_id as blocker_id FROM edges
-     WHERE relationship='blocks' AND target_id = ANY($1) AND source_type='task'`,
+     WHERE relationship='blocks' AND ${activeTaskSql('source_id')} AND target_id = ANY($1) AND source_type='task'`,
     [taskIds],
   ) as { rows: { task_id: string; blocker_id: string }[] };
 
@@ -324,7 +325,7 @@ async function topicRetrieval(queryText: string): Promise<EntityCard[]> {
       `SELECT tm.entity_type, tm.entity_id, tp.name AS topic_name
        FROM topic_memberships tm
        JOIN topics tp ON tp.id = tm.topic_id
-       WHERE tm.topic_id = ANY($1) AND tm.status = 'accepted'
+       WHERE tm.topic_id = ANY($1) AND tm.status = 'accepted' AND ${activeEntitySql('tm.entity_type', 'tm.entity_id')}
        ORDER BY (tm.source = 'manual') DESC, tm.confidence DESC
        LIMIT 40`,
       [topicRows.map(t => t.id)],
@@ -427,7 +428,7 @@ export async function buildRetrievalContext(opts: RetrievalOptions): Promise<Ret
   if (untitledTasks.length) {
     const ids = untitledTasks.map(c => c.entity_id);
     const { rows: hydrated } = await query<{ id: string; title: string; status: string; priority: string }>(
-      `SELECT id, title, status, priority FROM tasks WHERE id = ANY($1)`,
+      `SELECT id, title, status, priority FROM tasks WHERE id = ANY($1) AND ${activeTaskSql()}`,
       [ids],
     );
     const hydrationMap = new Map(hydrated.map(r => [r.id, r]));

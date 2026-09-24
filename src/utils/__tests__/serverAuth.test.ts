@@ -7,29 +7,29 @@ import {
 } from '../../../server/utils/auth.js';
 
 const original = {
-  required: process.env.AMINA_AUTH_REQUIRED,
-  password: process.env.AMINA_ACCESS_PASSWORD,
-  secret: process.env.AMINA_SESSION_SECRET,
+  required: process.env.MARINA_AUTH_REQUIRED,
+  password: process.env.MARINA_ACCESS_PASSWORD,
+  secret: process.env.MARINA_SESSION_SECRET,
 };
 
 describe('server authentication tokens', () => {
   beforeEach(() => {
-    process.env.AMINA_AUTH_REQUIRED = 'true';
-    process.env.AMINA_ACCESS_PASSWORD = 'a-long-personal-password';
-    process.env.AMINA_SESSION_SECRET = '0123456789abcdef0123456789abcdef';
+    process.env.MARINA_AUTH_REQUIRED = 'true';
+    process.env.MARINA_ACCESS_PASSWORD = 'a-long-personal-password';
+    process.env.MARINA_SESSION_SECRET = '0123456789abcdef0123456789abcdef';
   });
 
   afterEach(() => {
-    if (original.required === undefined) delete process.env.AMINA_AUTH_REQUIRED;
-    else process.env.AMINA_AUTH_REQUIRED = original.required;
-    if (original.password === undefined) delete process.env.AMINA_ACCESS_PASSWORD;
-    else process.env.AMINA_ACCESS_PASSWORD = original.password;
-    if (original.secret === undefined) delete process.env.AMINA_SESSION_SECRET;
-    else process.env.AMINA_SESSION_SECRET = original.secret;
+    if (original.required === undefined) delete process.env.MARINA_AUTH_REQUIRED;
+    else process.env.MARINA_AUTH_REQUIRED = original.required;
+    if (original.password === undefined) delete process.env.MARINA_ACCESS_PASSWORD;
+    else process.env.MARINA_ACCESS_PASSWORD = original.password;
+    if (original.secret === undefined) delete process.env.MARINA_SESSION_SECRET;
+    else process.env.MARINA_SESSION_SECRET = original.secret;
   });
 
   it('fails closed when required secrets are too short', () => {
-    process.env.AMINA_ACCESS_PASSWORD = 'short';
+    process.env.MARINA_ACCESS_PASSWORD = 'short';
     expect(isAuthConfigured()).toBe(false);
     expect(passwordMatches('short')).toBe(false);
   });

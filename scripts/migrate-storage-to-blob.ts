@@ -59,7 +59,7 @@ try {
     let migrated = 0;
     for (const row of pending) {
       const filename = safeName(row.name + (path.extname(row.name) ? '' : path.extname(row.file_path)));
-      const blob = await put(`amina/migrated/${row.kind}/${row.id}-${filename}`, fs.createReadStream(row.file_path), {
+      const blob = await put(`marina/migrated/${row.kind}/${row.id}-${filename}`, fs.createReadStream(row.file_path), {
         access: 'private',
         addRandomSuffix: true,
         contentType: contentType(filename, row.mime_type),

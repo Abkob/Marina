@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DBGoal, DBTask } from '../../db/schema';
-import { buildTaskForest, filterForest, isWorkSelectableTask } from '../taskTree';
+import { buildTaskForest, filterForest, getWorkTasks, isWorkSelectableTask } from '../taskTree';
 
 function task(overrides: Partial<DBTask>): DBTask {
   return {
@@ -31,6 +31,25 @@ const goals = [
   { id: 'g1', title: 'FYP' } as DBGoal,
   { id: 'g2', title: 'Physics 210' } as DBGoal,
 ];
+
+describe('archived branches in Work', () => {
+  it('hides archived goals and all descendants even through filtered scaffolding and missing goal links', () => {
+    const tasks = [
+      task({ id: 'root', kind: 'critical_path' }),
+      task({ id: 'child', parent_task_id: 'root', goal_id: null }),
+      task({ id: 'grandchild', parent_task_id: 'child', goal_id: 'g2' }),
+      task({ id: 'visible', goal_id: 'g2' }),
+      task({ id: 'standalone', goal_id: null }),
+    ];
+    const archived = goals.map(goal => goal.id === 'g1' ? { ...goal, archived_at: '2026-09-24' } : goal);
+    expect(getWorkTasks(tasks, archived).map(task => task.id)).toEqual(['visible', 'standalone']);
+    expect(getWorkTasks(tasks, goals).map(task => task.id)).toEqual(['child', 'grandchild', 'visible', 'standalone']);
+  });
+  it('keeps paused work and unfinished children of completed parents available', () => {
+    const tasks = [task({ id: 'parent', completed: true }), task({ id: 'child', parent_task_id: 'parent' }), task({ id: 'paused', status: 'paused' })];
+    expect(getWorkTasks(tasks, goals).map(task => task.id)).toEqual(['parent', 'child', 'paused']);
+  });
+});
 
 describe('buildTaskForest', () => {
   it('groups tasks under their goals, alphabetically, with goalless last', () => {

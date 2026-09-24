@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { usePersistentDraft } from '../hooks/usePersistentDraft';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
+import { ModalFrame } from '../components/ModalFrame';
+import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, Trash2, ScrollText, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -36,14 +39,17 @@ function localDay(offset = 0): string {
 const dayOfIso = (iso: string) => iso.slice(0, 10);
 
 export function CaptureWallView() {
+  const mobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const { triggerToast, showConfirm } = useAppStore();
   const invalidate = useInvalidate();
   const { data: notes = [] } = useNotes();
   const [dayOffset, setDayOffset] = useState(0);
-  const [quick, setQuick] = useState('');
+  const [quick, setQuick] = usePersistentDraft('capture');
   const [openId, setOpenId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const saving = useRef(false);
 
   const day = localDay(dayOffset);
   const isToday = dayOffset === 0;
@@ -66,18 +72,6 @@ export function CaptureWallView() {
   );
 
   const openNote = wallNotes.find(n => n.id === openId) ?? null;
-
-  useEffect(() => {
-    if (!openNote) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        void saveEditor();
-        setOpenId(null);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [openNote, editText]);
 
   const addQuick = async () => {
     const text = quick.trim();
@@ -105,23 +99,30 @@ export function CaptureWallView() {
   };
 
   const openEditor = (n: DBNote) => {
+    setSaveError('');
     setOpenId(n.id);
     setEditText(stripHtml(n.content));
   };
 
   const saveEditor = async () => {
     if (!openNote) return;
-    setBusy(true);
-    try {
-      await updateNoteContent(openNote.id, editText);
-      invalidate.notes();
-    } finally {
-      setBusy(false);
-    }
+    await updateNoteContent(openNote.id, editText);
+    invalidate.notes();
+  };
+
+  const saveAndClose = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true); setSaveError('');
+    try { await saveEditor(); setOpenId(null); }
+    catch { setSaveError('Could not save your changes. Your text is still here — tap close to try again.'); }
+    finally { saving.current = false; setBusy(false); }
   };
 
   const logAsJournal = async () => {
-    if (!openNote || !editText.trim()) return;
+    if (!openNote || !editText.trim() || saving.current) return;
+    saving.current = true;
+    setSaveError('');
     setBusy(true);
     try {
       await saveEditor();
@@ -134,8 +135,9 @@ export function CaptureWallView() {
           : 'Bound into the journal — AI extraction running.', 'success');
       invalidate.journal();
     } catch (e) {
-      triggerToast((e as Error).message, 'error');
+      setSaveError((e as Error).message || 'Could not save your journal entry. Please try again.');
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -149,16 +151,16 @@ export function CaptureWallView() {
   };
 
   return (
-    <div className="max-w-[1000px] mx-auto px-4 md:px-8 py-5">
+    <div className="mobile-capture-wall max-w-[1000px] mx-auto px-4 md:px-8 py-5">
       {/* Day header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mobile-toolbar flex items-center justify-between mb-4">
         <div>
           <h2 className="font-headline text-2xl font-bold text-black flex items-center gap-2">
             <StickyNote size={20} className="text-[#4648d4]" />
             {isToday ? 'Today’s wall' : new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </h2>
           <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mt-1">
-            {wallNotes.length} note{wallNotes.length !== 1 ? 's' : ''} · every wall becomes a journal book at day’s end
+            {wallNotes.length} note{wallNotes.length !== 1 ? 's' : ''} · thoughts to come back to
           </p>
         </div>
         <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-[#f8f9fa]">
@@ -178,15 +180,15 @@ export function CaptureWallView() {
 
       {/* Quick capture */}
       {isToday && (
-        <div className="flex gap-2 mb-6">
+        <div className="mobile-capture-composer flex gap-2 mb-6">
           <textarea
             aria-label="Quick capture note"
             value={quick}
             onChange={e => setQuick(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addQuick(); } }}
-            placeholder="Throw a thought at the wall… (Enter to stick it)"
-            rows={1}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#4648d4] shadow-sm"
+            onKeyDown={e => { if (!mobile && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addQuick(); } }}
+            placeholder={mobile ? "What’s on your mind?" : "Capture a thought… (Enter to save)"}
+            rows={mobile ? 3 : 1}
+            className="min-w-0 flex-1 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#4648d4] shadow-sm"
           />
           <button
             onClick={addQuick}
@@ -194,7 +196,7 @@ export function CaptureWallView() {
             aria-label="Add quick note"
             className="px-4 rounded-xl bg-[#4648d4] text-white hover:opacity-90 disabled:opacity-40 shadow-sm"
           >
-            <Plus size={16} />
+            <Plus size={16} /><span className="md:hidden">Save note</span>
           </button>
         </div>
       )}
@@ -206,7 +208,7 @@ export function CaptureWallView() {
           <p className="text-sm">{isToday ? 'Blank wall. Stick your first thought up there ↑' : 'Nothing was captured this day.'}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           <AnimatePresence>
             {wallNotes.map(n => {
               const journaled = journaledNoteIds.has(n.id);
@@ -253,21 +255,7 @@ export function CaptureWallView() {
       {/* Zoomed editor */}
       <AnimatePresence>
         {openNote && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-6"
-            onClick={() => { saveEditor(); setOpenId(null); }}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Edit capture note"
-          >
-            <motion.div
-              layoutId={`sticky-${openNote.id}`}
-              onClick={e => e.stopPropagation()}
-              className={`w-full max-w-xl rounded-md border p-6 shadow-2xl ${tintOf(openNote.id)}`}
-            >
+<ModalFrame titleId="capture-note-title" onClose={() => { void saveAndClose(); }} className={`mobile-sheet w-full max-w-xl rounded-2xl border p-5 shadow-2xl ${tintOf(openNote.id)}`}><h2 id="capture-note-title" className="sr-only">Edit capture note</h2>
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-[10px] font-mono text-gray-500">
                   {new Date(openNote.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -277,6 +265,7 @@ export function CaptureWallView() {
                 )}
                 <button
                   onClick={() => removeNote(openNote)}
+                  disabled={busy}
                   className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500"
                   title="Delete this note"
                   aria-label="Delete this note"
@@ -284,7 +273,8 @@ export function CaptureWallView() {
                   <Trash2 size={14} />
                 </button>
                 <button
-                  onClick={() => { saveEditor(); setOpenId(null); }}
+                  onClick={() => { void saveAndClose(); }}
+                  disabled={busy}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-black/5 hover:text-gray-700"
                   title="Save & close"
                   aria-label="Save and close note"
@@ -294,14 +284,16 @@ export function CaptureWallView() {
               </div>
               <textarea
                 aria-label="Capture note content"
+                readOnly={busy}
                 value={editText}
                 onChange={e => setEditText(e.target.value)}
                 rows={8}
                 autoFocus
                 className="w-full bg-transparent text-[14px] text-gray-800 leading-relaxed resize-none focus:outline-none"
               />
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/10">
-                <p className="text-[10px] text-gray-500">Closes save automatically.</p>
+              {saveError && <p role="alert" className="mt-3 rounded-xl bg-white/80 p-3 text-sm text-red-700">{saveError}</p>}
+              <div className="flex flex-wrap gap-3 items-center justify-between mt-3 pt-3 border-t border-black/10">
+                <p role="status" className="text-xs text-gray-500">{busy ? 'Saving…' : 'Tap close to save your changes.'}</p>
                 <button
                   onClick={logAsJournal}
                   disabled={busy || !editText.trim()}
@@ -313,8 +305,7 @@ export function CaptureWallView() {
                   {journaledNoteIds.has(openNote.id) ? 'Update journal entry' : 'Log as journal'}
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
+          </ModalFrame>
         )}
       </AnimatePresence>
     </div>

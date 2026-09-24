@@ -21,7 +21,7 @@ try {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('amina-schema-deploy'))");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('marina-schema-deploy'))");
     await client.query(schema);
     const { rows } = await client.query<{ count: number }>('SELECT COUNT(*)::int AS count FROM schema_migrations');
     await client.query('COMMIT');

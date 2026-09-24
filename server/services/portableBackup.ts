@@ -15,7 +15,7 @@ const SCHEMA_PATH = path.resolve(__dirname, '..', 'schema.sql');
 const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 const NON_PORTABLE_SECRET_TABLES = new Set(['google_sync_connections', 'google_sync_links']);
 
-export const PORTABLE_BACKUP_FORMAT = 'amina-portable-backup' as const;
+export const PORTABLE_BACKUP_FORMAT = 'marina-portable-backup' as const;
 export const PORTABLE_BACKUP_VERSION = 1;
 
 export interface PortableBackupTable {

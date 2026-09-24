@@ -107,7 +107,7 @@ export function UsageManagerView() {
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-indigo-600"><Gauge size={18} /><span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em]">Live system view</span></div>
-          <h1 className="font-headline text-3xl font-bold tracking-tight text-slate-950">Usage Manager</h1>
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-slate-950">Usage</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">See what Marina is using now, what is stored, and whether background work is building up.</p>
         </div>
         <button
@@ -119,7 +119,7 @@ export function UsageManagerView() {
         </button>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mobile-usage-metrics grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Marina server RAM" value={formatBytes(data.process.rssBytes)} detail={`Heap ${formatBytes(data.process.heapUsedBytes)} of ${formatBytes(data.process.heapTotalBytes)} · PID ${data.process.pid}`} Icon={MemoryStick} />
         <MetricCard label="Computer RAM" value={`${systemRamPercent.toFixed(0)}% used`} detail={`${formatBytes(data.system.freeMemoryBytes)} free of ${formatBytes(data.system.totalMemoryBytes)}`} Icon={Cpu} tone={systemRamPercent > 90 ? 'amber' : 'emerald'} />
         <MetricCard label="Database" value={formatBytes(data.database.bytes)} detail={`${data.database.tables.length} tables · ${data.database.connections.total} open connections`} Icon={Database} tone="slate" />

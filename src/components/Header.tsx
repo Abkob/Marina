@@ -35,8 +35,8 @@ function useDebounced(value: string, ms: number): string {
   return debounced;
 }
 
-function GlobalSearch() {
-  const { navigateToGoal, navigateToResource, setCurrentTab, triggerToast } = useAppStore();
+export function GlobalSearch({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void } = {}) {
+  const { navigateToGoal, navigateToResource, setFocusedTaskId, setCurrentTab, triggerToast } = useAppStore();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const debouncedQ = useDebounced(q, 250);
@@ -54,19 +54,21 @@ function GlobalSearch() {
   const goTo = (r: { entity_type: string; entity_id: string; goal_id?: string | null; title: string }) => {
     setOpen(false);
     setQ('');
+    onNavigate?.();
     if (r.entity_type === 'goal') return navigateToGoal(r.entity_id);
-    if (r.entity_type === 'task' && r.goal_id) return navigateToGoal(r.goal_id);
+    if (r.entity_type === 'task' && r.goal_id) { navigateToGoal(r.goal_id); setFocusedTaskId(r.entity_id); return; }
     if (r.entity_type === 'resource') return navigateToResource(r.entity_id);
     if (r.entity_type === 'journal_entry') return setCurrentTab('Journal');
     if (r.entity_type === 'note') return setCurrentTab('Brain Dump');
+    if (r.entity_type === 'meeting' || r.entity_type === 'event') return setCurrentTab('Schedule');
     triggerToast(`No direct view for ${r.entity_type} yet — found "${r.title}"`, 'info');
   };
 
   const results = data?.results ?? [];
 
   return (
-    <div ref={boxRef} className="relative group hidden lg:block">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+    <div ref={boxRef} className={mobile ? 'mobile-global-search relative' : 'relative group hidden lg:block'}>
+      <Search className={`absolute left-3 text-gray-400 ${mobile ? 'top-4' : 'top-1/2 -translate-y-1/2'}`} size={mobile ? 18 : 14} />
       <input
         type="text"
         aria-label="Search everything"
@@ -80,10 +82,10 @@ function GlobalSearch() {
             setQ('');
           }
         }}
-        className="bg-[#f3f4f5] border-none rounded-full py-1.5 pl-9 pr-4 font-mono text-[11px] text-black placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all w-40 group-focus-within:w-64"
+        className={mobile ? 'w-full rounded-2xl bg-slate-100 py-3 pl-10 pr-3 text-slate-900 outline-none focus:ring-2 focus:ring-indigo-200' : 'bg-[#f3f4f5] border-none rounded-full py-1.5 pl-9 pr-4 font-mono text-[11px] text-black placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 transition-all w-40 group-focus-within:w-64'}
       />
       {open && debouncedQ.trim() && (
-        <div role="listbox" aria-label="Search results" className="absolute top-9 right-0 w-80 max-h-96 overflow-y-auto bg-white shadow-2xl rounded-xl border border-gray-200 py-1.5 z-50">
+        <div role="listbox" aria-label="Search results" className={mobile ? 'mt-3 max-h-[50dvh] overflow-y-auto rounded-xl border border-slate-100 py-1.5' : 'absolute top-9 right-0 w-80 max-h-96 overflow-y-auto bg-white shadow-2xl rounded-xl border border-gray-200 py-1.5 z-50'}>
           {isFetching && <p className="px-3 py-2 text-[11px] text-gray-400 font-mono">Searching…</p>}
           {!isFetching && results.length === 0 && (
             <p className="px-3 py-2 text-[11px] text-gray-400 font-mono">No matches for “{debouncedQ}”</p>
@@ -114,6 +116,7 @@ function GlobalSearch() {
           })}
         </div>
       )}
+      {mobile && !q && <p className="mt-4 text-sm leading-6 text-slate-500">Find goals, tasks, notes and resources by name or content.</p>}
     </div>
   );
 }

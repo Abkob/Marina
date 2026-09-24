@@ -1,9 +1,9 @@
-# Amina: Personal AI Operating System - PRD & Feature Guide
+# Marina: Personal AI Operating System - PRD & Feature Guide
 
 ## 1. Product Overview
-Amina is a "brain-to-schedule" personal operating system. It replaces fragmented productivity tools with a unified, document-first interface that uses AI to classify messy thoughts into structured goals, resources, and an hourly weekly schedule.
+Marina is a "brain-to-schedule" personal operating system. It replaces fragmented productivity tools with a unified, document-first interface that uses AI to classify messy thoughts into structured goals, resources, and an hourly weekly schedule.
 
-**Core Vision:** "I write once, Amina organizes everything."
+**Core Vision:** "I write once, Marina organizes everything."
 
 ---
 
@@ -11,7 +11,7 @@ Amina is a "brain-to-schedule" personal operating system. It replaces fragmented
 
 ### 2.1 Brain Dump / Capture Canvas (The Hero)
 *   **Interface:** A minimalist, distraction-free writing canvas (document-style).
-*   **The "OO" Trigger:** A shorthand command that triggers immediate AI classification. When typed after a thought, Amina opens a contextual popup.
+*   **The "OO" Trigger:** A shorthand command that triggers immediate AI classification. When typed after a thought, Marina opens a contextual popup.
 *   **Classification Popup:** Ranks the most likely goals/projects for the entry. Users can confirm, change, or create a new subtask with one click or keyboard shortcut.
 *   **Context Rail:** Displays extracted tasks and relevant documents in real-time as the user types.
 
@@ -58,7 +58,7 @@ Amina is a "brain-to-schedule" personal operating system. It replaces fragmented
 *   **AI/LLM:** OpenAI GPT-4o or Gemini 1.5 Pro for classification and schedule reasoning.
 *   **Database:** PostgreSQL (structured goals/tasks) + Vector DB (Pinecone/Milvus) for semantic task matching.
 
-### 3.4 Design Tokens (Amina OS)
+### 3.4 Design Tokens (Marina OS)
 *   **Palette:** Surface-heavy (#f8f9fa), Sidebar-dark (#1a1a1a), Primary Accent (#3353e2).
 *   **Typography:** Hanken Grotesk (Clean, modern, readable).
 *   **Corner Radius:** 8px (Round_Eight) for a friendly but professional feel.

@@ -88,9 +88,9 @@ function StatsStrip({ resources }: { resources: DBResource[] }) {
   if (total === 0) return null;
 
   return (
-    <div className="mb-6 space-y-3">
+    <div className="mobile-resource-stats mb-6 space-y-3">
       {/* Read state row */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { icon: BookOpen,      label: 'Unread',  value: unread,  color: 'text-gray-500',    bg: 'bg-gray-50' },
           { icon: Clock,         label: 'Reading', value: reading, color: 'text-[#4648d4]',   bg: 'bg-[#EEF2FF]' },
@@ -414,13 +414,13 @@ export function ResourcesView() {
 
   return (
     <>
-      <div className="max-w-[960px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
+      <div className="mobile-resources max-w-[960px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
         {/* Header */}
-        <div className="flex items-end justify-between gap-4 mb-6">
+        <div className="mobile-toolbar flex items-end justify-between gap-4 mb-6">
           <div>
             <h2 className="font-headline text-2xl font-bold text-black mb-1">Resource Library</h2>
             <p className="text-sm text-gray-500">
-              Files, papers, links and people — all searchable and <span className="font-mono bg-gray-100 px-1 rounded text-xs">@mentionable</span> across the app.
+              Your files, links and reading, in one place.
             </p>
           </div>
           <button
@@ -487,7 +487,7 @@ export function ResourcesView() {
             </div>
 
             {/* Type filter pills */}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="mobile-filter-strip flex flex-wrap gap-1.5">
               <button onClick={() => setTypeFilter('all')}
                 aria-pressed={typeFilter === 'all'}
                 className={`rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide transition-colors ${

@@ -9,7 +9,11 @@ import { createTask } from '../db/queries/tasks';
 import { generateSuggestions } from '../utils/subtaskSuggestions';
 import type { CriticalPathStatus } from '../db/schema';
 
-const DEADLINES = ['Q1 2025', 'Q2 2025', 'Q3 2025', 'Q4 2025', 'Q1 2026', 'Q2 2026', 'Q3 2026'];
+const DEADLINES = Array.from({ length: 8 }, (_, offset) => {
+  const now = new Date();
+  const quarter = Math.floor(now.getMonth() / 3) + offset;
+  return `Q${quarter % 4 + 1} ${now.getFullYear() + Math.floor(quarter / 4)}`;
+});
 
 const CP_STATUSES: CriticalPathStatus[] = ['In Progress', 'Future', 'Completed'];
 
@@ -263,7 +267,7 @@ export function NewGoalWizard() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 placeholder:text-gray-300 focus:outline-none focus:border-[#4648d4] focus:ring-1 focus:ring-[#4648d4]/30 transition-all"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-mono uppercase tracking-widest text-gray-500 mb-1.5">Umbrella</label>
                     <select

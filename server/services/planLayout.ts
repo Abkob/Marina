@@ -80,6 +80,7 @@ export function fmtTimeStr(startHour: number, durationHours: number): string {
 
 export interface PlanWindowParams {
   task_id?: string;
+  task_ids?: string[];
   /** Maximum work from the scoped task that may be placed on one day. */
   max_daily_minutes?: number;
   horizon_days?: number;

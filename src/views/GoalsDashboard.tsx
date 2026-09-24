@@ -11,6 +11,7 @@ import { calculateGoalTaskMetrics, computeGoalStatus, getClosestDueTask, type Go
 import { computeGoalTimeStats, projectedFinishDate, formatProjectedDate } from '../utils/goalTimeAnalytics';
 import type { DBGoal, DBTask } from '../db/schema';
 import { DatabaseAtlas } from '../components/DatabaseAtlas';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 
 const STATUS_BG   = { Safe: 'bg-[#10B981]', Watch: 'bg-[#F59E0B]', Risky: 'bg-[#EF4444]' };
 const STATUS_TEXT = { Safe: 'text-[#10B981]', Watch: 'text-[#F59E0B]', Risky: 'text-[#EF4444]' };
@@ -237,7 +238,8 @@ function GoalCard({
 
 // ─── Goals Dashboard ──────────────────────────────────────────────────────────
 export function GoalsDashboard() {
-  const { goalsFilter, setGoalsFilter, searchQuery, openNewGoalModal } = useAppStore();
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const { goalsFilter, setGoalsFilter, searchQuery, setSearchQuery, openNewGoalModal } = useAppStore();
 
   // useGoals() returns ACTIVE goals only (server-side filter). The Archived
   // tab needs the full set — without useAllGoals it was permanently empty.
@@ -277,14 +279,14 @@ export function GoalsDashboard() {
 
   return (
     <div className="max-w-[1480px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+      <div className="mobile-goals-header flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
           <h2 className="font-headline text-2xl font-bold text-black mb-1">Goals</h2>
           <p className="text-sm text-gray-500 max-w-xl">
-            Bird's-eye view of your current trajectories. Keep your primary objectives in focus.
+            Your projects and next steps.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="mobile-goal-filters flex items-center gap-3">
           <div className="flex items-center gap-1.5 bg-[#f3f4f5] rounded-full p-1 border border-gray-200">
             {(['Active', 'Completed', 'Archived'] as const).map((f) => (
               <button
@@ -302,14 +304,14 @@ export function GoalsDashboard() {
           <button
             onClick={() => openNewGoalModal()}
             aria-label="Create new goal"
-            className="bg-black text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:scale-[1.03] transition-all active:scale-[0.98]"
+            className="mobile-goal-create bg-black text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:scale-[1.03] transition-all active:scale-[0.98]"
           >
-            <Plus size={18} />
+            <Plus size={18} /><span className="md:hidden">New</span>
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="mobile-goal-stats grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total Goals',     value: total,     color: 'text-black' },
           { label: 'On Track',        value: onTrack,   color: STATUS_TEXT.Safe },
@@ -323,15 +325,16 @@ export function GoalsDashboard() {
         ))}
       </div>
 
+      <label className="mb-4 block md:hidden"><span className="sr-only">Find a goal</span><input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Find a goal…" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800" /></label>
       {filtered.length === 0 ? (
         <div className="text-center py-16 bg-[#f8f9fa] rounded-xl border border-dashed border-gray-200">
           <Target size={36} className="text-gray-300 mx-auto mb-3 animate-pulse" />
           <p className="text-gray-800 font-semibold mb-1">No goals match selection filter</p>
           <p className="text-xs text-gray-400 max-w-xs mx-auto mb-4">
-            Capture a new strategic goal using the button below.
+            Try a different filter or create a goal.
           </p>
           <button onClick={() => openNewGoalModal()} className="bg-black text-white text-xs font-mono py-2 px-4 rounded-xl font-bold shadow-sm" aria-label="Create new goal">
-            Initialize New Goal
+            Create a goal
           </button>
         </div>
       ) : (
@@ -351,7 +354,7 @@ export function GoalsDashboard() {
         </div>
       )}
 
-      <DatabaseAtlas />
+      {!isMobile && <DatabaseAtlas />}
     </div>
   );
 }

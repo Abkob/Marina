@@ -1,16 +1,17 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { isAuthenticationRequired } from '../runtime.js';
+import { LEGACY_BRAND, legacyAuthenticationSecret } from './brandCompatibility.js';
 
-const COOKIE_NAME = 'amina_session';
+const COOKIE_NAME = 'marina_session';
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 function configuredPassword(): string {
-  return process.env.AMINA_ACCESS_PASSWORD ?? '';
+  return process.env.MARINA_ACCESS_PASSWORD ?? legacyAuthenticationSecret('ACCESS_PASSWORD') ?? '';
 }
 
 function configuredSecret(): string {
-  return process.env.AMINA_SESSION_SECRET ?? '';
+  return process.env.MARINA_SESSION_SECRET ?? legacyAuthenticationSecret('SESSION_SECRET') ?? '';
 }
 
 export function isAuthConfigured(): boolean {
@@ -62,7 +63,8 @@ function parseCookies(header: string | undefined): Record<string, string> {
 
 export function isAuthenticatedRequest(req: Request): boolean {
   if (!isAuthenticationRequired()) return true;
-  const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies[COOKIE_NAME] ?? cookies[`${LEGACY_BRAND}_session`];
   return Boolean(token && verifySessionToken(token));
 }
 
@@ -90,13 +92,14 @@ export function setSessionCookie(res: Response): void {
 
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production' || process.env.VERCEL === '1', path: '/' });
+  res.clearCookie(`${LEGACY_BRAND}_session`, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production' || process.env.VERCEL === '1', path: '/' });
 }
 
 export function requireApiAuth(req: Request, res: Response, next: NextFunction) {
   if (req.path === '/cron/maintenance' && isAuthorizedCronRequest(req)) return next();
   if (!isAuthenticationRequired()) return next();
   if (!isAuthConfigured()) {
-    return res.status(503).json({ error: 'Authentication is not configured. Set AMINA_ACCESS_PASSWORD and AMINA_SESSION_SECRET.' });
+    return res.status(503).json({ error: 'Authentication is not configured. Set MARINA_ACCESS_PASSWORD and MARINA_SESSION_SECRET.' });
   }
   if (!isAuthenticatedRequest(req)) return res.status(401).json({ error: 'Authentication required' });
   next();

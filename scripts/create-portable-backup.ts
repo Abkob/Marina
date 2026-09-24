@@ -9,7 +9,7 @@ import { verifyPortableBackup } from './lib/portableBackup.js';
 const stamp = new Date().toISOString().replace(/[:]/g, '-');
 const requested = process.argv[2];
 const destination = path.resolve(
-  requested ?? path.join('backups', `amina-complete-${stamp}-${crypto.randomBytes(4).toString('hex')}.amina-backup.zip`),
+  requested ?? path.join('backups', `marina-complete-${stamp}-${crypto.randomBytes(4).toString('hex')}.marina-backup.zip`),
 );
 const partial = `${destination}.partial`;
 

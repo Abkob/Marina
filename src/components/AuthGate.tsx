@@ -53,15 +53,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f8f8fb] px-4">
       <form onSubmit={submit} className="w-full max-w-sm rounded-3xl border border-gray-200 bg-white p-8 shadow-xl shadow-indigo-100/40">
-        <p className="font-mono text-xs font-bold uppercase tracking-[0.24em] text-[#4648d4]">Amina</p>
+        <p className="font-mono text-xs font-bold uppercase tracking-[0.24em] text-[#4648d4]">Marina</p>
         <h1 className="mt-3 text-2xl font-black text-gray-900">Private workspace</h1>
         <p className="mt-2 text-sm leading-6 text-gray-500">
           {status.configured ? 'Enter your deployment password to continue.' : 'Authentication is not configured on the server. Add the required environment variables before using this deployment.'}
         </p>
         {status.configured && (
           <>
-            <label className="mt-6 block text-xs font-bold uppercase tracking-wider text-gray-500" htmlFor="amina-password">Password</label>
-            <input id="amina-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-indigo-100" required autoFocus />
+            <label className="mt-6 block text-xs font-bold uppercase tracking-wider text-gray-500" htmlFor="marina-password">Password</label>
+            <input id="marina-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#4648d4] focus:ring-2 focus:ring-indigo-100" required autoFocus />
             <button type="submit" disabled={busy} className="mt-4 w-full rounded-xl bg-[#4648d4] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? 'Signing in…' : 'Sign in'}</button>
           </>
         )}

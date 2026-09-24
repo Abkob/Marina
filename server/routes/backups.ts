@@ -6,7 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PassThrough } from 'stream';
-import { del, issueSignedToken, list, presignUrl, put } from '@vercel/blob';
+import { BlobNotFoundError, del, head, issueSignedToken, list, presignUrl, put } from '@vercel/blob';
+import { LEGACY_BACKUP_PREFIX, legacyBackupName, marinaBackupName } from '../utils/brandCompatibility.js';
 import { canUseLocalPersistence, isBlobStorageConfigured, isVercelRuntime } from '../runtime.js';
 import { createPortableBackupArchive } from '../services/portableBackup.js';
 
@@ -16,8 +17,8 @@ const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Project-root /backups — the same directory manual pg_dump backups live in.
 export const BACKUPS_DIR = path.resolve(__dirname, '..', '..', 'backups');
-const KEEP_LAST = Number(process.env.AMINA_BACKUP_KEEP ?? 14);
-const PORTABLE_PREFIX = 'amina/backups/portable/';
+const KEEP_LAST = Number(process.env.MARINA_BACKUP_KEEP ?? 14);
+const PORTABLE_PREFIX = 'marina/backups/portable/';
 
 // pg_dump discovery: explicit env override, then known install paths (verified
 // on disk), then bare 'pg_dump' only as a last resort (PATH may not have it).
@@ -41,11 +42,11 @@ function dbUrl(): string {
 }
 
 const SAFE_NAME = /^[a-zA-Z0-9._-]+\.dump$/;
-const SAFE_PORTABLE_NAME = /^amina-complete-[a-zA-Z0-9._-]+\.amina-backup\.zip$/;
+const SAFE_PORTABLE_NAME = /^marina-complete-[a-zA-Z0-9._-]+\.marina-backup\.zip$/;
 
 function newPortableName(): string {
   const stamp = new Date().toISOString().replace(/[:]/g, '-');
-  return `amina-complete-${stamp}-${crypto.randomBytes(4).toString('hex')}.amina-backup.zip`;
+  return `marina-complete-${stamp}-${crypto.randomBytes(4).toString('hex')}.marina-backup.zip`;
 }
 
 function portablePath(name: string): string {
@@ -60,6 +61,22 @@ function localPortablePath(name: string): string {
   return full;
 }
 
+function existingLocalPortablePath(name: string): string {
+  const current = localPortablePath(name);
+  return fs.existsSync(current) ? current : path.join(BACKUPS_DIR, legacyBackupName(name));
+}
+
+export async function existingCloudPortablePath(name: string): Promise<string> {
+  const current = portablePath(name);
+  try { await head(current); return current; }
+  catch (error) {
+    if (!(error instanceof BlobNotFoundError)) throw error;
+    const legacy = `${LEGACY_BACKUP_PREFIX}${legacyBackupName(name)}`;
+    await head(legacy);
+    return legacy;
+  }
+}
+
 async function fileSha256(file: string): Promise<string> {
   const hash = crypto.createHash('sha256');
   for await (const chunk of fs.createReadStream(file)) hash.update(chunk as Buffer);
@@ -68,7 +85,7 @@ async function fileSha256(file: string): Promise<string> {
 
 async function signedPortableUrl(name: string): Promise<{ url: string; expires_at: string }> {
   if (!isBlobStorageConfigured()) throw Object.assign(new Error('Private Blob storage is not configured'), { status: 503 });
-  const pathname = portablePath(name);
+  const pathname = await existingCloudPortablePath(name);
   const validUntil = Date.now() + 10 * 60_000;
   const signedToken = await issueSignedToken({ pathname, operations: ['get'], validUntil });
   const { presignedUrl } = await presignUrl(signedToken, {
@@ -85,26 +102,28 @@ async function listPortableBackups() {
   if (!isVercelRuntime) {
     fs.mkdirSync(BACKUPS_DIR, { recursive: true });
     return fs.readdirSync(BACKUPS_DIR)
-      .filter(name => SAFE_PORTABLE_NAME.test(name))
+      .filter(name => SAFE_PORTABLE_NAME.test(marinaBackupName(name)))
       .map(name => {
-        const stat = fs.statSync(localPortablePath(name));
-        return { name, bytes: stat.size, created_at: stat.mtime.toISOString(), storage: 'local' as const };
+        const stat = fs.statSync(path.join(BACKUPS_DIR, name));
+        return { name: marinaBackupName(name), bytes: stat.size, created_at: stat.mtime.toISOString(), storage: 'local' as const };
       })
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
   if (!isBlobStorageConfigured()) return [];
   const backups: Array<{ name: string; bytes: number; created_at: string; storage: 'private_blob' }> = [];
-  let cursor: string | undefined;
-  do {
-    const page = await list({ prefix: PORTABLE_PREFIX, cursor, limit: 1000 });
+  for (const prefix of [PORTABLE_PREFIX, LEGACY_BACKUP_PREFIX]) {
+   let cursor: string | undefined;
+   do {
+    const page = await list({ prefix, cursor, limit: 1000 });
     for (const blob of page.blobs) {
-      const name = path.posix.basename(blob.pathname);
-      if (SAFE_PORTABLE_NAME.test(name)) {
+      const name = marinaBackupName(path.posix.basename(blob.pathname));
+      if (SAFE_PORTABLE_NAME.test(name) && !backups.some(backup => backup.name === name)) {
         backups.push({ name, bytes: blob.size, created_at: blob.uploadedAt.toISOString(), storage: 'private_blob' });
       }
     }
     cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
+   } while (cursor);
+  }
   return backups.sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
@@ -265,7 +284,7 @@ router.get('/portable/:name/download', async (req, res) => {
     const signed = await signedPortableUrl(name);
     return res.redirect(302, signed.url);
   }
-  const full = localPortablePath(name);
+  const full = existingLocalPortablePath(name);
   if (!fs.existsSync(full)) return res.status(404).json({ error: 'not found' });
   return res.download(full, name);
 });
@@ -277,9 +296,9 @@ router.delete('/portable/:name', async (req, res) => {
   if (!SAFE_PORTABLE_NAME.test(name)) return res.status(400).json({ error: 'invalid portable backup name' });
   if (isVercelRuntime) {
     if (!isBlobStorageConfigured()) return res.status(503).json({ error: 'Private Blob storage is not configured' });
-    await del(portablePath(name));
+    await del(await existingCloudPortablePath(name));
   } else {
-    const full = localPortablePath(name);
+    const full = existingLocalPortablePath(name);
     if (!fs.existsSync(full)) return res.status(404).json({ error: 'not found' });
     fs.unlinkSync(full);
   }

@@ -3,7 +3,7 @@ import { verifyPortableBackup } from './lib/portableBackup.js';
 
 const archivePath = process.argv[2];
 if (!archivePath) {
-  console.error('Usage: npm run backup:verify -- <amina-complete-....amina-backup.zip>');
+  console.error('Usage: npm run backup:verify -- <marina-complete-....marina-backup.zip>');
   process.exit(1);
 }
 

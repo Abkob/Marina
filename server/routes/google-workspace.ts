@@ -31,7 +31,7 @@ function callbackRedirect(returnTo: string, result: 'connected' | 'error', messa
   return url.toString();
 }
 
-// Public only because Google's cross-site redirect may not carry Amina's
+// Public only because Google's cross-site redirect may not carry Marina's
 // SameSite=Strict session cookie. A short-lived HMAC state created by the
 // authenticated /connect endpoint protects this callback.
 oauthRouter.get('/callback', async (req, res) => {
@@ -52,7 +52,7 @@ oauthRouter.get('/callback', async (req, res) => {
     }>('SELECT account_email,encrypted_refresh_token FROM google_sync_connections WHERE id=$1', [CONNECTION_ID]);
     const existing = existingRows[0];
     if (existing?.account_email && email && existing.account_email.toLowerCase() !== email.toLowerCase()) {
-      throw new Error(`Amina is already linked to ${existing.account_email}. Disconnect it before connecting another Google account.`);
+      throw new Error(`Marina is already linked to ${existing.account_email}. Disconnect it before connecting another Google account.`);
     }
     const encrypted = tokens.refresh_token
       ? encryptGoogleRefreshToken(tokens.refresh_token)
@@ -62,7 +62,7 @@ oauthRouter.get('/callback', async (req, res) => {
     await query(
       `INSERT INTO google_sync_connections
         (id,account_email,encrypted_refresh_token,calendar_name,initial_sync_complete,auto_sync_enabled,created_at,updated_at)
-       VALUES ($1,$2,$3,'Amina Schedule',false,true,$4,$4)
+       VALUES ($1,$2,$3,'Marina Schedule',false,true,$4,$4)
        ON CONFLICT (id) DO UPDATE SET account_email=EXCLUDED.account_email,
          encrypted_refresh_token=EXCLUDED.encrypted_refresh_token,last_error=NULL,updated_at=EXCLUDED.updated_at`,
       [CONNECTION_ID, email, encrypted, now],

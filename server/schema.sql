@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Amina OS — PostgreSQL schema
+-- Marina OS — PostgreSQL schema
 -- Run once on a fresh database, or idempotently with IF NOT EXISTS / DO NOTHING
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -831,7 +831,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_source_note
 
 -- M-021: Real date-based planning (replaces vague Q1/Q2-style deadlines).
 -- Semantics: start_date = may begin; target_date = would like to finish;
--- hard_deadline = must be done; scheduling_enabled = Amina may place it on the
+-- hard_deadline = must be done; scheduling_enabled = Marina may place it on the
 -- calendar (only ever acts when a date AND a duration exist).
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS start_date TEXT;
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS target_date TEXT;
@@ -875,14 +875,14 @@ ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS source TEXT;
 
 -- M-023: Durable, encrypted Google Tasks + Calendar synchronization.
 -- The connection contains only encrypted OAuth refresh-token material and
--- sync health. Remote IDs live in a generic link table so Amina's canonical
+-- sync health. Remote IDs live in a generic link table so Marina's canonical
 -- goal/task/event rows stay provider-agnostic.
 CREATE TABLE IF NOT EXISTS google_sync_connections (
   id                      TEXT PRIMARY KEY DEFAULT 'primary',
   account_email           TEXT,
   encrypted_refresh_token TEXT NOT NULL,
   calendar_id             TEXT,
-  calendar_name           TEXT NOT NULL DEFAULT 'Amina Schedule',
+  calendar_name           TEXT NOT NULL DEFAULT 'Marina Schedule',
   initial_sync_complete   BOOLEAN NOT NULL DEFAULT false,
   auto_sync_enabled       BOOLEAN NOT NULL DEFAULT true,
   last_synced_at          TEXT,

@@ -119,7 +119,7 @@ export function FileViewerModal(props: Props) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[60] flex flex-col bg-black/95"
+      className="mobile-file-viewer fixed inset-0 z-[60] flex flex-col bg-black/95"
       role="dialog"
       aria-modal="true"
       aria-label={`Preview ${name}`}

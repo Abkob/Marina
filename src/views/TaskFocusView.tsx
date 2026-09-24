@@ -1,3 +1,4 @@
+import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useEffect, useRef, useState } from 'react';
 import {
   Calendar, CalendarClock, CalendarPlus, Check, CheckSquare, ChevronLeft, ChevronRight, Clock, Download,
@@ -113,11 +114,11 @@ function ResourceItem({ resource, onDelete, onOpen }: { resource: DBResource; on
       {resource.url && (
         <a href={resource.url} target="_blank" rel="noreferrer"
           onClick={e => e.stopPropagation()}
-          className="text-gray-300 hover:text-[#4648d4] transition-colors">
+          aria-label={`Open ${resource.title} link`} className="text-gray-300 hover:text-[#4648d4] transition-colors">
           <ExternalLink size={11} />
         </a>
       )}
-      <button onClick={onDelete} className="text-gray-300 hover:text-red-400 transition-colors">
+      <button onClick={onDelete} aria-label={`Detach ${resource.title}`} className="text-gray-300 hover:text-red-400 transition-colors">
         <Trash2 size={12} />
       </button>
     </div>
@@ -419,14 +420,14 @@ function ChildTaskRow({
           <Trash2 size={12} />
         </button>
       </div>
-      <div className="mt-1.5 flex items-center gap-2 pl-7">
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 sm:pl-7">
         <label className="flex items-center gap-1" title="Time estimate — how long this child needs">
           <Clock size={10} className="shrink-0 text-gray-300" />
           <input
             value={timeDraft}
             onChange={e => setTimeDraft(e.target.value)}
             onBlur={saveTime}
-            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
             placeholder="est."
             className="w-16 rounded border border-gray-150 bg-[#f8f9fa] px-1.5 py-0.5 font-mono text-[10px] text-gray-700 outline-none focus:border-[#4648d4]"
           />
@@ -1322,10 +1323,10 @@ export function TaskFocusView() {
       initial={{ opacity: 0, x: 12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25 }}
-      className="mx-auto max-w-[980px] px-4 py-6 md:px-10"
+      className="mobile-task-detail mx-auto max-w-[980px] px-4 py-6 md:px-10"
     >
       {/* ── Hierarchy nav rail ─────────────────────────────────────────── */}
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mobile-task-breadcrumb mb-5 flex flex-col sm:flex-row items-start justify-between gap-4">
         {/* Left: breadcrumb + parent shortcut */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-gray-400">
@@ -1368,7 +1369,7 @@ export function TaskFocusView() {
           ) : (
             <button
               onClick={() => setFocusedTaskId(null)}
-              className="mt-2 flex items-center gap-1 font-mono text-[9px] text-gray-400 hover:text-[#4648d4] transition-colors group/up"
+              className="mobile-duplicate-back mt-2 flex items-center gap-1 font-mono text-[9px] text-gray-400 hover:text-[#4648d4] transition-colors group/up"
             >
               <ChevronLeft size={11} className="transition-transform group-hover/up:-translate-x-0.5" />
               Back to Goal
@@ -1431,15 +1432,17 @@ export function TaskFocusView() {
                     setPendingComplete(task);
                   }
                 }}
+                aria-label={task.completed ? "Reopen task" : "Complete task"}
                 className="text-gray-300 hover:text-[#4648d4] transition-colors"
               >
                 {task.completed ? <CheckSquare size={18} className="text-[#10B981]" /> : <Square size={18} />}
               </button>
               <span className="rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-widest text-[#4648d4]">
-                Focus Section
+                Task
               </span>
             </div>
-            <input
+            <textarea
+              aria-label="Task title" rows={2}
               value={taskTitle}
               onChange={e => setTaskTitle(e.target.value)}
               onBlur={saveTaskTitle}
@@ -1450,7 +1453,7 @@ export function TaskFocusView() {
                   e.currentTarget.blur();
                 }
               }}
-              className="w-full bg-transparent font-headline text-2xl font-black leading-tight text-gray-900 outline-none focus:text-[#4648d4]"
+              className="resize-none w-full bg-transparent font-headline text-2xl font-black leading-tight text-gray-900 outline-none focus:text-[#4648d4]"
             />
             <p className="mt-2 text-xs text-gray-400">
               {children.length} child task{children.length !== 1 ? 's' : ''} / {resources.length} resource{resources.length !== 1 ? 's' : ''}
@@ -1498,9 +1501,9 @@ export function TaskFocusView() {
         />
       </header>
 
-      <TaskCalendarPanel task={task} subtreeIds={subtreeIds} allTasks={allTasks} />
+      <div className="mb-4"><MobileDisclosure title="Calendar & time blocks" storageKey="task-calendar"><TaskCalendarPanel task={task} subtreeIds={subtreeIds} allTasks={allTasks} /></MobileDisclosure></div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 space-y-6">
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3">
@@ -1509,7 +1512,7 @@ export function TaskFocusView() {
               <h2 className="font-headline text-sm font-bold text-gray-900">Child Tasks</h2>
             </div>
             <span className="font-mono text-[9px] uppercase tracking-widest text-gray-400">
-              time &amp; due editable inline
+              Tap a time or date to edit
             </span>
           </div>
 
@@ -1518,10 +1521,10 @@ export function TaskFocusView() {
               value={childTitle}
               onChange={e => setChildTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddChild(); }}
-              placeholder="New child task"
+              aria-label="New child task title" placeholder="Add a child task…"
               className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-800 outline-none focus:border-[#4648d4]"
             />
-            <button onClick={handleAddChild} className="rounded-lg bg-[#4648d4] px-2.5 py-1.5 text-white hover:opacity-90">
+            <button onClick={handleAddChild} aria-label="Add child task" disabled={!childTitle.trim()} className="rounded-lg bg-[#4648d4] px-2.5 py-1.5 text-white hover:opacity-90 disabled:opacity-40">
               <Plus size={13} />
             </button>
           </div>
@@ -1549,7 +1552,7 @@ export function TaskFocusView() {
           <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3">
             <div className="flex items-center gap-2">
               <FileText size={15} className="text-gray-500" />
-              <h2 className="font-headline text-sm font-bold text-gray-900">Section Journal</h2>
+              <h2 className="font-headline text-sm font-bold text-gray-900">Task notes</h2>
             </div>
             <span className="font-mono text-[9px] uppercase tracking-widest text-gray-400">
               {taskNotes.length} entr{taskNotes.length === 1 ? 'y' : 'ies'}
@@ -1570,11 +1573,11 @@ export function TaskFocusView() {
               </div>
             )}
 
-            <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
               <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-gray-400">
                 {formatJournalDate(new Date().toISOString())}
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => mentions.setShowPicker(v => !v)}
                   className={`inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-mono text-[9px] transition-colors ${
@@ -1741,7 +1744,7 @@ export function TaskFocusView() {
         </section>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <section>
             <div className="mb-3 flex items-center gap-1.5">
               <Paperclip size={14} className="text-gray-500" />

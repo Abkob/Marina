@@ -295,7 +295,7 @@ export function WorkloadHorizon({
       <div className="border-t border-slate-100 bg-gradient-to-br from-white via-white to-indigo-50/60 p-5 lg:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-600">How Amina calculated this</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-600">How Marina calculated this</p>
               <h3 className="mt-1 font-headline text-xl font-bold text-slate-950">{rangeTitle}</h3>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{explanation}</p>
           </div>
@@ -326,7 +326,7 @@ export function WorkloadHorizon({
         <div className="grid gap-2 border-b border-slate-100 bg-slate-50/70 p-4 lg:grid-cols-3 lg:px-6">
           {model.overdueCount > 0 && <div className="flex gap-2 rounded-xl border border-red-100 bg-white p-3 text-xs leading-5 text-slate-700"><History size={15} className="mt-0.5 shrink-0 text-red-600" /><p><strong className="text-red-700">{model.overdueCount} overdue · {duration(model.overdueMinutes)} still left.</strong> The old date stays red, but the work is carried into the next available catch-up slots.</p></div>}
           {model.missedCount > 0 && <div className="flex gap-2 rounded-xl border border-orange-100 bg-white p-3 text-xs leading-5 text-slate-700"><AlertTriangle size={15} className="mt-0.5 shrink-0 text-orange-600" /><p><strong className="text-orange-700">{model.missedCount} upcoming cutoff{model.missedCount === 1 ? '' : 's'} miss by {duration(model.shortfallMinutes)}.</strong> {scheduler.gap_minutes > 0 ? `${duration(scheduler.gap_minutes)} is free later, but later hours cannot repair an earlier deadline.` : 'There is not enough reachable capacity before those dates.'}</p></div>}
-          {model.unestimatedCount > 0 && <div className="flex gap-2 rounded-xl border border-amber-100 bg-white p-3 text-xs leading-5 text-slate-700"><TimerReset size={15} className="mt-0.5 shrink-0 text-amber-600" /><p><strong className="text-amber-700">{model.unestimatedCount} task{model.unestimatedCount === 1 ? '' : 's'} need a rough estimate.</strong> They remain visible, but Amina will not invent hours for them.</p></div>}
+          {model.unestimatedCount > 0 && <div className="flex gap-2 rounded-xl border border-amber-100 bg-white p-3 text-xs leading-5 text-slate-700"><TimerReset size={15} className="mt-0.5 shrink-0 text-amber-600" /><p><strong className="text-amber-700">{model.unestimatedCount} task{model.unestimatedCount === 1 ? '' : 's'} need a rough estimate.</strong> They remain visible, but Marina will not invent hours for them.</p></div>}
         </div>
       )}
 

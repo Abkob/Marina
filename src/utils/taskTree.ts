@@ -33,6 +33,26 @@ export function isWorkSelectableTask(t: DBTask): boolean {
   return t.kind !== 'critical_path' || (t.status === 'in_progress' && !t.completed);
 }
 
+/** Hide archived goal branches before scaffolding is removed or children are promoted. */
+export function getWorkTasks(tasks: DBTask[], goals: DBGoal[]): DBTask[] {
+  const archivedGoals = new Set(goals.filter(goal => goal.archived_at).map(goal => goal.id));
+  const hidden = new Set<string>();
+  const children = new Map<string, string[]>();
+  for (const task of tasks) {
+    if (task.goal_id && archivedGoals.has(task.goal_id)) hidden.add(task.id);
+    if (task.parent_task_id) {
+      children.set(task.parent_task_id, [...(children.get(task.parent_task_id) ?? []), task.id]);
+    }
+  }
+  const queue = [...hidden];
+  for (let index = 0; index < queue.length; index++) {
+    for (const id of children.get(queue[index]) ?? []) {
+      if (!hidden.has(id)) { hidden.add(id); queue.push(id); }
+    }
+  }
+  return tasks.filter(task => !hidden.has(task.id) && isWorkSelectableTask(task));
+}
+
 /**
  * Group tasks by goal and nest children under their parents. Children whose
  * parent is absent (completed, filtered, or missing) are promoted to the top

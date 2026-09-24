@@ -37,7 +37,7 @@ router.post('/token', async (req, res) => {
         if (!ALLOWED_CONTENT_TYPES.includes(payload.contentType)) {
           throw Object.assign(new Error('Unsupported file type'), { status: 400 });
         }
-        const prefix = `amina/${payload.kind}/`;
+        const prefix = `marina/${payload.kind}/`;
         if (!pathname.startsWith(prefix) || pathname.includes('..') || pathname.length > 512) {
           throw Object.assign(new Error('Invalid upload path'), { status: 400 });
         }

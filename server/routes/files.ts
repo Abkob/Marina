@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { deleteStoredFile, isPrivateBlobReference, materializeStoredFile, openStoredFile, verifyPrivateBlob } from '../services/fileStorage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPLOADS_DIR = isVercelRuntime ? path.join('/tmp', 'amina-uploads') : path.join(__dirname, '..', 'uploads');
+const UPLOADS_DIR = isVercelRuntime ? path.join('/tmp', 'marina-uploads') : path.join(__dirname, '..', 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const ALLOWED_MIMES = new Set([

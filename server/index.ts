@@ -29,9 +29,9 @@ async function startServer() {
     await seedIfEmpty();
     const app = createApp();
     const server = app.listen(PORT, '127.0.0.1', () => {
-      console.log(`[server] Amina API running on http://127.0.0.1:${PORT}`);
+      console.log(`[server] Marina API running on http://127.0.0.1:${PORT}`);
       const rawDbUrl = process.env.DATABASE_URL ?? '';
-      let dbDisplay = 'localhost:5432/amina';
+      let dbDisplay = 'localhost:5432/marina';
       try {
         if (rawDbUrl) {
           const u = new URL(rawDbUrl);
@@ -113,7 +113,7 @@ async function startServer() {
       setInterval(rollupTick, 60 * 60_000).unref?.();
 
       // Daily automatic backup (skipped in test mode). Rotation keeps the
-      // newest AMINA_BACKUP_KEEP (default 14).
+      // newest MARINA_BACKUP_KEEP (default 14).
       const backupTick = async () => {
         try {
           const { createBackup, rotateBackups } = await import('./routes/backups.js');
@@ -124,10 +124,10 @@ async function startServer() {
           console.error('[backup] auto backup failed:', (err as Error).message);
         }
       };
-      if (process.env.NODE_ENV !== 'test' && process.env.AMINA_AUTO_BACKUP !== 'false') {
+      if (process.env.NODE_ENV !== 'test' && process.env.MARINA_AUTO_BACKUP !== 'false') {
         setTimeout(backupTick, 60_000);                       // first backup 1min after boot
         setInterval(backupTick, 24 * 60 * 60_000).unref?.();  // then daily
-        console.log('[backup] auto-backup enabled (daily, keep last ' + (process.env.AMINA_BACKUP_KEEP ?? 14) + ')');
+        console.log('[backup] auto-backup enabled (daily, keep last ' + (process.env.MARINA_BACKUP_KEEP ?? 14) + ')');
       }
 
       // Auto-retry failed journal entries every 5 minutes (max 3 attempts).

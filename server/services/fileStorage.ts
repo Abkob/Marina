@@ -54,7 +54,7 @@ export async function materializeStoredFile(reference: string, originalName = 'u
   const opened = await openStoredFile(reference);
   if (!opened) throw Object.assign(new Error('Stored file not found'), { status: 404 });
   const safeExtension = path.extname(originalName).replace(/[^a-zA-Z0-9.]/g, '').slice(0, 12);
-  const tempDir = path.join(os.tmpdir(), 'amina-materialized');
+  const tempDir = path.join(os.tmpdir(), 'marina-materialized');
   await fsp.mkdir(tempDir, { recursive: true });
   const tempPath = path.join(tempDir, `${crypto.randomUUID()}${safeExtension}`);
   await pipeline(opened.stream, fs.createWriteStream(tempPath, { flags: 'wx' }));

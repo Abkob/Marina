@@ -1,3 +1,5 @@
+import { usePersistentDraft } from '../hooks/usePersistentDraft';
+import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -5,7 +7,7 @@ import {
   Square, Timer, Trash2, Upload, X,
 } from 'lucide-react';
 import {
-  useAllTasks, useCreateWorkSession, useDeleteWorkSession, useGoals,
+  useAllTasks, useCreateWorkSession, useDeleteWorkSession, useAllGoals,
   useInvalidate, useNoteFiles, useTask, useTaskNotes, useTaskWorkSessions,
 } from '../api/hooks';
 import { EntityTopicChips } from '../components/EntityTopicChips';
@@ -17,7 +19,7 @@ import { addTaskNote, deleteTaskNote, toggleTask, touchTask } from '../db/querie
 import { addNoteFile, deleteNoteFile } from '../db/queries/noteFiles';
 import { formatTaskTime, getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
 import { getEffectiveTaskDueDate, getInheritedTaskDueDate } from '../utils/taskDates';
-import { isWorkSelectableTask } from '../utils/taskTree';
+import { getWorkTasks } from '../utils/taskTree';
 import { readActiveWorkTimer, writeActiveWorkTimer, WORK_TIMER_STORAGE_KEY, type ActiveWorkTimer } from '../utils/workTimer';
 import { apiPost } from '../utils/apiFetch';
 
@@ -107,6 +109,7 @@ function WorkNoteItem({
 }
 
 export function WorkView() {
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const {
     workTaskId,
     setWorkTaskId,
@@ -116,8 +119,11 @@ export function WorkView() {
   } = useAppStore();
   const invalidate = useInvalidate();
   const queryClient = useQueryClient();
-  const { data: allTasks = [] } = useAllTasks();
-  const { data: goals = [] } = useGoals();
+  const { data: taskData, isPlaceholderData: tasksPlaceholder } = useAllTasks();
+  const { data: goalData, isPlaceholderData: goalsPlaceholder } = useAllGoals();
+  const allTasks = taskData ?? [];
+  const goals = goalData ?? [];
+  const tasksReady = taskData !== undefined && goalData !== undefined && !tasksPlaceholder && !goalsPlaceholder;
   const { data: selectedTask } = useTask(workTaskId);
   const { data: notes = [] } = useTaskNotes(workTaskId);
   const { data: sessions = [] } = useTaskWorkSessions(workTaskId);
@@ -135,7 +141,7 @@ export function WorkView() {
   const [manualMinutes, setManualMinutes] = useState('');
   const [manualNote, setManualNote] = useState('');
   const [manualWhen, setManualWhen] = useState(() => toDateTimeLocal(new Date()));
-  const [journalDraft, setJournalDraft] = useState('');
+  const [journalDraft, setJournalDraft] = usePersistentDraft(`work:${workTaskId ?? 'none'}`);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [viewingFile, setViewingFile] = useState<DBTaskNoteFile | null>(null);
@@ -166,7 +172,7 @@ export function WorkView() {
   }, [activeTimer]);
 
   const goalById = useMemo(() => new Map(goals.map(g => [g.id, g])), [goals]);
-  const workTasks = useMemo(() => allTasks.filter(isWorkSelectableTask), [allTasks]);
+  const workTasks = useMemo(() => tasksReady ? getWorkTasks(allTasks, goals) : [], [allTasks, goals, tasksReady]);
   const taskOptions = useMemo(() => {
     return [...workTasks]
       .sort((a, b) => {
@@ -178,15 +184,17 @@ export function WorkView() {
   }, [workTasks]);
 
   useEffect(() => {
-    if (workTaskId || taskOptions.length === 0) return;
+    if (!tasksReady || taskOptions.some(task => task.id === workTaskId)) return;
     const starter = taskOptions.find(t => t.status === 'in_progress' && !t.completed) ?? taskOptions.find(t => !t.completed);
-    if (starter) setWorkTaskId(starter.id);
-  }, [workTaskId, taskOptions, setWorkTaskId]);
+    const nextId = starter?.id ?? null;
+    if (nextId !== workTaskId) setWorkTaskId(nextId);
+  }, [workTaskId, taskOptions, setWorkTaskId, tasksReady]);
 
-  const currentTask = selectedTask ?? taskOptions.find(t => t.id === workTaskId) ?? null;
+  const eligibleTask = taskOptions.find(t => t.id === workTaskId);
+  const currentTask = eligibleTask ? (selectedTask?.id === workTaskId ? selectedTask : eligibleTask) : null;
   const timerTask = activeTimer ? allTasks.find(t => t.id === activeTimer.taskId) ?? null : null;
   const activeRoutine = activeTimer?.routineId ? activeTimer : null;
-  const timerTitle = activeRoutine?.routineTitle ?? timerTask?.title ?? 'your task';
+  const timerTitle = activeRoutine?.routineTitle ?? workTasks.find(task => task.id === activeTimer?.taskId)?.title ?? 'your task';
   const currentGoal = currentTask?.goal_id ? goalById.get(currentTask.goal_id) ?? null : null;
   const effectiveDueDate = currentTask ? getEffectiveTaskDueDate(currentTask, allTasks) : null;
   const inheritedDueDate = currentTask ? getInheritedTaskDueDate(currentTask, allTasks) : null;
@@ -343,7 +351,7 @@ export function WorkView() {
   const routineTimerTooLong = Boolean(activeRoutine) && Math.round(elapsed / 60_000) > 1440;
 
   return (
-    <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-4 py-6 md:px-10">
+    <div className="mobile-work mx-auto flex max-w-[1180px] flex-col gap-5 px-4 py-6 md:px-10">
       <header className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
@@ -373,22 +381,23 @@ export function WorkView() {
         )}
       </header>
 
+      <button onClick={() => setTaskPickerOpen(open => !open)} aria-expanded={taskPickerOpen || (!currentTask && !activeRoutine)} aria-controls="work-task-picker" className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 lg:hidden"><span>{taskPickerOpen ? 'Close task picker' : currentTask ? 'Change task' : 'Choose a task'}</span><Search size={18} /></button>
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-        <aside className="min-w-0">
-          <div className="sticky top-20 max-h-[calc(100vh-140px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
+        <aside id="work-task-picker" className={`min-w-0 ${taskPickerOpen || (!currentTask && !activeRoutine) ? "block" : "hidden lg:block"}`}>
+          <div className="mobile-work-task-picker lg:sticky lg:top-20 lg:max-h-[calc(100vh-140px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
             <TaskTree
               tasks={workTasks}
               goals={goals}
               mode="select"
               includeCriticalPath
               selectedTaskId={activeRoutine ? null : currentTask?.id ?? null}
-              onSelect={task => setWorkTaskId(task.id)}
+              onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }}
               searchPlaceholder="Find a task or goal…"
             />
           </div>
         </aside>
 
-        <main className="min-w-0 space-y-5">
+        <div className="min-w-0 space-y-5">
           {activeRoutine ? (
             <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-sm sm:p-7" aria-label="Active routine focus session">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
@@ -544,7 +553,7 @@ export function WorkView() {
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitJournal();
                       }}
-                      placeholder="Real-time note..."
+                      placeholder="What are you working on?"
                       className="min-h-[130px] w-full resize-y bg-transparent text-sm leading-relaxed text-gray-800 outline-none placeholder:text-gray-300"
                     />
                     {pendingFiles.length > 0 && (
@@ -590,7 +599,7 @@ export function WorkView() {
                   </div>
                 </div>
 
-                <aside className="space-y-5">
+                <aside className="space-y-5"><MobileDisclosure title="Time logs" description={`${sessions.length} sessions · ${directLogged} minutes`} storageKey="work-time-logs">
                   <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                     <div className="mb-3 flex items-center gap-2">
                       <Clock size={14} className="text-gray-500" />
@@ -661,11 +670,11 @@ export function WorkView() {
                       )}
                     </div>
                   </section>
-                </aside>
+                </MobileDisclosure></aside>
               </section>
             </>
           )}
-        </main>
+        </div>
       </div>
 
       {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}

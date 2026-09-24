@@ -8,6 +8,10 @@ import { apiFetch, setMutationListener } from './utils/apiFetch';
 import { Sidebar }   from './components/Sidebar';
 import { Header }    from './components/Header';
 import { MobileNav } from './components/MobileNav';
+import { MobileHeader } from './components/MobileHeader';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from './hooks/useMediaQuery';
+import { useMobileViewport } from './hooks/useMobileViewport';
+import { useMobileNavigation } from './hooks/useMobileNavigation';
 import { Toast }     from './components/Toast';
 import { GoogleSyncPulse } from './components/GoogleSyncPulse';
 
@@ -23,6 +27,7 @@ import { CopilotView }      from './views/CopilotView';
 import { GraphView }        from './views/GraphView';
 import { TopicsView }       from './views/TopicsView';
 import { ScheduleView }     from './views/ScheduleView';
+import { MobileTimeline } from './views/MobileTimeline';
 import { TestingView }      from './views/TestingView';
 import { UsageManagerView } from './views/UsageManagerView';
 
@@ -103,6 +108,8 @@ function queueInvalidation(key: string) {
 
 setMutationListener((_method, url) => {
   const path = url.split('?')[0];
+  // Archiving/restoring a goal changes the visibility of every linked entity.
+  if (/^\/api\/goals(?:\/|$)/.test(path)) void queryClient.invalidateQueries();
   const keysToInvalidate = new Set<string>();
   for (const [re, keys] of URL_INVALIDATION) {
     if (re.test(path)) {
@@ -115,11 +122,14 @@ setMutationListener((_method, url) => {
     queueInvalidation(key);
   }
   if (!path.startsWith('/api/google/')) {
-    window.dispatchEvent(new CustomEvent('amina:data-mutated', { detail: { path } }));
+    window.dispatchEvent(new CustomEvent('marina:data-mutated', { detail: { path } }));
   }
 });
 
 function AppInner() {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  useMobileViewport();
+  useMobileNavigation(isMobile);
   const {
     currentTab, selectedGoalId, focusedTaskId,
     setSelectedGoalId, setFocusedTaskId,
@@ -158,7 +168,7 @@ function AppInner() {
     if (currentTab === 'Topics')    return <TopicsView />;
     if (currentTab === 'Work')      return <WorkView />;
     if (currentTab === 'Schedule')  return <ScheduleView />;
-    if (currentTab === 'Gantt')     return <ScheduleView initialPage="timeline" />;
+    if (currentTab === 'Gantt')     return isMobile ? <MobileTimeline /> : <ScheduleView initialPage="timeline" />;
     if (currentTab === 'Testing')   return <TestingView />;
     if (currentTab === 'Usage')     return <UsageManagerView />;
     if (currentTab === 'Resources') return <ResourcesView />;
@@ -176,23 +186,25 @@ function AppInner() {
     <div className="bg-canvas-bg text-on-surface font-sans antialiased min-h-screen flex selection:bg-[#EEF2FF] selection:text-black">
       <GoogleSyncPulse />
       <Toast />
-      <Sidebar />
-      <Header />
+      {!isMobile && <Sidebar />}
+      {!isMobile && <Header />}
+      {isMobile && currentTab !== 'Copilot' && <MobileHeader />}
       <main
-        className={`flex-1 w-full ${sidebarCollapsed ? 'md:pl-[64px]' : 'md:pl-[260px]'} transition-[padding] duration-200 overflow-x-hidden ${
+        data-page={currentTab}
+        className={`app-main flex-1 min-w-0 w-full ${sidebarCollapsed ? 'md:pl-[64px]' : 'md:pl-[260px]'} transition-[padding] duration-200 overflow-x-hidden ${
           isFullBleed
-            ? 'pt-16 md:pt-16 h-screen overflow-y-hidden'
-            : 'pt-4 md:pt-[76px] pb-24 md:pb-8 min-h-screen'
+            ? 'mobile-full-page pt-16 md:pt-16 h-screen overflow-y-hidden'
+            : 'mobile-page pt-4 md:pt-[76px] pb-24 md:pb-8 min-h-screen'
         }`}
       >
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode={isMobile ? 'sync' : 'wait'}>
           <motion.div
             key={currentTab + (selectedGoalId ?? '') + (focusedTaskId ?? '')}
-            initial={{ opacity: 0, y: 6 }}
+            initial={isMobile ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="h-full"
+            transition={{ duration: isMobile ? 0 : 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="app-page-content h-full min-w-0"
           >
             <Suspense fallback={<div className="p-8 text-sm text-gray-400">Loading…</div>}>
               {renderContent()}
@@ -200,7 +212,7 @@ function AppInner() {
           </motion.div>
         </AnimatePresence>
       </main>
-      <MobileNav />
+      {isMobile && <MobileNav />}
       <AnimatePresence>
         {newGoalModalOpen     && <NewGoalWizard />}
         {newNoteModalOpen     && <NewNoteModal />}

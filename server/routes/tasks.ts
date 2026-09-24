@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeTaskSql } from '../utils/archiveVisibility.js';
 import { query, buildUpdate, transaction } from '../db.js';
 import { syncGoalMetrics } from './goals.js';
 import { generateEntitySummary } from '../services/summaryGenerator.js';
@@ -75,22 +76,27 @@ router.get('/', async (req, res) => {
   const { goal_id, parent_task_id } = req.query;
   const limit  = Math.min(Math.max(1, Number(req.query.limit)  || 500), 500);
   const offset = Math.max(0, Number(req.query.offset) || 0);
+  // Only an archived goal's detail view includes its archived branch. An active
+  // goal must still hide descendants whose parent belongs to an archived goal.
+  const visible = req.query.include_archived === 'true' ? 'TRUE'
+    : goal_id ? `(${activeTaskSql()} OR EXISTS (SELECT 1 FROM goals WHERE goals.id=$1 AND archived_at IS NOT NULL))`
+      : activeTaskSql();
   let result;
   let countResult;
   if (goal_id) {
     [result, countResult] = await Promise.all([
-      query('SELECT * FROM tasks WHERE goal_id = $1 ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3', [goal_id, limit, offset]),
-      query<{ total: string }>('SELECT COUNT(*)::int AS total FROM tasks WHERE goal_id = $1', [goal_id]),
+      query(`SELECT * FROM tasks WHERE goal_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [goal_id, limit, offset]),
+      query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE goal_id = $1 AND ${visible}`, [goal_id]),
     ]);
   } else if (parent_task_id) {
     [result, countResult] = await Promise.all([
-      query('SELECT * FROM tasks WHERE parent_task_id = $1 ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3', [parent_task_id, limit, offset]),
-      query<{ total: string }>('SELECT COUNT(*)::int AS total FROM tasks WHERE parent_task_id = $1', [parent_task_id]),
+      query(`SELECT * FROM tasks WHERE parent_task_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [parent_task_id, limit, offset]),
+      query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE parent_task_id = $1 AND ${visible}`, [parent_task_id]),
     ]);
   } else {
     [result, countResult] = await Promise.all([
-      query('SELECT * FROM tasks ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]),
-      query<{ total: string }>('SELECT COUNT(*)::int AS total FROM tasks'),
+      query(`SELECT * FROM tasks WHERE ${visible} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE ${visible}`),
     ]);
   }
   res.setHeader('X-Total-Count', String(Number(countResult.rows[0]?.total ?? 0)));

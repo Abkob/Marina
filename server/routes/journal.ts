@@ -1,3 +1,4 @@
+import { activeEntitySql, activeTaskSql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
@@ -96,7 +97,7 @@ router.get('/day-stats', async (req, res) => {
        LEFT JOIN goals g  ON jl.target_type='goal' AND jl.target_id=g.id
        LEFT JOIN tasks t  ON jl.target_type='task' AND jl.target_id=t.id
        LEFT JOIN resources r ON jl.target_type='resource' AND jl.target_id=r.id
-       LEFT JOIN goal_milestones gm ON jl.target_type='milestone' AND jl.target_id=gm.id`, [date]),
+       LEFT JOIN goal_milestones gm ON jl.target_type='milestone' AND jl.target_id=gm.id WHERE ${activeEntitySql('jl.target_type', 'jl.target_id')}`, [date]),
     query<{ n: string; mins: string }>(
       `SELECT COUNT(DISTINCT ws.task_id)::int n, COALESCE(SUM(ws.minutes),0)::int mins
        FROM work_sessions ws WHERE LEFT(ws.started_at, 10) = $1 AND ws.task_id IS NOT NULL`, [date]),
@@ -244,7 +245,7 @@ router.get('/:id/links', async (req, res) => {
      LEFT JOIN meetings m    ON jl.target_type='meeting'   AND jl.target_id=m.id
      LEFT JOIN resources r   ON jl.target_type='resource'  AND jl.target_id=r.id
      LEFT JOIN goal_milestones gm ON jl.target_type='milestone' AND jl.target_id=gm.id
-     WHERE jl.journal_entry_id=$1
+     WHERE jl.journal_entry_id=$1 AND ${activeEntitySql('jl.target_type', 'jl.target_id')}
      ORDER BY jl.created_at DESC`,
     [req.params.id],
   );
@@ -347,7 +348,7 @@ export async function ingestJournalEntry(entryId: string) {
 
   // Load active entities for AI context
   const { rows: goals }     = await query("SELECT id, title FROM goals WHERE archived_at IS NULL");
-  const { rows: tasks }     = await query("SELECT id, title, goal_id FROM tasks WHERE completed=false LIMIT 100");
+  const { rows: tasks }     = await query(`SELECT id, title, goal_id FROM tasks WHERE completed=false AND ${activeTaskSql()} LIMIT 100`);
   const { rows: resources } = await query("SELECT id, title FROM resources LIMIT 50");
   const { rows: milestones } = await query("SELECT id, title, goal_id FROM goal_milestones WHERE completed=false LIMIT 50");
   const { rows: aliases }    = await query("SELECT entity_id, entity_type, alias FROM entity_aliases");

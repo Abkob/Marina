@@ -4,6 +4,7 @@ import { HelpCircle, X, Link2, Search, Crosshair, LayoutGrid, Share2 } from 'luc
 import { apiFetch } from '../utils/apiFetch';
 import { TYPE_META, REL_EXPLAIN, type GraphData } from './graph/types';
 import { ForceWeb } from './graph/ForceWeb';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { GraphBoard } from './graph/GraphBoard';
 
 /**
@@ -21,7 +22,8 @@ const memberKey = (m: MembershipRow) =>
   `${m.entity_type === 'journal_entry' ? 'journal' : m.entity_type}:${m.entity_id}`;
 
 export function GraphView() {
-  const [mode, setMode] = useState<'web' | 'board'>('web');
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [mode, setMode] = useState<'web' | 'board'>(() => window.matchMedia(MOBILE_LAYOUT_QUERY).matches ? 'board' : 'web');
   const [visibleTypes, setVisibleTypes] = useState<Set<string>>(new Set(Object.keys(TYPE_META)));
   const [relFilter, setRelFilter] = useState<Set<string>>(new Set()); // empty = all relationships
   const [topicId, setTopicId] = useState('');
@@ -29,6 +31,7 @@ export function GraphView() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [depth, setDepth] = useState<1 | 2>(1);
   const [showHelp, setShowHelp] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { data, isLoading, error: queryError, refetch } = useQuery<GraphData>({
     queryKey: ['graph'],
@@ -145,12 +148,12 @@ export function GraphView() {
   return (
     <div className="h-full bg-gray-950 flex flex-col">
       {/* Row 1: title, search-as-filter, mode switch */}
-      <div className="shrink-0 px-6 pt-4 pb-2 flex items-center gap-3 flex-wrap">
+      <div className="mobile-graph-toolbar shrink-0 px-6 pt-4 pb-2 flex items-center gap-3 flex-wrap">
         <h2 className="font-headline text-lg font-bold text-white flex items-center gap-2 shrink-0">
           <Link2 size={16} className="text-indigo-400" /> Connections
         </h2>
 
-        <div className="relative flex-1 min-w-[220px] max-w-md">
+        <div className="graph-search relative flex-1 min-w-[220px] max-w-md">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-600" />
           <input
             aria-label="Filter connections"
@@ -210,10 +213,11 @@ export function GraphView() {
         <button onClick={() => setShowHelp(h => !h)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-900 hover:text-gray-300" title="How to read this" aria-label="Toggle graph help" aria-expanded={showHelp}>
           <HelpCircle size={14} />
         </button>
+        {isMobile && <button onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen} aria-controls="connection-filters" className="rounded-xl border border-gray-700 px-3 text-xs font-semibold text-gray-300">Filters{isNarrowed ? ' · active' : ''}</button>}
       </div>
 
       {/* Row 2: entity-type chips + relationship chips + active-filter status */}
-      <div className="shrink-0 px-6 pb-2.5 flex items-center gap-2 flex-wrap border-b border-white/5">
+      <div id="connection-filters" hidden={isMobile && !filtersOpen} className={`mobile-graph-filters shrink-0 px-6 pb-2.5 flex items-center gap-2 flex-wrap border-b border-white/5 ${isMobile && !filtersOpen ? 'mobile-filters-closed' : ''}`}>
         {Object.entries(TYPE_META).map(([t, m]) => (
           <button
             key={t}
@@ -266,7 +270,7 @@ export function GraphView() {
         <div className="shrink-0 mx-6 mt-2 px-4 py-2.5 bg-indigo-500/5 border border-indigo-500/20 rounded-xl flex items-start gap-2">
           <HelpCircle size={13} className="text-indigo-400 shrink-0 mt-0.5" />
           <p className="text-[11px] text-gray-400 leading-relaxed">
-            This is a search engine over your connections. <b className="text-gray-300">Type</b> to keep only matching records
+            {isMobile && <span className="block mb-2 text-indigo-200">Use Board to tap a record, or the target icon to explore its connections. Scroll the filters sideways to see more.</span>}This is a search engine over your connections. <b className="text-gray-300">Type</b> to keep only matching records
             plus whatever they link to (choose 1 or 2 hops). <b className="text-gray-300">Right-click</b> any node to focus its
             neighborhood. Pick a <b className="text-gray-300">#topic</b> to see just that cluster. Click a
             <b className="text-indigo-300"> link-kind chip</b> (e.g. “attached to”, “used together with”) to see only that kind of

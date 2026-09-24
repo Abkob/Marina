@@ -5,7 +5,7 @@ describe('local chat fallback configuration', () => {
   it('disables local fallback on Vercel', () => {
     expect(resolveLocalFallbackModel({
       VERCEL: '1',
-      AMINA_LOCAL_FALLBACK_MODEL: 'qwen3:8b',
+      MARINA_LOCAL_FALLBACK_MODEL: 'qwen3:8b',
     })).toBe('');
   });
 
@@ -14,7 +14,7 @@ describe('local chat fallback configuration', () => {
   });
 
   it('allows local development to disable or replace the fallback', () => {
-    expect(resolveLocalFallbackModel({ AMINA_LOCAL_FALLBACK_MODEL: '' })).toBe('');
-    expect(resolveLocalFallbackModel({ AMINA_LOCAL_FALLBACK_MODEL: 'llama3.2:latest' })).toBe('llama3.2:latest');
+    expect(resolveLocalFallbackModel({ MARINA_LOCAL_FALLBACK_MODEL: '' })).toBe('');
+    expect(resolveLocalFallbackModel({ MARINA_LOCAL_FALLBACK_MODEL: 'llama3.2:latest' })).toBe('llama3.2:latest');
   });
 });

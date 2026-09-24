@@ -19,7 +19,7 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-if (!archivePath) refuse('pass the .amina-backup.zip path after --');
+if (!archivePath) refuse('pass the .marina-backup.zip path after --');
 if (process.env.CONFIRM_PORTABLE_RESTORE !== '1') {
   refuse('set CONFIRM_PORTABLE_RESTORE=1 after selecting a fresh target database');
 }
@@ -109,7 +109,7 @@ try {
 
     await client.query('BEGIN');
     transactionOpen = true;
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('amina-portable-restore'))");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('marina-portable-restore'))");
     await client.query(schema);
 
     const tableNames = manifest.database.tables.map(table => table.name);
@@ -159,7 +159,7 @@ try {
       const entry = entries.get(file.archive_path)!;
       let storedReference: string;
       if (storageMode === 'blob') {
-        const blob = await put(`amina/restored/${restoreStamp}/${file.archive_path.replace(/^files\//, '')}`, entry.stream(), {
+        const blob = await put(`marina/restored/${restoreStamp}/${file.archive_path.replace(/^files\//, '')}`, entry.stream(), {
           access: 'private',
           addRandomSuffix: false,
           contentType: file.mime_type ?? 'application/octet-stream',

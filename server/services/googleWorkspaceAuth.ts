@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { legacyAuthenticationSecret } from '../utils/brandCompatibility.js';
 
 export const GOOGLE_OAUTH_SCOPES = [
   'openid',
@@ -25,11 +26,11 @@ interface GoogleTokenResponse {
 function requiredSecret(name: 'token' | 'state'): string {
   const value = name === 'token'
     ? process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
-    : process.env.GOOGLE_OAUTH_STATE_SECRET ?? process.env.AMINA_SESSION_SECRET;
+    : process.env.GOOGLE_OAUTH_STATE_SECRET ?? process.env.MARINA_SESSION_SECRET ?? legacyAuthenticationSecret('SESSION_SECRET');
   if (!value || value.length < 32) {
     throw new Error(name === 'token'
       ? 'GOOGLE_TOKEN_ENCRYPTION_KEY must be at least 32 characters'
-      : 'GOOGLE_OAUTH_STATE_SECRET (or AMINA_SESSION_SECRET) must be at least 32 characters');
+      : 'GOOGLE_OAUTH_STATE_SECRET (or MARINA_SESSION_SECRET) must be at least 32 characters');
   }
   return value;
 }
@@ -90,7 +91,7 @@ export function googleConfiguration() {
   if (!process.env.GOOGLE_TOKEN_ENCRYPTION_KEY || process.env.GOOGLE_TOKEN_ENCRYPTION_KEY.length < 32) {
     missing.push('GOOGLE_TOKEN_ENCRYPTION_KEY');
   }
-  const stateSecret = process.env.GOOGLE_OAUTH_STATE_SECRET ?? process.env.AMINA_SESSION_SECRET;
+  const stateSecret = process.env.GOOGLE_OAUTH_STATE_SECRET ?? process.env.MARINA_SESSION_SECRET ?? legacyAuthenticationSecret('SESSION_SECRET');
   if (!stateSecret || stateSecret.length < 32) missing.push('GOOGLE_OAUTH_STATE_SECRET');
   if (process.env.VERCEL === '1' && !process.env.APP_URL && !process.env.GOOGLE_REDIRECT_URI) {
     missing.push('APP_URL');
@@ -180,4 +181,3 @@ export async function fetchGoogleAccountEmail(accessToken: string): Promise<stri
   const body = await response.json() as { email?: string };
   return body.email ?? null;
 }
-

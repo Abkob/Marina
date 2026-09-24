@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeEntitySql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
 
 const router = Router();
@@ -13,6 +14,7 @@ const VALID_RELATIONSHIPS = new Set([
 
 router.get('/', async (req, res) => {
   const { source_id, target_id, goal_id, relationship } = req.query;
+  const visible = `${activeEntitySql('source_type', 'source_id')} AND ${activeEntitySql('target_type', 'target_id')}`;
   if (goal_id) {
     const params: unknown[] = [goal_id];
     const relationshipClause = relationship ? `AND e.relationship=$2` : '';
@@ -29,20 +31,20 @@ router.get('/', async (req, res) => {
   }
   if (source_id) {
     const { rows } = await query(
-      'SELECT * FROM edges WHERE source_id=$1 ORDER BY created_at DESC LIMIT 500',
+      `SELECT * FROM edges WHERE source_id=$1 AND ${visible} ORDER BY created_at DESC LIMIT 500`,
       [source_id],
     );
     return res.json(rows);
   }
   if (target_id) {
     const { rows } = await query(
-      'SELECT * FROM edges WHERE target_id=$1 ORDER BY created_at DESC LIMIT 500',
+      `SELECT * FROM edges WHERE target_id=$1 AND ${visible} ORDER BY created_at DESC LIMIT 500`,
       [target_id],
     );
     return res.json(rows);
   }
   // Without filter: cap at 500 to prevent unbounded result sets
-  const { rows } = await query('SELECT * FROM edges ORDER BY created_at DESC LIMIT 500');
+  const { rows } = await query(`SELECT * FROM edges WHERE ${visible} ORDER BY created_at DESC LIMIT 500`);
   res.json(rows);
 });
 

@@ -88,7 +88,7 @@ export function ForceWeb({ data, visibleTypes, onFocus }: { data: GraphData; vis
     if (node.entityType === 'goal') return navigateToGoal(rawId);
     if (node.entityType === 'task') {
       const gid = node.meta.goal_id as string | undefined;
-      if (gid) { setSelectedGoalId(gid); setFocusedTaskId(rawId); setCurrentTab('Goals'); }
+      if (gid) { navigateToGoal(gid); setFocusedTaskId(rawId); }
       return;
     }
     if (node.entityType === 'resource') return navigateToResource(rawId);

@@ -13,9 +13,9 @@ interface GoogleSyncStatus {
 const RELEVANT_PATH = /^\/api\/(tasks|goals|events|meetings|event-task-links)(?:\/|$)/;
 
 /**
- * Keeps the Google mirror warm without a permanent server process. Amina
+ * Keeps the Google mirror warm without a permanent server process. Marina
  * edits trigger a debounced push; focus/online and a two-minute pulse pull
- * changes made in Google Tasks or the dedicated Amina calendar.
+ * changes made in Google Tasks or the dedicated Marina calendar.
  */
 export function GoogleSyncPulse() {
   const queryClient = useQueryClient();
@@ -85,14 +85,14 @@ export function GoogleSyncPulse() {
     }, 120_000);
     window.addEventListener('focus', onFocus);
     window.addEventListener('online', onOnline);
-    window.addEventListener('amina:data-mutated', onMutation);
+    window.addEventListener('marina:data-mutated', onMutation);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
       if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
-      window.removeEventListener('amina:data-mutated', onMutation);
+      window.removeEventListener('marina:data-mutated', onMutation);
     };
   }, [queryClient]);
 

@@ -13,7 +13,7 @@ export function Toast() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.96 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed top-20 right-4 z-[60] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border border-black/10 bg-white"
+          role="status" aria-live="polite" className="mobile-toast fixed top-20 right-4 z-[60] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border border-black/10 bg-white"
         >
           <span
             className={`w-2 h-2 rounded-full animate-ping ${

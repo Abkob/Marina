@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import * as unzipper from 'unzipper';
+import { LEGACY_BACKUP_FORMAT } from '../../server/utils/brandCompatibility.js';
 import {
   PORTABLE_BACKUP_FORMAT,
   PORTABLE_BACKUP_VERSION,
@@ -21,7 +22,7 @@ export interface VerifiedPortableBackup {
 function isManifest(value: unknown): value is PortableBackupManifest {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<PortableBackupManifest>;
-  return candidate.format === PORTABLE_BACKUP_FORMAT
+  return (candidate.format === PORTABLE_BACKUP_FORMAT || candidate.format === LEGACY_BACKUP_FORMAT)
     && candidate.version === PORTABLE_BACKUP_VERSION
     && candidate.complete === true
     && typeof candidate.created_at === 'string'

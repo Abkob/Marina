@@ -1,4 +1,4 @@
-# Amina OS — Full Session Context
+# Marina OS — Full Session Context
 
 > **Purpose:** Read this before starting any new session. It captures the stack, architecture, every decision made across two major sessions, and the exact state of the codebase so you can continue without re-deriving anything.
 

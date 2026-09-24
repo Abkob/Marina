@@ -25,7 +25,7 @@ export async function uploadToPrivateBlob(file: File, kind: 'resource' | 'note')
   if (!available.private_blob) return null;
   if (file.size > available.max_bytes) throw new Error(`File exceeds the ${Math.round(available.max_bytes / 1024 / 1024)} MB limit`);
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-180) || 'upload.bin';
-  return upload(`amina/${kind}/${crypto.randomUUID()}-${safeName}`, file, {
+  return upload(`marina/${kind}/${crypto.randomUUID()}-${safeName}`, file, {
     access: 'private',
     handleUploadUrl: '/api/uploads/token',
     multipart: file.size > 5 * 1024 * 1024,

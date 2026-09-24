@@ -127,7 +127,7 @@ export function RoutineComposer({ goals, date, onClose, onSaved }: RoutineCompos
           {timing === 'preferred' && <label className="block text-sm font-medium text-gray-700">Preferred time<input type="time" value={preferredTime} onChange={event => setPreferredTime(event.target.value)} className={INPUT} required /></label>}
           <label className="block text-sm font-medium text-gray-700">Starts on<input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className={INPUT} required /></label>
         </div>
-        {timing === 'preferred' && <p className="mt-2 text-xs leading-relaxed text-gray-500">A preferred calendar slot shown in Amina, not a synced Google Calendar event. Your time budget counts toward available study time.</p>}
+        {timing === 'preferred' && <p className="mt-2 text-xs leading-relaxed text-gray-500">A preferred calendar slot shown in Marina, not a synced Google Calendar event. Your time budget counts toward available study time.</p>}
         <label className="mt-4 block text-sm font-medium text-gray-700">What should I work on? <span className="font-normal text-gray-400">Optional</span><textarea rows={2} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} className={`${INPUT} resize-y`} placeholder="Topics, a problem set, or a reminder for future you" /></label>
         <p className="mt-5 rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">Missed days don’t pile up. Done, skipped and worked-on days keep their history, ready for a day-by-day matrix later.</p>
         {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}

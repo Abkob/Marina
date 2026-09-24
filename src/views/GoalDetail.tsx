@@ -1,3 +1,5 @@
+import { MobileDisclosure } from '../components/MobileDisclosure';
+import { ModalFrame } from '../components/ModalFrame';
 import { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -814,7 +816,7 @@ function TaskTreeRow({
         highlighted ? 'bg-[#EEF2FF]/70 ring-1 ring-[#4648d4]/20' : ''
       }`}
     >
-      <div className="flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-gray-50 transition-colors">
+      <div className="mobile-task-row flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-gray-50 transition-colors">
         <button
           onClick={() => setExpanded(v => !v)}
           className={`shrink-0 transition-colors ${children.length === 0 ? 'text-gray-200 hover:text-gray-300' : 'text-gray-300 hover:text-[#4648d4]'}`}
@@ -848,7 +850,7 @@ function TaskTreeRow({
           value={task.title}
           onSave={title => onUpdateSubtaskTitle(task.id, title)}
           strikethrough={task.completed}
-          className="text-xs text-gray-700 font-medium flex-1 min-w-0"
+          className="mobile-task-title text-xs text-gray-700 font-medium flex-1 min-w-0"
         />
 
         {children.length > 0 && (
@@ -856,7 +858,7 @@ function TaskTreeRow({
         )}
 
         {/* Deadline + time — visible when set; shown on hover when empty */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="mobile-task-dates flex items-center gap-1 shrink-0">
           <DeadlinePill
             value={effectiveDueDate}
             onSave={d => onUpdateDeadline(task.id, d)}
@@ -878,13 +880,14 @@ function TaskTreeRow({
           )}
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity shrink-0">
+        <div className="mobile-task-actions flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity shrink-0">
           <button
             onClick={() => onOpenFocus(task.id)}
-            className="text-gray-300 hover:text-[#4648d4] transition-colors p-0.5 rounded"
+            className="mobile-open-task text-gray-300 hover:text-[#4648d4] transition-colors p-0.5 rounded"
             title="Open focus page"
+            aria-label={`Open task ${task.title}`}
           >
-            <FileText size={11} />
+            <FileText size={11} /><span className="md:hidden">Open</span>
           </button>
           <button
             onClick={() => setExpanded(true)}
@@ -1453,7 +1456,7 @@ function MilestoneCard({
     >
       {/* Milestone header — full row is the expand/collapse target */}
       <div
-        className="group/mshdr w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#f8f9fa] transition-colors cursor-pointer select-none"
+        className="mobile-milestone-header group/mshdr w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#f8f9fa] transition-colors cursor-pointer select-none"
         onClick={() => setExpanded(v => !v)}
       >
         <span className="text-gray-400 hover:text-[#4648d4] transition-colors shrink-0">
@@ -1535,10 +1538,11 @@ function MilestoneCard({
         </span>
         <button
           onClick={e => { e.stopPropagation(); onOpenFocus(milestone.id); }}
-          className="text-gray-300 hover:text-[#4648d4] transition-colors p-1 rounded"
+          className="mobile-open-task text-gray-300 hover:text-[#4648d4] transition-colors p-1 rounded"
           title="Open focus page"
+          aria-label={`Open task ${milestone.title}`}
         >
-          <FileText size={13} />
+          <FileText size={13} /><span className="md:hidden">Open</span>
         </button>
         <button
           onClick={e => { e.stopPropagation(); onDelete(milestone); }}
@@ -1932,9 +1936,9 @@ function DeadlineModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+    <ModalFrame titleId="deadline-form-title" onClose={onClose} className="w-full max-w-md rounded-xl bg-[#1a1a2e] shadow-2xl"><h2 id="deadline-form-title" className="sr-only">Deadline</h2>
       <form
-        className="bg-[#1a1a2e] border border-gray-700 rounded-xl p-5 w-[380px] flex flex-col gap-3 shadow-2xl"
+        className="bg-[#1a1a2e] border border-gray-700 rounded-xl p-5 w-full flex flex-col gap-3 shadow-2xl"
         onClick={e => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
@@ -1986,7 +1990,7 @@ function DeadlineModal({
           </button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -2225,9 +2229,9 @@ function MeetingModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+    <ModalFrame titleId="meeting-form-title" onClose={onClose} className="w-full max-w-md rounded-xl bg-[#1a1a2e] shadow-2xl"><h2 id="meeting-form-title" className="sr-only">Meeting</h2>
       <form
-        className="bg-[#1a1a2e] border border-gray-700 rounded-xl p-5 w-[420px] flex flex-col gap-3 shadow-2xl"
+        className="bg-[#1a1a2e] border border-gray-700 rounded-xl p-5 w-full flex flex-col gap-3 shadow-2xl"
         onClick={e => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
@@ -2277,7 +2281,7 @@ function MeetingModal({
           </button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -2755,15 +2759,15 @@ export function GoalDetail() {
       initial={{ opacity: 0, x: 12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25 }}
-      className="max-w-[860px] mx-auto px-4 md:px-10 py-6"
+      className="mobile-goal-detail max-w-[860px] mx-auto px-4 md:px-10 py-6"
     >
       {/* Back */}
       <button
         onClick={() => setSelectedGoalId(null)}
-        className="group mb-5 font-mono text-xs uppercase tracking-wider text-gray-400 hover:text-black flex items-center gap-1.5 cursor-pointer"
+        className="mobile-duplicate-back group mb-5 font-mono text-xs uppercase tracking-wider text-gray-400 hover:text-black flex items-center gap-1.5 cursor-pointer"
       >
         <ChevronLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
-        Back into Goals Matrix
+        Back to goals
       </button>
 
       {/* Header */}
@@ -2826,7 +2830,7 @@ export function GoalDetail() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-white rounded-xl p-4 border border-gray-100 shadow-ambient shrink-0">
+        <MobileDisclosure title="Planning & dates" description={`${taskMetrics.progress}% complete · ${finishEstimate.label}`} storageKey="goal-planning"><div className="mobile-goal-status flex items-center gap-4 bg-white rounded-xl p-4 border border-gray-100 shadow-ambient shrink-0">
           <DetailRing progress={taskMetrics.progress} status={dynStatus} />
           <div>
             <div className="font-headline text-base font-bold text-gray-900 flex items-center gap-1.5">
@@ -2848,12 +2852,12 @@ export function GoalDetail() {
               {goal.archived_at ? 'Restore Goal' : 'Archive Goal'}
             </button>
           </div>
-        </div>
+        </div></MobileDisclosure>
       </header>
 
-      <div className="space-y-8">
+      <div className="mobile-goal-sections space-y-8">
         {/* ── Time Intelligence ── */}
-        <GoalTimePanel tasks={allTasks} />
+        <MobileDisclosure title="Time & progress" storageKey="goal-time"><GoalTimePanel tasks={allTasks} /></MobileDisclosure>
 
         {/* ── Archived State ── */}
         {goal.archived_at && (
@@ -2874,16 +2878,16 @@ export function GoalDetail() {
         )}
 
         {/* ── Goal Milestones ── */}
-        <GoalMilestonesSection
+        <MobileDisclosure title="Milestones" description={`${goalMilestones.length} milestones`} storageKey="goal-milestones"><GoalMilestonesSection
           goalId={goal.id}
           milestones={goalMilestones}
           tasks={allTasks}
           onInvalidate={() => invalidate.milestones(goal.id)}
           onInvalidateTasks={() => invalidate.tasks(goal.id)}
-        />
+        /></MobileDisclosure>
 
         {/* ── Tasks ── */}
-        <section>
+        <section className="mobile-goal-tasks">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="font-headline text-sm font-bold text-gray-900 flex items-center gap-2">
               <CheckSquare size={15} className="text-black" />
@@ -2906,7 +2910,7 @@ export function GoalDetail() {
                     setTimeout(() => quickTimeRef.current?.focus(), 0);
                   }
                 }}
-                placeholder="New root task"
+                aria-label="New task title" placeholder="Add a task…"
                 className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none transition-all placeholder:text-gray-300 focus:border-[#4648d4] focus:ring-2 focus:ring-[#4648d4]/10"
               />
               <AnimatePresence>
@@ -2935,7 +2939,7 @@ export function GoalDetail() {
                 onClick={handleQuickAddTask}
                 disabled={!quickTaskTitle.trim()}
                 className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-900 text-white transition-all hover:bg-black disabled:cursor-not-allowed disabled:opacity-30"
-                title="Add root task"
+                title="Add root task" aria-label="Add task to goal"
               >
                 <Plus size={13} />
               </button>
@@ -3007,12 +3011,12 @@ export function GoalDetail() {
 
         {/* ── Task Graph ── */}
         {allTasks.length > 0 && (
-          <TaskGraphView
+          <MobileDisclosure title="Task connections" storageKey="goal-graph"><TaskGraphView
             goalId={goal.id}
             goalTitle={goal.title}
             tasks={allTasks}
             onNodeClick={setFocusedTaskId}
-          />
+          /></MobileDisclosure>
         )}
 
         {/* ── AI Micro-tasks ── */}

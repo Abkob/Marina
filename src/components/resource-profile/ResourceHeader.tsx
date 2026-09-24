@@ -64,18 +64,20 @@ export function ResourceHeader({
 
         <div className="min-w-0 flex-1">
           {/* Title */}
-          <input
+          <textarea rows={2}
+            aria-label="Resource title"
             value={title}
             onChange={e => setTitle(e.target.value)}
             onBlur={saveTitle}
-            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            className="w-full text-xl font-bold text-gray-900 outline-none bg-transparent border-b border-transparent
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+            className="resize-none w-full text-xl font-bold text-gray-900 outline-none bg-transparent border-b border-transparent
               hover:border-gray-200 focus:border-[#4648d4] transition-colors pb-0.5 leading-tight"
           />
 
           {/* Row 2: type selector + read state */}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <select
+              aria-label="Resource type"
               value={resource.type}
               onChange={e => onSave({ type: e.target.value as ResourceType })}
               className="rounded-full bg-gray-100 px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide
@@ -101,6 +103,7 @@ export function ResourceHeader({
           {/* Next action */}
           <div className="mt-3">
             <input
+              aria-label="Next action for resource"
               value={nextAction}
               onChange={e => setNextAction(e.target.value)}
               onBlur={saveNextAction}
@@ -116,6 +119,7 @@ export function ResourceHeader({
       {/* URL field */}
       <div className="mt-4 flex items-center gap-2">
         <input
+          aria-label="Resource URL"
           value={url}
           onChange={e => setUrl(e.target.value)}
           onBlur={saveUrl}

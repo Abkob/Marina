@@ -17,7 +17,7 @@ import {
 import { apiPost, apiPatch, apiDelete } from '../utils/apiFetch';
 import type { DBEvent, DBGoal, DBTask } from '../db/schema';
 import {
-  addDays, clampHour, dateToWeekPos, eventDate, fmtTimeRange, fmtYMD,
+  addDays, calendarDateTime, clampHour, dateToWeekPos, eventDate, fmtTimeRange, fmtYMD,
   mondayOf, parseLocalDate, snapHour,
 } from '../utils/calendar';
 import { autofillFromTask } from '../utils/eventAutofill';
@@ -38,6 +38,9 @@ import { readActiveWorkTimer, writeActiveWorkTimer } from '../utils/workTimer';
 import { RoutinesPanel } from './routines/RoutinesPanel';
 import { RoutineComposer } from './routines/RoutineComposer';
 import type { DBRoutine } from '../types/routines';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
+import { MobileSchedule } from './schedule/MobileSchedule';
+import type { CalendarPlacement } from '../utils/calendarGestures';
 
 /**
  * Schedule workspace, Google-Calendar style: a week time-grid carrying
@@ -1192,6 +1195,7 @@ function WeeklyParentBreakdown({ weekDays, tasks, goals, placedEvents, linksByEv
 }
 
 export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 'timeline' } = {}) {
+  const isPhone = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const { triggerToast, setCurrentTab, setWorkTaskId } = useAppStore();
   const qc = useQueryClient();
   const invalidate = useInvalidate();
@@ -1201,9 +1205,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     const tick = window.setInterval(() => setClockDate(new Date()), 60_000);
     return () => window.clearInterval(tick);
   }, []);
-  const todayStr = prefs?.timezone
-    ? new Intl.DateTimeFormat('en-CA', { timeZone: prefs.timezone }).format(clockDate)
-    : fmtYMD(clockDate);
+  const todayStr = calendarDateTime(clockDate, prefs?.timezone).date;
   const [focusedDate, setFocusedDate] = useState(todayStr);
   const previousToday = useRef(todayStr);
   useEffect(() => {
@@ -1215,11 +1217,11 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   }, [todayStr]);
   const weekStart = mondayOf(focusedDate);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-  const { data: previewData, isLoading } = useSchedulePreview(weekStart, weekDays[6]);
-  const { data: allTasks = [] } = useAllTasks();
-  const { data: allEvents = [] } = useEvents();
+  const { data: previewData, isLoading, isError: previewError, isFetching: previewFetching } = useSchedulePreview(weekStart, weekDays[6]);
+  const { data: allTasks = [], isLoading: tasksLoading, isError: tasksError } = useAllTasks();
+  const { data: allEvents = [], isLoading: eventsLoading, isError: eventsError } = useEvents();
   const { data: allLinks = [] } = useAllEventTaskLinks();
-  const { data: allMeetings = [] } = useAllMeetings();
+  const { data: allMeetings = [], isLoading: meetingsLoading, isError: meetingsError } = useAllMeetings();
   const { data: goals = [] } = useGoals();
   const [draftPreview, setDraftPreview] = useState<Draft | null>(null);
   const [dragTask, setDragTask] = useState<DBTask | null>(null);
@@ -1229,6 +1231,34 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const [routineComposerOpen, setRoutineComposerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<'assist' | 'drafts' | null>(null);
+  const [mobileRefreshing, setMobileRefreshing] = useState(false);
+  const refreshMobileSchedule = async () => {
+    setMobileRefreshing(true);
+    try {
+      await Promise.all(['schedule-preview', 'tasks', 'events', 'event-task-links', 'meetings', 'schedule-prefs', 'routines', 'routine-entries'].map(key =>
+        qc.invalidateQueries({ queryKey: [key], refetchType: 'active' }),
+      ));
+    } finally {
+      setMobileRefreshing(false);
+    }
+  };
+  useEffect(() => {
+    if (!isPhone) return;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') {
+        setClockDate(new Date());
+        if (navigator.onLine) void refreshMobileSchedule();
+      }
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('online', refresh);
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('online', refresh);
+      window.clearInterval(interval);
+    };
+  }, [isPhone, qc]);
   const [dayFlowOrders, setDayFlowOrders] = useState<Record<string, string[]>>(() => {
     try {
       const raw = localStorage.getItem(DAY_FLOW_ORDER_STORAGE_KEY);
@@ -1317,16 +1347,17 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       .map(m => {
         const dt = new Date(m.scheduled_at);
         if (Number.isNaN(dt.getTime())) return null;
+        const local = calendarDateTime(dt, prefs?.timezone);
         return {
           id: m.id,
           title: m.title,
-          date: fmtYMD(dt),
-          startHour: dt.getHours() + dt.getMinutes() / 60,
+          date: local.date,
+          startHour: local.hour,
           durationHours: Math.max(0.25, (m.duration_minutes ?? 60) / 60),
         };
       })
       .filter((m): m is CalendarMeeting => m !== null && m.date >= weekStart && m.date <= weekDays[6]),
-    [allMeetings, weekStart, weekDays],
+    [allMeetings, weekStart, weekDays, prefs?.timezone],
   );
 
   const workDays: number[] = useMemo(() => {
@@ -1688,6 +1719,24 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     }
   };
 
+  // One write for a touch gesture, including resizing the start and end together.
+  // Errors propagate so the phone can restore the original block and offer retry.
+  const changeMobileEvent = async (event: DBEvent, next: CalendarPlacement) => {
+    if (event.locked) throw new Error('This block is locked. Open it to edit its details.');
+    if (next.startHour < 0 || next.durationHours < 0.25 || next.startHour + next.durationHours > 24) {
+      throw new Error('Choose a time within this day.');
+    }
+    const { week_start, day_index } = dateToWeekPos(next.date);
+    await apiPatch(`/api/events/${event.id}`, {
+      week_start, day_index, start_hour: next.startHour, duration_hours: next.durationHours,
+      time_str: fmtTimeRange(next.startHour, next.durationHours),
+    });
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['events'] }),
+      qc.invalidateQueries({ queryKey: ['schedule-preview'] }),
+    ]);
+  };
+
   /** Hover-✕ on a block: one click removes it, no editor round-trip. */
   const deleteEvent = async (ev: DBEvent) => {
     try {
@@ -1741,13 +1790,13 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
 
   // ── Composer openers ────────────────────────────────────────────────────────
 
-  const openCreate = (date?: string, hour?: number) => {
+  const openCreate = (date?: string, hour?: number, durationHours = 1) => {
     const now = new Date();
     setComposer({
       mode: 'create',
       date: date ?? (weekDays.includes(focusedDate) ? focusedDate : weekDays[0]),
-      startHour: hour ?? clampHour(now.getHours() + 1, GRID_START_HOUR, GRID_END_HOUR - 1),
-      durationHours: 1,
+      startHour: hour ?? clampHour(Math.floor(calendarDateTime(now, prefs?.timezone).hour) + 1, GRID_START_HOUR, GRID_END_HOUR - 1),
+      durationHours,
     });
   };
 
@@ -1774,7 +1823,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
         ? 'xl:grid-cols-[minmax(0,1fr)_360px]'
         : 'xl:grid-cols-1';
 
-  if (innerPage === 'feasibility' && scheduler) {
+  if (!isPhone && innerPage === 'feasibility' && scheduler) {
     return (
       <FeasibilityReport
         scheduler={scheduler}
@@ -1791,6 +1840,18 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      {isPhone ? <MobileSchedule
+        date={focusedDate} today={todayStr} now={clockDate} timezone={prefs?.timezone}
+        days={weekDays} events={placedEvents} meetings={weekMeetings} tasks={allTasks}
+        previewByDate={previewByDate} assignmentsByDate={assignmentsByDate} blockedTaskIds={blockDates}
+        loading={isLoading || tasksLoading || eventsLoading || meetingsLoading}
+        refreshing={mobileRefreshing || previewFetching} error={previewError || tasksError || eventsError || meetingsError}
+        onDate={setFocusedDate} onRefresh={refreshMobileSchedule}
+        onCreate={openCreate} onEdit={openEdit} onAddTask={setTaskComposerDate} onChangeEvent={changeMobileEvent}
+        onScheduleTask={scheduleTaskAsBlock} onStartFocus={startFocusTimer}
+        onMoveTask={async (taskId, date) => { await move.mutateAsync({ taskId, date }); }}
+        renderRoutines={(date, closeDetails) => <RoutinesPanel date={date} today={todayStr} goals={goals} onCreate={() => { closeDetails(); setRoutineComposerOpen(true); }} onStartFocus={startRoutineFocus} />}
+      /> : (
       <div className="mx-auto w-full max-w-[1480px] px-4 py-5 md:px-8 animate-fade-in">
         {/* Header */}
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -2062,6 +2123,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
           </div>
         )}
       </div>
+      )}
 
       <DragOverlay dropAnimation={null}>
         {dragTask && (

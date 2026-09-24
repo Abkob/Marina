@@ -1,5 +1,5 @@
 ---
-name: Amina
+name: Marina
 colors:
   surface: '#f8f9fa'
   surface-dim: '#d9dadb'

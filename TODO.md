@@ -31,7 +31,7 @@
 - [x] **Goal Time Intelligence panel** — Spent / Remaining / Velocity / Est. Total + progress bar
 - [x] **Quick-add task at goal level** — always-visible input, creates `kind:'manual'`
 - [x] **Manual tasks section in GoalDetail** — previously orphaned tasks now rendered
-- [x] **Rename Amina → Marina**
+- [x] **Rename Marina → Marina**
 
 ---
 

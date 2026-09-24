@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeResourceSql, activeTaskSql, activeGoalSql, activeEntitySql } from '../utils/archiveVisibility.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -13,7 +14,7 @@ import { deleteStoredFile, isPrivateBlobReference, materializeStoredFile, openSt
 import { runInBackground } from '../utils/background.js';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
-const UPLOADS_DIR = isVercelRuntime ? path.join('/tmp', 'amina-uploads') : path.join(__dir, '..', 'uploads');
+const UPLOADS_DIR = isVercelRuntime ? path.join('/tmp', 'marina-uploads') : path.join(__dir, '..', 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const ALLOWED_MIMES = new Set([
@@ -157,7 +158,7 @@ router.get('/', async (req, res) => {
   const limit  = Math.min(Math.max(1, Number(req.query.limit)  || 500), 500);
   const offset = Math.max(0, Number(req.query.offset) || 0);
   const { rows } = await query(
-    'SELECT * FROM resources ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+    `SELECT * FROM resources WHERE ${activeResourceSql()} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
     [limit, offset],
   );
   res.json(rows);
@@ -554,7 +555,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id/references', async (req, res) => {
   const { rows: raw } = await query(
     `SELECT e.id as edge_id, e.source_id, e.source_type, e.created_at
-     FROM edges e WHERE e.target_id=$1 AND e.relationship='mentions'
+     FROM edges e WHERE e.target_id=$1 AND e.relationship='mentions' AND ${activeEntitySql('e.source_type', 'e.source_id')}
      ORDER BY e.created_at DESC`,
     [req.params.id],
   ) as { rows: { edge_id: string; source_id: string; source_type: string; created_at: string }[] };
@@ -597,14 +598,14 @@ router.get('/:id/stats', async (req, res) => {
   const resourceId = req.params.id;
 
   const { rows: directTaskMentions } = await query(
-    `SELECT source_id as task_id FROM edges WHERE target_id=$1 AND relationship='mentions' AND source_type='task'`,
+    `SELECT source_id as task_id FROM edges WHERE target_id=$1 AND relationship='mentions' AND ${activeEntitySql('source_type', 'source_id')} AND source_type='task'`,
     [resourceId],
   ) as { rows: { task_id: string }[] };
 
   const { rows: noteTaskMentions } = await query(
     `SELECT tn.task_id FROM edges e
      JOIN task_notes tn ON tn.id = e.source_id
-     WHERE e.target_id=$1 AND e.relationship='mentions' AND e.source_type='note'`,
+     WHERE e.target_id=$1 AND e.relationship='mentions' AND ${activeEntitySql('e.source_type', 'e.source_id')} AND e.source_type='note'`,
     [resourceId],
   ) as { rows: { task_id: string }[] };
 
@@ -625,7 +626,7 @@ router.get('/:id/stats', async (req, res) => {
   }
 
   const { rows: countRows } = await query(
-    `SELECT COUNT(*) as n FROM edges WHERE target_id=$1 AND relationship='mentions'`,
+    `SELECT COUNT(*) as n FROM edges WHERE target_id=$1 AND relationship='mentions' AND ${activeEntitySql('source_type', 'source_id')}`,
     [resourceId],
   );
   const reference_count = Number((countRows[0] as Record<string, unknown>).n ?? 0);
@@ -635,7 +636,7 @@ router.get('/:id/stats', async (req, res) => {
     [resourceId],
   );
   const { rows: lastRefRows } = await query(
-    `SELECT created_at FROM edges WHERE target_id=$1 AND relationship='mentions' ORDER BY created_at DESC LIMIT 1`,
+    `SELECT created_at FROM edges WHERE target_id=$1 AND relationship='mentions' AND ${activeEntitySql('source_type', 'source_id')} ORDER BY created_at DESC LIMIT 1`,
     [resourceId],
   );
 
@@ -665,7 +666,7 @@ router.get('/:id/graph', async (req, res) => {
   addNode({ id: resourceId, label: resource.title as string, nodeType: 'resource', meta: { subtype: resource.type } });
 
   const { rows: mentions } = await query(
-    `SELECT source_id, source_type FROM edges WHERE target_id=$1 AND relationship='mentions'`,
+    `SELECT source_id, source_type FROM edges WHERE target_id=$1 AND relationship='mentions' AND ${activeEntitySql('source_type', 'source_id')}`,
     [resourceId],
   ) as { rows: { source_id: string; source_type: string }[] };
 
@@ -676,21 +677,21 @@ router.get('/:id/graph', async (req, res) => {
       const { rows: noteRows } = await query('SELECT content, task_id FROM task_notes WHERE id=$1', [m.source_id]);
       if (!noteRows.length) continue;
       const note = noteRows[0] as Record<string, unknown>;
-      const { rows: taskRows } = await query('SELECT id,title,completed,status,goal_id FROM tasks WHERE id=$1', [note.task_id]);
+      const { rows: taskRows } = await query(`SELECT id,title,completed,status,goal_id FROM tasks WHERE id=$1 AND ${activeTaskSql()}`, [note.task_id]);
       if (!taskRows.length) continue;
       const task = taskRows[0] as Record<string, unknown>;
       addNode({ id: task.id as string, label: task.title as string, nodeType: 'task', meta: { completed: task.completed, status: task.status, goal_id: task.goal_id } });
       edges.push({ source: task.id as string, target: resourceId, rel: 'mentions' });
       taskIds.add(task.id as string);
     } else if (m.source_type === 'task') {
-      const { rows: taskRows } = await query('SELECT id,title,completed,status,goal_id FROM tasks WHERE id=$1', [m.source_id]);
+      const { rows: taskRows } = await query(`SELECT id,title,completed,status,goal_id FROM tasks WHERE id=$1 AND ${activeTaskSql()}`, [m.source_id]);
       if (!taskRows.length) continue;
       const task = taskRows[0] as Record<string, unknown>;
       addNode({ id: task.id as string, label: task.title as string, nodeType: 'task', meta: { completed: task.completed, status: task.status, goal_id: task.goal_id } });
       edges.push({ source: task.id as string, target: resourceId, rel: 'mentions' });
       taskIds.add(task.id as string);
     } else if (m.source_type === 'goal') {
-      const { rows: goalRows } = await query('SELECT id,title FROM goals WHERE id=$1', [m.source_id]);
+      const { rows: goalRows } = await query(`SELECT id,title FROM goals WHERE id=$1 AND ${activeGoalSql('id')}`, [m.source_id]);
       if (!goalRows.length) continue;
       const goal = goalRows[0] as Record<string, unknown>;
       addNode({ id: goal.id as string, label: goal.title as string, nodeType: 'goal' });
@@ -702,7 +703,7 @@ router.get('/:id/graph', async (req, res) => {
     const taskNode = nodes.find(n => n.id === taskId);
     const goalId = taskNode?.meta?.goal_id as string | undefined;
     if (!goalId) continue;
-    const { rows: goalRows } = await query('SELECT id,title FROM goals WHERE id=$1', [goalId]);
+    const { rows: goalRows } = await query(`SELECT id,title FROM goals WHERE id=$1 AND ${activeGoalSql('id')}`, [goalId]);
     if (!goalRows.length) continue;
     const goal = goalRows[0] as Record<string, unknown>;
     addNode({ id: goal.id as string, label: goal.title as string, nodeType: 'goal' });

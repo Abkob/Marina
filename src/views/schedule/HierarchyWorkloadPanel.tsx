@@ -274,7 +274,7 @@ export function HierarchyWorkloadPanel({
           {model.estimateWarnings.map(warning => (
             <div key={warning.task.id} data-testid="estimate-warning" className="mt-3 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-              <p><strong>{warning.task.title}</strong> says {duration(warning.estimate)} total, but its open executable leaves currently add to {duration(warning.leafTotal)}. Amina counts the leaves and does not add the parent again. One of these estimates likely needs correction.</p>
+              <p><strong>{warning.task.title}</strong> says {duration(warning.estimate)} total, but its open executable leaves currently add to {duration(warning.leafTotal)}. Marina counts the leaves and does not add the parent again. One of these estimates likely needs correction.</p>
             </div>
           ))}
 

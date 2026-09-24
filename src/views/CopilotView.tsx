@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Zap, RefreshCw, CheckCircle, X, AlertTriangle, ChevronRight, ChevronDown, Diamond, Calendar, ChevronLeft, MessageSquare, Plus, Paperclip, PanelLeft } from 'lucide-react';
+import { ArrowUp, ArrowDown, Keyboard, SquarePen, Copy, Zap, RefreshCw, CheckCircle, X, AlertTriangle, ChevronRight, ChevronDown, Diamond, Calendar, ChevronLeft, MessageSquare, Plus, Paperclip, SlidersHorizontal, Target } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSchedulePreview, useGoals, useInvalidate, useChatSessions, useCreateChatSession, useDeleteChatSession, type ScheduleDay, type SchedulerResult, type ScheduleTaskInfo, type DayAssignment } from '../api/hooks';
 import { apiFetch, apiPost } from '../utils/apiFetch';
@@ -8,7 +8,10 @@ import { PlanCalendarWidget, type ChatPlan } from './copilot/PlanCalendarWidget'
 import { PlanOptionsWidget, type ChatPlanOptions } from './copilot/PlanOptionsWidget';
 import { DayScheduleWidget, type ChatScheduleDayView } from './copilot/DayScheduleWidget';
 import { OverdueTasksWidget, type OverdueTasksView } from './copilot/OverdueTasksWidget';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
+import { ModalFrame } from '../components/ModalFrame';
 import { uploadResourceFile } from '../db/queries/resources';
+import './copilot/copilot.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -123,6 +126,12 @@ function fmtMins(mins: number): string {
   return `${rounded < 0 ? '-' : ''}${h}h${m ? ` ${m}m` : ''}`;
 }
 
+function modelLabel(model: string) {
+  if (model.includes('nemotron')) return 'Nemotron';
+  if (model.includes('deepseek')) return 'DeepSeek';
+  return model === 'AI model' ? 'Connecting…' : model;
+}
+
 function renderMarkdown(text: string): React.ReactNode {
   const lines = text.split('\n');
   return lines.map((line, i) => {
@@ -134,22 +143,22 @@ function renderMarkdown(text: string): React.ReactNode {
     const inline = (s: string) =>
       s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, j) => {
         if (p.startsWith('**') && p.endsWith('**'))
-          return <strong key={j} className="font-semibold text-gray-100">{p.slice(2, -2)}</strong>;
+          return <strong key={j} className="font-semibold text-slate-900">{p.slice(2, -2)}</strong>;
         if (p.startsWith('`') && p.endsWith('`'))
-          return <code key={j} className="bg-white/10 px-1 py-0.5 rounded text-[11px] font-mono text-indigo-300">{p.slice(1, -1)}</code>;
+          return <code key={j} className="bg-slate-50 px-1 py-0.5 rounded text-[11px] font-mono text-indigo-700">{p.slice(1, -1)}</code>;
         return p;
       });
 
-    if (isH2)    return <p key={i} className="text-base font-bold text-white mt-5 mb-2 first:mt-0">{content}</p>;
-    if (isH3)    return <p key={i} className="text-[14px] font-semibold text-gray-100 mt-4 mb-1">{content}</p>;
+    if (isH2)    return <p key={i} className="text-base font-bold text-slate-900 mt-5 mb-2 first:mt-0">{content}</p>;
+    if (isH3)    return <p key={i} className="text-[14px] font-semibold text-slate-900 mt-4 mb-1">{content}</p>;
     if (isBullet) return (
       <div key={i} className="flex gap-2 my-0.5 pl-1">
-        <span className="text-indigo-400 mt-0.5 shrink-0 text-[10px]">•</span>
-        <span className="text-[15px] text-gray-200 leading-6">{inline(content)}</span>
+        <span className="text-indigo-700 mt-0.5 shrink-0 text-[10px]">•</span>
+        <span className="text-[15px] text-slate-800 leading-6">{inline(content)}</span>
       </div>
     );
     if (!line.trim()) return <div key={i} className="h-3" />;
-    return <p key={i} className="text-[15px] text-gray-200 leading-6">{inline(line)}</p>;
+    return <p key={i} className="text-[15px] text-slate-800 leading-6">{inline(line)}</p>;
   });
 }
 
@@ -193,46 +202,46 @@ function ActionCard({ action, onConfirm, onSkip }: {
 
   if (isDone)    return (
     <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-      <CheckCircle size={12} className="text-emerald-400 shrink-0" />
-      <span className="text-[12px] text-emerald-300 flex-1 min-w-0 truncate">{action.description}</span>
+      <CheckCircle size={12} className="text-emerald-700 shrink-0" />
+      <span className="text-[12px] text-emerald-700 flex-1 min-w-0 truncate">{action.description}</span>
       <span className="text-[10px] text-emerald-500 shrink-0">Applied</span>
     </div>
   );
 
   if (isSkipped) return (
-    <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-white/3 border border-white/8 opacity-40">
-      <span className="text-[12px] text-gray-400 flex-1 min-w-0 truncate line-through">{action.description}</span>
-      <span className="text-[10px] text-gray-600 shrink-0">Skipped</span>
+    <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-slate-50 border border-slate-200 opacity-40">
+      <span className="text-[12px] text-slate-500 flex-1 min-w-0 truncate line-through">{action.description}</span>
+      <span className="text-[10px] text-slate-500 shrink-0">Skipped</span>
     </div>
   );
 
   return (
-    <div className={`rounded-xl border ${isError ? 'border-red-500/30 bg-red-500/5' : 'border-white/10 bg-white/5'} p-3`}>
+    <div className={`rounded-xl border ${isError ? 'border-red-500/30 bg-red-500/5' : 'border-slate-200 bg-slate-50'} p-3`}>
       <div className="flex items-start gap-2.5">
         <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${typeDot}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wide">{typeLabel}</span>
+            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wide">{typeLabel}</span>
           </div>
-          <p className="text-[13px] text-gray-200 leading-snug">{action.description}</p>
+          <p className="text-[13px] text-slate-800 leading-snug">{action.description}</p>
           {/* Param chips */}
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {p.title       && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">{String(p.title)}</span>}
-            {p.due_date    && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">due {String(p.due_date)}</span>}
-            {p.start_date  && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">starts {String(p.start_date)}</span>}
-            {Array.isArray(p.tasks) && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">{p.tasks.length} task{p.tasks.length !== 1 ? 's' : ''}</span>}
-            {p.priority    && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full capitalize">{String(p.priority)}</span>}
-            {p.estimated_minutes && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">{fmtMins(Number(p.estimated_minutes))}</span>}
-            {p.deadline    && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">deadline {String(p.deadline)}</span>}
-            {p.source_date && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">from {String(p.source_date)}</span>}
-            {p.target_date && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">to {String(p.target_date)}</span>}
-            {Array.isArray(p.entity_types) && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">{p.entity_types.join(', ')}</span>}
-            {p.category    && <span className="text-[10px] bg-white/8 text-gray-400 px-2 py-0.5 rounded-full">{String(p.category)}</span>}
+            {p.title       && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{String(p.title)}</span>}
+            {p.due_date    && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">due {String(p.due_date)}</span>}
+            {p.start_date  && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">starts {String(p.start_date)}</span>}
+            {Array.isArray(p.tasks) && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{p.tasks.length} task{p.tasks.length !== 1 ? 's' : ''}</span>}
+            {p.priority    && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full capitalize">{String(p.priority)}</span>}
+            {p.estimated_minutes && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{fmtMins(Number(p.estimated_minutes))}</span>}
+            {p.deadline    && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">deadline {String(p.deadline)}</span>}
+            {p.source_date && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">from {String(p.source_date)}</span>}
+            {p.target_date && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">to {String(p.target_date)}</span>}
+            {Array.isArray(p.entity_types) && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{p.entity_types.join(', ')}</span>}
+            {p.category    && <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-0.5 rounded-full">{String(p.category)}</span>}
           </div>
         </div>
       </div>
       {isError && (
-        <p className="text-[11px] text-red-400 mt-2 pl-4">
+        <p className="text-[11px] text-red-700 mt-2 pl-4">
           {action.rejected_reason
             ? `Could not create this proposal: ${action.rejected_reason}`
             : 'This action has no valid proposal to apply.'}
@@ -243,12 +252,12 @@ function ActionCard({ action, onConfirm, onSkip }: {
           <button
             onClick={onConfirm}
             disabled={isApplying}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white text-[12px] font-medium rounded-lg transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] font-medium rounded-lg transition-colors disabled:opacity-50"
           >
             {isApplying ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle size={11} />}
             {isApplying ? 'Applying…' : 'Apply'}
           </button>
-          <button onClick={onSkip} className="px-3 py-1.5 text-[12px] text-gray-500 hover:text-gray-300 transition-colors">
+          <button onClick={onSkip} className="px-3 py-1.5 text-[12px] text-slate-500 hover:text-slate-700 transition-colors">
             Skip
           </button>
         </div>
@@ -262,10 +271,10 @@ function ActionCard({ action, onConfirm, onSkip }: {
 function FeasibilityBanner({ f }: { f: FeasibilityResult }) {
   const [expanded, setExpanded] = useState(false);
   const cls = f.status === 'on_track'
-    ? 'border-emerald-500/25 bg-emerald-500/8 text-emerald-300'
+    ? 'border-emerald-500/25 bg-emerald-500/8 text-emerald-700'
     : f.status === 'at_risk'
-      ? 'border-amber-500/25 bg-amber-500/8 text-amber-300'
-      : 'border-red-500/25 bg-red-500/8 text-red-300';
+      ? 'border-amber-500/25 bg-amber-500/8 text-amber-700'
+      : 'border-red-500/25 bg-red-500/8 text-red-700';
 
   return (
     <div className={`mt-3 rounded-xl border p-3 ${cls}`}>
@@ -293,33 +302,34 @@ function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction }: {
   onConfirmAction: (msgId: string, actionId: string) => void;
   onSkipAction:    (msgId: string, actionId: string) => void;
 }) {
+  const triggerToast = useAppStore(s => s.triggerToast);
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] bg-indigo-600 rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
-          <p className="text-[14px] text-white leading-6">{msg.content}</p>
+        <div className="copilot-user-message max-w-[85%] bg-indigo-50 rounded-2xl rounded-tr-sm px-4 py-3">
+          <p className="text-[15px] text-slate-800 leading-6 whitespace-pre-wrap break-words">{msg.content}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-3 w-full max-w-4xl">
-      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 mt-0.5 shadow-sm shadow-indigo-950/30">
-        <Zap size={13} className="text-white" />
+    <div className="copilot-assistant flex items-start gap-3 w-full">
+      <div aria-hidden="true" className="copilot-avatar w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+        <Zap size={14} />
       </div>
       <div className="flex-1 min-w-0">
         {msg.error ? (
           <div className="bg-red-500/10 border border-red-400/25 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5 text-red-200">
+            <div className="flex items-center gap-2 mb-1.5 text-red-700">
               <AlertTriangle size={15} />
               <p className="text-sm font-semibold">Copilot couldn’t answer</p>
             </div>
-            <p className="text-[14px] leading-6 text-red-200/80">{msg.error.replace(/^Error:\s*/i, '')}</p>
-            <p className="text-xs text-red-300/50 mt-2">Your data was not changed.</p>
+            <p className="text-[14px] leading-6 text-red-700">{msg.error.replace(/^Error:\s*/i, '')}</p>
+            <p className="text-xs text-red-700 mt-2">Your data was not changed.</p>
           </div>
         ) : (
-          <div className="bg-[#171722] border border-white/10 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
+          <div className="copilot-answer py-0.5 break-words">
             {renderMarkdown(msg.content)}
           </div>
         )}
@@ -343,6 +353,7 @@ function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction }: {
           </div>
         ) : null}
         {msg.citations?.length ? <CitationRow citations={msg.citations} /> : null}
+        {msg.content && <button aria-label="Copy response" className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-50" onClick={() => { navigator.clipboard.writeText(msg.content).then(() => triggerToast('Response copied', 'success')).catch(() => triggerToast('Could not copy. Select the text to copy it.', 'error')); }}><Copy size={14} />Copy</button>}
         {msg.runtime ? <RuntimeDisclosure runtime={msg.runtime} /> : null}
       </div>
     </div>
@@ -380,34 +391,35 @@ function RuntimeDisclosure({ runtime }: { runtime: ChatRuntime }) {
     <div className="mt-2">
       <button
         onClick={() => setOpen(value => !value)}
-        className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/[0.025] px-2 py-1 text-[10px] font-mono text-gray-500 transition-colors hover:border-white/15 hover:text-gray-300"
+        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-mono text-slate-500 transition-colors hover:border-slate-200 hover:text-slate-700"
         aria-expanded={open}
       >
         {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-        {summary}
+        Response details · {formatRuntime(runtime.total_ms)}
       </button>
       {open && (
-        <div className="mt-1.5 max-w-xl rounded-xl border border-white/8 bg-black/20 p-2.5">
+        <div className="mt-1.5 max-w-xl rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+          <p className="mb-2 break-words text-xs text-slate-500">{summary}</p>
           {runtime.model_calls.length ? (
             <div className="space-y-1.5">
               {runtime.model_calls.map((call, index) => (
                 <div key={`${call.phase}-${index}`} className="grid grid-cols-[95px_1fr_auto] items-center gap-2 text-[10px]">
-                  <span className="font-medium text-gray-400">{PHASE_LABEL[call.phase]}</span>
-                  <span className="truncate font-mono text-gray-300">
+                  <span className="font-medium text-slate-500">{PHASE_LABEL[call.phase]}</span>
+                  <span className="truncate font-mono text-slate-700">
                     {call.model} · {PROVIDER_LABEL[call.provider]}
                     {call.fallback_used ? ' · fallback' : ''}
                   </span>
-                  <span className="font-mono text-gray-500">{formatRuntime(call.duration_ms)}</span>
+                  <span className="font-mono text-slate-500">{formatRuntime(call.duration_ms)}</span>
                   <span />
-                  <span className="font-mono text-gray-600">{call.prompt_chars.toLocaleString()} prompt characters</span>
+                  <span className="font-mono text-slate-500">{call.prompt_chars.toLocaleString()} prompt characters</span>
                   <span />
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-[10px] text-gray-500">The server handled this directly without asking a language model.</p>
+            <p className="text-[10px] text-slate-500">The server handled this directly without asking a language model.</p>
           )}
-          <div className="mt-2 border-t border-white/6 pt-2 text-[10px] text-gray-600">
+          <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] text-slate-500">
             Total includes database retrieval, schedule checks, model calls, and response validation.
             {runtime.fallback_model ? ` Fallback: ${runtime.fallback_model}.` : ''}
             {runtime.local_fallback_model ? ` Final local fallback: ${runtime.local_fallback_model}.` : ''}
@@ -418,11 +430,7 @@ function RuntimeDisclosure({ runtime }: { runtime: ChatRuntime }) {
   );
 }
 
-function WorkingIndicator({ primaryModel, primaryStatus, fallbackModel }: {
-  primaryModel: string;
-  primaryStatus: string;
-  fallbackModel: string | null;
-}) {
+function WorkingIndicator() {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
     const startedAt = Date.now();
@@ -431,24 +439,10 @@ function WorkingIndicator({ primaryModel, primaryStatus, fallbackModel }: {
   }, []);
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
-        <Zap size={13} className="text-white" />
-      </div>
-      <div className="min-w-[300px] rounded-2xl rounded-tl-sm border border-white/8 bg-white/6 px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-[11px] font-medium text-gray-300">
-            {primaryModel} <span className="font-normal text-gray-600">· {primaryStatus}</span>
-          </span>
-          <span className="font-mono text-[10px] text-indigo-300">{formatRuntime(elapsedMs)}</span>
-        </div>
-        <p className="mt-1 text-[10px] text-gray-500">
-          Semantic intent → schedule context → answer
-        </p>
-        {fallbackModel && (
-          <p className="mt-0.5 text-[9px] text-gray-600">Fallback only if needed: {fallbackModel}</p>
-        )}
-      </div>
+    <div role="status" className="flex items-center gap-3 py-3 text-sm text-slate-500">
+      <RefreshCw size={16} className="animate-spin text-indigo-600 shrink-0" />
+      <span>Thinking…</span>
+      <span aria-hidden="true" className="ml-auto text-xs tabular-nums">{formatRuntime(elapsedMs)}</span>
     </div>
   );
 }
@@ -467,7 +461,7 @@ function CitationRow({ citations }: { citations: ChatCitation[] }) {
     <div className="mt-1.5">
       <button
         onClick={() => setOpen(o => !o)}
-        className="text-[10px] font-mono text-gray-500 hover:text-gray-300 flex items-center gap-1"
+        className="text-[10px] font-mono text-slate-500 hover:text-slate-700 flex items-center gap-1"
       >
         {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
         Sources: {citations.length} item{citations.length !== 1 ? 's' : ''} in context
@@ -475,15 +469,15 @@ function CitationRow({ citations }: { citations: ChatCitation[] }) {
       {open && (
         <div className="mt-1.5 space-y-1 max-h-48 overflow-y-auto pr-1">
           {citations.map((c, i) => (
-            <div key={`${c.entity_type}-${c.entity_id}-${i}`} className="flex items-center gap-2 text-[10px] bg-white/4 border border-white/6 rounded-lg px-2 py-1">
-              <span className="font-mono uppercase text-gray-500 shrink-0">{c.entity_type.replace('_', ' ')}</span>
-              <span className="text-gray-300 truncate flex-1">{c.title}</span>
-              <span className="font-mono text-gray-600 shrink-0">
+            <div key={`${c.entity_type}-${c.entity_id}-${i}`} className="flex items-center gap-2 text-[10px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+              <span className="font-mono uppercase text-slate-500 shrink-0">{c.entity_type.replace('_', ' ')}</span>
+              <span className="text-slate-700 truncate flex-1">{c.title}</span>
+              <span className="font-mono text-slate-500 shrink-0">
                 {c.matched_via.map(v => LANE_LABEL[v] ?? v).join(' · ')}
                 {c.similarity !== undefined && ` (${(c.similarity * 100).toFixed(0)}%)`}
               </span>
               {c.topics?.length ? (
-                <span className="font-mono text-indigo-400 shrink-0" title={`Topics: ${c.topics.join(', ')}`}>#{c.topics[0]}</span>
+                <span className="font-mono text-indigo-700 shrink-0" title={`Topics: ${c.topics.join(', ')}`}>#{c.topics[0]}</span>
               ) : null}
             </div>
           ))}
@@ -497,6 +491,7 @@ function CitationRow({ citations }: { citations: ChatCitation[] }) {
 
 function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void }) {
   const [goals, setGoals] = useState<GoalHealth[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -523,7 +518,8 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
         health.sort((a, b) => (order[String(a.feasibility) as keyof typeof order] ?? 3) - (order[String(b.feasibility) as keyof typeof order] ?? 3));
         setGoals(health);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const dot = (f: GoalHealth['feasibility']) => ({
@@ -536,42 +532,43 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
     if (!g.deadline || g.days_until_deadline === null) return null;
     const d = g.days_until_deadline;
     const label = d < 0 ? `${Math.abs(d)}d overdue` : d === 0 ? 'Today' : `${d}d`;
-    const cls   = d < 0 ? 'text-red-400' : d <= 3 ? 'text-amber-400' : 'text-gray-500';
+    const cls   = d < 0 ? 'text-red-700' : d <= 3 ? 'text-amber-700' : 'text-slate-500';
     return <span className={`text-[10px] font-mono ml-auto shrink-0 ${cls}`}>{label}</span>;
   };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-4 pt-5 pb-3 shrink-0">
-        <p className="text-[10px] font-mono uppercase tracking-widest text-gray-600 mb-1">Goals</p>
-        <p className="text-xs font-semibold text-gray-300">{goals.length} active</p>
+        <p className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">Goals</p>
+        <p className="text-xs font-semibold text-slate-700">{goals.length} active</p>
       </div>
       <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-0.5">
-        {goals.length === 0 && (
+        {loading && (
           <div className="space-y-1.5 px-1 mt-2">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-10 rounded-lg bg-white/4 animate-pulse" style={{ opacity: 1 - i * 0.2 }} />
+              <div key={i} className="h-10 rounded-lg bg-slate-50 animate-pulse" style={{ opacity: 1 - i * 0.2 }} />
             ))}
           </div>
         )}
+        {!loading && goals.length === 0 && <p className="px-3 py-6 text-sm text-slate-500">No active goals to review.</p>}
         {goals.map(g => (
           <button
             key={g.id}
             onClick={() => onGoalClick(g.title)}
-            className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/6 transition-colors group"
+            className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group"
           >
             <div className="flex items-center gap-2.5">
               <div className={`w-2 h-2 rounded-full shrink-0 ${dot(g.feasibility)}`} />
-              <span className="text-[12px] text-gray-300 group-hover:text-white transition-colors flex-1 min-w-0 leading-snug line-clamp-2 text-left">{g.title}</span>
+              <span className="text-[12px] text-slate-700 group-hover:text-slate-900 transition-colors flex-1 min-w-0 leading-snug line-clamp-2 text-left">{g.title}</span>
               {badge(g)}
             </div>
             {(g.total_incomplete_tasks > 0 || g.total_mins_remaining > 0) && (
               <div className="flex items-center gap-2 mt-1 pl-[18px]">
                 {g.total_incomplete_tasks > 0 && (
-                  <span className="text-[10px] text-gray-600">{g.total_incomplete_tasks} tasks</span>
+                  <span className="text-[10px] text-slate-500">{g.total_incomplete_tasks} tasks</span>
                 )}
                 {g.total_mins_remaining > 0 && (
-                  <span className="text-[10px] text-gray-600">{fmtMins(g.total_mins_remaining)}</span>
+                  <span className="text-[10px] text-slate-500">{fmtMins(g.total_mins_remaining)}</span>
                 )}
               </div>
             )}
@@ -579,10 +576,10 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
         ))}
       </div>
       {/* Legend */}
-      <div className="px-4 py-3 border-t border-white/6 shrink-0 flex items-center gap-3">
-        <span className="flex items-center gap-1.5 text-[10px] text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />OK</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Risk</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />Late</span>
+      <div className="px-4 py-3 border-t border-slate-200 shrink-0 flex items-center gap-3">
+        <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />OK</span>
+        <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />Risk</span>
+        <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />Late</span>
       </div>
     </div>
   );
@@ -591,10 +588,10 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
 // ── Schedule Preview Panel ────────────────────────────────────────────────────
 
 const FEASIBILITY_BADGE: Record<SchedulerResult['status'], { label: string; className: string }> = {
-  feasible:  { label: 'Feasible',  className: 'bg-green-900/50 text-green-400 border-green-700/40' },
-  tight:     { label: 'Tight',     className: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/40' },
-  risky:     { label: 'Risky',     className: 'bg-amber-900/40 text-amber-300 border-amber-700/40' },
-  impossible:{ label: 'Impossible',className: 'bg-red-900/40 text-red-400 border-red-700/40' },
+  feasible:  { label: 'Feasible',  className: 'bg-green-50 text-green-700 border-green-700/40' },
+  tight:     { label: 'Tight',     className: 'bg-yellow-50 text-yellow-700 border-yellow-700/40' },
+  risky:     { label: 'Risky',     className: 'bg-amber-50 text-amber-700 border-amber-700/40' },
+  impossible:{ label: 'Impossible',className: 'bg-red-50 text-red-700 border-red-700/40' },
 };
 
 function toLocalDateStr(d: Date) {
@@ -686,13 +683,13 @@ function SchedulePreviewPanel() {
   const badge = schedulerResult ? FEASIBILITY_BADGE[schedulerResult.status] : null;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden border-l border-white/6">
-      <div className="shrink-0 px-3 h-14 flex min-w-0 items-center gap-2 border-b border-white/6">
-        <Calendar size={14} className="text-indigo-400 shrink-0" />
+    <div className="flex flex-col h-full overflow-hidden border-l border-slate-200">
+      <div className="copilot-schedule-toolbar shrink-0 px-3 h-14 flex min-w-0 items-center gap-2 border-b border-slate-200">
+        <Calendar size={14} className="text-indigo-700 shrink-0" />
         <div className="flex min-w-0 items-center gap-1">
           <button
             onClick={() => setWeekOffset(w => w - 1)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/5 hover:text-gray-300"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             title="Previous week"
             aria-label="Previous week"
           >
@@ -700,15 +697,15 @@ function SchedulePreviewPanel() {
           </button>
           <button
             onClick={() => setWeekOffset(0)}
-            className="max-w-[86px] truncate px-1 text-[10px] font-mono text-gray-400 transition-colors hover:text-white"
+            className="max-w-[86px] truncate px-1 text-[10px] font-mono text-slate-500 transition-colors hover:text-slate-900"
             title="Jump to current week"
             aria-label="Jump to current week"
           >
-            {weekOffset === 0 ? <span className="text-indigo-400">This week</span> : weekLabel}
+            {weekOffset === 0 ? <span className="text-indigo-700">This week</span> : weekLabel}
           </button>
           <button
             onClick={() => setWeekOffset(w => w + 1)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/5 hover:text-gray-300"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             title="Next week"
             aria-label="Next week"
           >
@@ -725,7 +722,7 @@ function SchedulePreviewPanel() {
         )}
         {(schedulerResult?.unestimated_task_ids.length ?? 0) > 0 && (
           <span
-            className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-400 border-amber-500/30"
+            className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-700 border-amber-500/30"
             title={`${schedulerResult!.unestimated_task_ids.length} tasks have no time estimate and can't be scheduled — see the Schedule tab to fix`}
           >
             {schedulerResult!.unestimated_task_ids.length} unest.
@@ -734,7 +731,7 @@ function SchedulePreviewPanel() {
         <button
           onClick={planWeek}
           disabled={planning}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-indigo-400 transition-colors hover:bg-white/5 hover:text-indigo-300 disabled:opacity-40"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-indigo-700 transition-colors hover:bg-slate-50 hover:text-indigo-700 disabled:opacity-40"
           aria-label="Run schedule planner"
           title="Run the deterministic scheduler now — proposed start dates appear on their days below; nothing applies until you confirm each one"
         >
@@ -744,7 +741,7 @@ function SchedulePreviewPanel() {
           aria-label="Filter schedule preview by goal"
           value={goalFilter}
           onChange={e => setGoalFilter(e.target.value)}
-          className="ml-auto min-w-0 w-28 max-w-[9rem] truncate rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-mono text-gray-400 outline-none xl:w-36"
+          className="ml-auto min-w-0 w-28 max-w-[9rem] truncate rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-mono text-slate-500 outline-none xl:w-36"
         >
           <option value="">All goals</option>
           {allGoalIds.map(id => <option key={id!} value={id!}>{goalTitleMap[id!] ?? id!.slice(0, 12)}</option>)}
@@ -753,8 +750,8 @@ function SchedulePreviewPanel() {
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
         <div className="px-2 pb-3">
-          <div className="text-[10px] font-semibold text-gray-300">Deadline river</div>
-          <div className="mt-0.5 text-[9px] leading-4 text-gray-600">Due work in order. Solid cards are real; dashed cards are suggestions.</div>
+          <div className="text-sm font-semibold text-slate-700">Upcoming work</div>
+          <div className="mt-1 text-xs leading-5 text-slate-500">Tasks, deadlines and proposed changes for your week.</div>
         </div>
         {days.map(day => {
           const isToday = day.date === today;
@@ -774,45 +771,45 @@ function SchedulePreviewPanel() {
               ref={isToday ? todayRef : undefined}
               className="relative pl-8 pb-4 last:pb-1"
             >
-              <div className="absolute bottom-0 left-[11px] top-3 w-px bg-gradient-to-b from-indigo-500/40 via-white/10 to-white/5" />
-              <div className={`absolute left-[6px] top-2 h-[11px] w-[11px] rounded-full border-2 ${isToday ? 'border-indigo-300 bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,.8)]' : 'border-gray-700 bg-[#11111d]'}`} />
-              <div className={`rounded-xl border p-2.5 ${isToday ? 'border-indigo-500/30 bg-indigo-500/[0.08]' : 'border-white/[0.07] bg-white/[0.025]'}`}>
+              <div className="absolute bottom-0 left-[11px] top-3 w-px bg-slate-200" />
+              <div className={`absolute left-[6px] top-2 h-[11px] w-[11px] rounded-full border-2 ${isToday ? 'border-indigo-300 bg-indigo-600 shadow-[0_0_12px_rgba(99,102,241,.8)]' : 'border-gray-700 bg-white'}`} />
+              <div className={`rounded-xl border p-2.5 ${isToday ? 'border-indigo-500/30 bg-indigo-500/[0.08]' : 'border-slate-200 bg-slate-50'}`}>
               <div className="flex items-center gap-2 mb-2">
-                <span className={`text-[10px] font-mono font-bold ${isToday ? 'text-indigo-300' : 'text-gray-600'}`}>
+                <span className={`text-[10px] font-mono font-bold ${isToday ? 'text-indigo-700' : 'text-slate-500'}`}>
                   {new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                 </span>
                 {day.deadline_titles.map((t, i) => (
-                  <span key={i} className="flex items-center gap-0.5 text-[9px] font-mono text-amber-400">
+                  <span key={i} className="flex items-center gap-0.5 text-[9px] font-mono text-amber-700">
                     <Diamond size={8} /> {t.slice(0, 14)}
                   </span>
                 ))}
                 {day.override && (
-                  <span className="text-[9px] font-mono text-gray-600 ml-auto">{fmtMins(day.override.available_minutes)}</span>
+                  <span className="text-[9px] font-mono text-slate-500 ml-auto">{fmtMins(day.override.available_minutes)}</span>
                 )}
-                {isToday && <span className="ml-auto rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-indigo-300">Today</span>}
+                {isToday && <span className="ml-auto rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-indigo-700">Today</span>}
               </div>
 
               <div className="space-y-1.5">
                 {day.meetings.map(m => (
                   <div key={m.id} className="flex items-center gap-1.5 rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] px-2 py-1.5 text-[10px] font-mono" title={m.title}>
-                    <span className="text-amber-400">⚑</span>
-                    <span className="text-gray-400 truncate">{m.title}</span>
-                    {m.duration_minutes && <span className="text-gray-600 shrink-0">{fmtMins(m.duration_minutes)}</span>}
+                    <span className="text-amber-700">⚑</span>
+                    <span className="text-slate-500 truncate">{m.title}</span>
+                    {m.duration_minutes && <span className="text-slate-500 shrink-0">{fmtMins(m.duration_minutes)}</span>}
                   </div>
                 ))}
 
                 {tasks.map(t => (
                   <div key={t.id} className="flex items-center gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.055] px-2 py-1.5" title={`${t.title} · due ${t.due_date}`}>
                     <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.priority === 'high' ? 'bg-red-400' : t.priority === 'medium' ? 'bg-amber-400' : 'bg-gray-500'}`} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-[10px] font-medium text-gray-200">{t.title}</div><div className="text-[8px] text-gray-600">{t.parent_task_id ? 'Subtask' : 'Task'} · deadline</div></div>
-                    {t.estimated_minutes ? <span className="shrink-0 rounded bg-black/20 px-1 py-0.5 text-[8px] font-mono text-amber-300/80">{fmtMins(t.estimated_minutes)}</span> : <span className="text-[8px] text-red-400/70">No estimate</span>}
+                    <div className="min-w-0 flex-1"><div className="truncate text-[10px] font-medium text-slate-800">{t.title}</div><div className="text-[8px] text-slate-500">{t.parent_task_id ? 'Subtask' : 'Task'} · deadline</div></div>
+                    {t.estimated_minutes ? <span className="shrink-0 rounded bg-slate-50 px-1 py-0.5 text-[8px] font-mono text-amber-700">{fmtMins(t.estimated_minutes)}</span> : <span className="text-[8px] text-red-700">No estimate</span>}
                   </div>
                 ))}
 
                 {assignedTaskIds.length > 0 && (
                   <>
                     <div
-                      className="text-[8px] font-mono text-gray-600 uppercase tracking-widest mt-1 mb-0.5"
+                      className="text-[8px] font-mono text-slate-500 uppercase tracking-widest mt-1 mb-0.5"
                       title="Optimizer suggestions only. These are not calendar blocks until you apply a proposal."
                     >
                       Suggested next · not booked
@@ -821,15 +818,15 @@ function SchedulePreviewPanel() {
                       const info = taskLookup[id];
                       if (!info) return null;
                       return (
-                        <div key={`assigned-${id}`} className="flex items-center gap-1.5 rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-2 py-1.5 text-[10px] font-mono opacity-70" title={`${info.title} · suggestion, not booked`}>
-                          <span className="text-gray-500 shrink-0">→</span>
+                        <div key={`assigned-${id}`} className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-mono opacity-70" title={`${info.title} · suggestion, not booked`}>
+                          <span className="text-slate-500 shrink-0">→</span>
                           <span className="truncate flex-1">{info.title.slice(0, 26)}</span>
                           {info.estimated_minutes > 0 && <span className="shrink-0 opacity-60">{fmtMins(info.estimated_minutes)}</span>}
                         </div>
                       );
                     })}
                     {dayAssignment && (
-                      <div className="text-[8px] font-mono text-gray-600 text-right mt-0.5">
+                      <div className="text-[8px] font-mono text-slate-500 text-right mt-0.5">
                         {fmtMins(dayAssignment.used_minutes)} / {fmtMins(dayAssignment.available_minutes)}
                       </div>
                     )}
@@ -846,11 +843,11 @@ function SchedulePreviewPanel() {
                   const move = p.params.start_date ? `start ${String(p.params.start_date).slice(5)}` : null;
                   return (
                     <div key={p.id} className="flex items-center gap-1.5 border border-dashed border-amber-400/40 rounded-md px-1.5 py-0.5">
-                      <span className="text-[10px] font-mono text-amber-300 truncate flex-1" title={p.explanation ?? label}>
+                      <span className="text-[10px] font-mono text-amber-700 truncate flex-1" title={p.explanation ?? label}>
                         ✦ {label.slice(0, 22)}{move ? ` → ${move}` : ''}
                       </span>
-                      <button onClick={() => applyProposal(p.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-green-400 hover:bg-green-500/10 hover:text-green-300" title="Confirm proposal" aria-label={`Confirm proposal for ${label}`}>✓</button>
-                      <button onClick={() => rejectProposal(p.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-600 hover:bg-red-500/10 hover:text-red-400" title="Reject proposal" aria-label={`Reject proposal for ${label}`}>×</button>
+                      <button onClick={() => applyProposal(p.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-green-700 hover:bg-green-500/10 hover:text-green-700" title="Confirm proposal" aria-label={`Confirm proposal for ${label}`}>✓</button>
+                      <button onClick={() => rejectProposal(p.id)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-red-500/10 hover:text-red-700" title="Reject proposal" aria-label={`Reject proposal for ${label}`}>×</button>
                     </div>
                   );
                 })}
@@ -878,10 +875,10 @@ Prioritize the few things that genuinely need intervention:
 Give me a concise executive brief, then propose safe reviewable actions for the strongest fixes. Do not apply anything automatically.`;
 
 const STARTERS = [
-  { icon: '🧠', label: 'Smart review',      prompt: ANALYZE_PROMPT },
-  { icon: '⚠️', label: "What's at risk?",   prompt: "Which goals or tasks are at risk of missing deadlines? Be specific." },
-  { icon: '📅', label: 'Plan this week',    prompt: `Plan my week. Suggest a realistic schedule based on my deadlines and remaining work.` },
-  { icon: '🔧', label: 'Fix my schedule',   prompt: 'Suggest specific date adjustments and task reorganizations to make everything feasible.' },
+  { icon: Calendar, label: 'Plan this week', detail: 'Make room for what matters', prompt: 'Plan my week. Suggest a realistic schedule based on my deadlines and remaining work.' },
+  { icon: Zap, label: 'Smart review', detail: 'Find a useful next step', prompt: ANALYZE_PROMPT },
+  { icon: Target, label: "What’s at risk?", detail: 'Check goals and deadlines', prompt: 'Which goals or tasks are at risk of missing deadlines? Be specific.' },
+  { icon: RefreshCw, label: 'Fix my schedule', detail: 'Bring the week back into balance', prompt: 'Suggest specific date adjustments and task reorganizations to make everything feasible.' },
 ];
 
 // ── CopilotView ───────────────────────────────────────────────────────────────
@@ -891,44 +888,31 @@ const STARTERS = [
 function SessionSidebar({ activeSessionId, onSelect, onNew }: { activeSessionId: string | null; onSelect: (id: string) => void; onNew: () => void }) {
   const { data: sessions = [] } = useChatSessions();
   const deleteSession = useDeleteChatSession();
+  const [search, setSearch] = useState('');
+  const showConfirm = useAppStore(s => s.showConfirm);
+  const clearConversation = useAppStore(s => s.clearCopilotConversation);
+  const filtered = sessions.filter(session => (session.title ?? '').toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="flex flex-col h-full">
-      <div className="shrink-0 flex items-center justify-between px-4 h-14 border-b border-white/6">
-        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">History</span>
-        <button onClick={onNew} className="w-6 h-6 rounded-lg bg-white/6 hover:bg-white/10 flex items-center justify-center transition-colors" title="New conversation" aria-label="New conversation">
-          <Plus size={11} className="text-gray-400" />
-        </button>
-      </div>
+      <input aria-label="Search conversations" placeholder="Search conversations…" value={search} onChange={event => setSearch(event.target.value)} className="mb-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-base outline-none focus:border-indigo-400" />
+      <button onClick={onNew} className="mb-2 flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-medium text-indigo-600 hover:bg-indigo-50"><Plus size={18} />New conversation</button>
       <div className="flex-1 overflow-y-auto py-2">
-        {sessions.length === 0 && (
-          <p className="text-[11px] text-gray-600 text-center mt-6 px-4">No saved conversations yet</p>
+        {filtered.length === 0 && (
+          <p className="text-sm text-slate-500 text-center my-6 px-4">{search ? 'No conversations match your search.' : 'Your conversations will appear here.'}</p>
         )}
-        {sessions.map(s => (
+        {filtered.map(s => (
           <div
             key={s.id}
-            role="button"
-            tabIndex={0}
-            aria-current={s.id === activeSessionId ? 'true' : undefined}
-            className={`group flex items-center gap-2 mx-2 px-2 py-2 rounded-lg cursor-pointer transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-400/50 ${s.id === activeSessionId ? 'bg-indigo-500/15 border border-indigo-500/25' : 'hover:bg-white/5'}`}
-            onClick={() => onSelect(s.id)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelect(s.id);
-              }
-            }}
+            className={`flex items-center gap-2 rounded-xl px-2 ${s.id === activeSessionId ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
           >
-            <MessageSquare size={10} className={s.id === activeSessionId ? 'text-indigo-400' : 'text-gray-600'} />
-            <span className="flex-1 text-[11px] text-gray-400 truncate leading-snug">
-              {s.title ?? new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </span>
+            <button onClick={() => onSelect(s.id)} aria-current={s.id === activeSessionId ? 'true' : undefined} className="min-w-0 flex-1 py-3 text-left text-sm text-slate-800"><span className="block truncate">{s.title || 'Untitled conversation'}</span><span className="mt-1 block text-xs text-slate-500">{new Date(s.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></button>
             <button
-              onClick={e => { e.stopPropagation(); deleteSession.mutate(s.id); }}
+              onClick={() => showConfirm(`Delete “${s.title || 'Untitled conversation'}” from your history?`, async () => { await deleteSession.mutateAsync(s.id); if (s.id === activeSessionId) clearConversation(); })}
               aria-label={`Delete conversation ${s.title ?? s.id}`}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-gray-600 opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 focus:opacity-100"
+              className="copilot-icon-button hover:text-red-600"
             >
-              <X size={9} />
+              <X size={16} />
             </button>
           </div>
         ))}
@@ -938,10 +922,10 @@ function SessionSidebar({ activeSessionId, onSelect, onNew }: { activeSessionId:
 }
 
 export function CopilotView() {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const [isLoading,       setIsLoading]       = useState(false);
   const [apiKeyMissing,   setApiKeyMissing]   = useState(false);
-  const [showHistory,     setShowHistory]     = useState(false);
-  const [railOpen,        setRailOpen]        = useState(false);
+  const [panel, setPanel] = useState<'history' | 'goals' | 'schedule' | 'settings' | null>(null);
   const [uploading,  setUploading]  = useState(false);
   const [modelConfig, setModelConfig] = useState({
     primary: 'AI model',
@@ -950,7 +934,9 @@ export function CopilotView() {
     options: [] as Array<{ model: string; provider: string; status: string }>,
   });
   const [selectedModel, setSelectedModel] = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followLatestRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
   const fileRef   = useRef<HTMLInputElement>(null);
   const qc        = useQueryClient();
@@ -1027,9 +1013,42 @@ export function CopilotView() {
 
   const createSession = useCreateChatSession();
 
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'instant') => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    followLatestRef.current = true;
+    setAtBottom(true);
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+  }, []);
+
+  const handleChatScroll = () => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+    followLatestRef.current = nearBottom;
+    setAtBottom(nearBottom);
+  };
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (followLatestRef.current) scrollToLatest();
+  }, [messages, isLoading, scrollToLatest]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const observer = new ResizeObserver(() => {
+      if (followLatestRef.current) scrollToLatest();
+    });
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [scrollToLatest]);
+
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
+  }, [input]);
 
   const loadSession = useCallback(async (sessionId: string) => {
     try {
@@ -1039,6 +1058,7 @@ export function CopilotView() {
         metadata?: { actions?: StoredAction[]; feasibility?: FeasibilityResult | null; citations?: ChatCitation[]; plan?: ChatPlan; plan_options?: ChatPlanOptions; schedule_day_view?: ChatScheduleDayView; overdue_tasks_view?: OverdueTasksView; runtime?: ChatRuntime } | null;
       }[]>(`/api/ai/sessions/${sessionId}/messages`);
       setActiveSessionId(sessionId);
+      followLatestRef.current = true;
       // Restore action cards from persisted metadata; card status reflects the
       // CURRENT durable proposal state, so applied/skipped survive reloads.
       // Plan widgets restore with their saved status and drag adjustments.
@@ -1060,7 +1080,7 @@ export function CopilotView() {
         serverMsgId: m.id,
         timestamp: new Date(m.created_at).toISOString(),
       })));
-      setShowHistory(false);
+      setPanel(null);
     } catch { /* ignore */ }
   }, [setActiveSessionId, setMessages]);
 
@@ -1069,12 +1089,14 @@ export function CopilotView() {
   }, [activeSessionId, messages.length, isLoading, loadSession]);
 
   const startNewConversation = useCallback(() => {
+    followLatestRef.current = true;
     clearCopilotConversation();
-    setShowHistory(false);
+    setPanel(null);
   }, [clearCopilotConversation]);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return;
+    followLatestRef.current = true;
     setInput('');
     // A pending attachment rides along as an explicit reference the model can
     // act on (attach_resource) — stated in-message, never smuggled invisibly.
@@ -1136,9 +1158,9 @@ export function CopilotView() {
       setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', error: errMsg, timestamp: new Date().toISOString() }]);
     } finally {
       setIsLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      if (!isMobile) setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [isLoading, activeSessionId, createSession, qc, attachment, selectedModel, setActiveSessionId, setAttachment, setInput, setMessages]);
+  }, [isLoading, isMobile, activeSessionId, createSession, qc, attachment, selectedModel, setActiveSessionId, setAttachment, setInput, setMessages]);
 
   const handleConfirmAction = useCallback(async (msgId: string, actionId: string) => {
     const action = messages.find(m => m.id === msgId)?.actions?.find(a => a.id === actionId);
@@ -1178,223 +1200,73 @@ export function CopilotView() {
     ?? modelConfig.primaryStatus;
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#0e0e1c]">
+    <section className="copilot-workspace" aria-label="Copilot conversation">
+      <header className="copilot-header">
+        <button className="copilot-icon-button" onClick={() => setPanel('history')} disabled={isLoading} aria-label="Open conversation history" title="Conversations"><MessageSquare size={21} /></button>
+        <button className="copilot-heading" onClick={() => setPanel('settings')} aria-label="Chat model and tools" aria-haspopup="dialog">
+          <span className="font-headline text-lg font-bold text-slate-900">Copilot</span>
+          <span className="flex items-center gap-1 text-xs text-slate-500">{modelLabel(selectedModel || modelConfig.primary)}<ChevronDown size={12} /></span>
+        </button>
+        <button className="copilot-icon-button" onClick={startNewConversation} disabled={isLoading} aria-label="Start a new conversation" title="New chat"><SquarePen size={21} /></button>
+      </header>
 
-      {/* ── Left rail: hidden by default — chat is the page, not a page-in-a-page ── */}
-      {railOpen && (
-        <aside className="w-56 md:w-64 shrink-0 border-r border-white/6 bg-[#0b0b18] flex flex-col overflow-hidden">
-          {showHistory ? (
-            <SessionSidebar
-              activeSessionId={activeSessionId}
-              onSelect={loadSession}
-              onNew={startNewConversation}
-            />
-          ) : (
-            <GoalHealthPanel
-              onGoalClick={title =>
-                send(`Tell me about the schedule for "${title}" — is it feasible and what should I prioritize?`)
-              }
-            />
-          )}
-        </aside>
-      )}
-
-      {/* ── Center: Chat (fills remaining width) ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Top bar */}
-        <div className="shrink-0 flex items-center gap-3 px-5 h-14 border-b border-white/6">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
-            <Zap size={13} className="text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white leading-none">Copilot</p>
-            <p className="text-[10px] text-gray-600 mt-0.5">
-              {selectedModel || modelConfig.primary} · {selectedModelStatus}
-              {modelConfig.fallback ? ` · fallback ${modelConfig.fallback}` : ''}
-            </p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            {modelConfig.options.length > 1 && (
-              <select
-                value={selectedModel || modelConfig.primary}
-                onChange={event => setSelectedModel(event.target.value)}
-                disabled={isLoading}
-                aria-label="Copilot model"
-                title="Choose the NVIDIA model for this conversation"
-                className="max-w-56 rounded-lg border border-white/10 bg-white/6 px-2 py-1.5 text-[10px] text-gray-300 outline-none transition-colors hover:bg-white/10 focus:border-indigo-500/50 disabled:opacity-40"
-              >
-                {modelConfig.options.map(option => (
-                  <option key={option.model} value={option.model} className="bg-[#11111f] text-gray-200">
-                    {option.model === 'deepseek-ai/deepseek-v4-pro'
-                      ? 'DeepSeek V4 Pro'
-                      : option.model === 'nvidia/nemotron-3-super-120b-a12b'
-                        ? 'Nemotron 3 Super 120B'
-                        : option.model}
-                  </option>
-                ))}
+      {panel && <ModalFrame titleId="copilot-panel-title" onClose={() => setPanel(null)} className="copilot-panel mobile-sheet w-full max-w-xl rounded-3xl bg-white p-5 text-slate-900 shadow-xl" overlayClassName="bg-slate-900/30 backdrop-blur-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 id="copilot-panel-title" className="text-xl font-headline font-bold">{({ history: 'Your conversations', goals: 'Goal health', schedule: 'Your week', settings: 'Chat model & tools' })[panel]}</h2>
+          <button onClick={() => setPanel(null)} aria-label="Close chat panel" className="copilot-icon-button"><X size={20} /></button>
+        </div>
+        <div className="copilot-panel-content">
+          {panel === 'history' && <SessionSidebar activeSessionId={activeSessionId} onSelect={id => { void loadSession(id); }} onNew={startNewConversation} />}
+          {panel === 'goals' && <GoalHealthPanel onGoalClick={title => { setPanel(null); void send(`Tell me about the schedule for "${title}" — is it feasible and what should I prioritize?`); }} />}
+          {panel === 'schedule' && <SchedulePreviewPanel />}
+          {panel === 'settings' && <div className="space-y-5">
+            <div>
+              <label htmlFor="copilot-model" className="mb-2 block text-sm font-medium">Model</label>
+              <select id="copilot-model" value={selectedModel || modelConfig.primary} onChange={event => setSelectedModel(event.target.value)} disabled={isLoading || !modelConfig.options.length} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-indigo-500">
+                {modelConfig.options.length ? modelConfig.options.map(option => <option key={option.model} value={option.model}>{modelLabel(option.model)}</option>) : <option>{modelLabel(modelConfig.primary)}</option>}
               </select>
-            )}
-            <button
-              onClick={() => { if (railOpen && !showHistory) setRailOpen(false); else { setRailOpen(true); setShowHistory(false); } }}
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${railOpen && !showHistory ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/6 text-gray-500 hover:text-gray-300'}`}
-              title="Goal health panel"
-              aria-label="Toggle goal health panel"
-              aria-pressed={railOpen && !showHistory}
-            >
-              <PanelLeft size={12} />
-            </button>
-            <button
-              onClick={() => { if (railOpen && showHistory) { setRailOpen(false); setShowHistory(false); } else { setRailOpen(true); setShowHistory(true); } }}
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${railOpen && showHistory ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/6 text-gray-500 hover:text-gray-300'}`}
-              title="Conversation history"
-              aria-label="Toggle conversation history"
-              aria-pressed={railOpen && showHistory}
-            >
-              <MessageSquare size={12} />
-            </button>
-            <button
-              onClick={() => send(ANALYZE_PROMPT)}
-              disabled={isLoading}
-              aria-label="Run proactive smart review"
-              className="flex items-center gap-1.5 text-[11px] font-medium text-indigo-300 border border-indigo-500/25 bg-indigo-500/8 hover:bg-indigo-500/15 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
-            >
-              <RefreshCw size={10} className={isLoading ? 'animate-spin' : ''} />
-              Smart Review
-            </button>
-            {messages.length > 0 && (
-              <button onClick={startNewConversation} className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors" aria-label="Start a new conversation">
-                New
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* API key banner */}
-        {apiKeyMissing && (
-          <div className="shrink-0 m-4 p-3 border border-amber-500/25 bg-amber-500/5 rounded-xl">
-            <p className="text-[12px] text-amber-300 font-medium">GEMINI_API_KEY not configured</p>
-            <p className="text-[11px] text-amber-400/70 mt-0.5">
-              Get a free key at <span className="underline">aistudio.google.com</span> → add <code className="bg-white/8 px-1 rounded font-mono">GEMINI_API_KEY=AIza…</code> to your <code className="bg-white/8 px-1 rounded font-mono">.env</code> → restart server
-            </p>
-          </div>
-        )}
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto">
-          {isEmpty && !isLoading ? (
-            <div className="h-full flex flex-col items-center justify-center px-6 text-center select-none">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg shadow-indigo-500/20">
-                <Zap size={20} className="text-white" />
-              </div>
-              <p className="text-[15px] font-semibold text-white mb-1.5">Marina Copilot</p>
-              <p className="text-[12px] text-gray-500 max-w-sm mb-8 leading-relaxed">
-                I read your goals, tasks, and deadlines. I show schedule diagnostics by default and only make a new plan when you ask.
-              </p>
-              <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
-                {STARTERS.map(s => (
-                  <button
-                    key={s.label}
-                    onClick={() => send(s.prompt)}
-                    className="text-left p-3.5 rounded-xl border border-white/8 bg-white/4 hover:bg-white/8 hover:border-indigo-500/30 transition-all group"
-                  >
-                    <span className="text-lg leading-none">{s.icon}</span>
-                    <p className="text-[12px] font-medium text-gray-300 group-hover:text-white mt-2 transition-colors">{s.label}</p>
-                  </button>
-                ))}
-              </div>
+              <p className="mt-2 text-xs text-slate-500">{selectedModelStatus === 'rate limited' ? 'This model is busy. Please try again shortly.' : 'Choose the model for your next message.'}</p>
             </div>
-          ) : (
-            <div className="px-5 py-5 space-y-5">
-              {messages.map(msg => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  sessionId={activeSessionId}
-                  onConfirmAction={handleConfirmAction}
-                  onSkipAction={handleSkipAction}
-                />
-              ))}
-              {isLoading && (
-                <WorkingIndicator
-                  primaryModel={selectedModel || modelConfig.primary}
-                  primaryStatus={selectedModelStatus}
-                  fallbackModel={modelConfig.fallback}
-                />
-              )}
-              <div ref={bottomRef} />
+            <div className="space-y-1 border-t border-slate-100 pt-3">
+              <button className="copilot-tool" onClick={() => setPanel('schedule')}><Calendar size={19} /><span>Your week<span>See upcoming work and schedule suggestions</span></span><ChevronRight size={16} /></button>
+              <button className="copilot-tool" onClick={() => setPanel('goals')} disabled={isLoading}><Target size={19} /><span>Goal health<span>Check progress and approaching deadlines</span></span><ChevronRight size={16} /></button>
+              <button className="copilot-tool" disabled={isLoading} onClick={() => { setPanel(null); void send(ANALYZE_PROMPT); }}><Zap size={19} /><span>Smart review<span>Find what needs your attention</span></span><ChevronRight size={16} /></button>
             </div>
-          )}
+          </div>}
         </div>
+      </ModalFrame>}
 
-        {/* Input bar */}
-        <div className="shrink-0 border-t border-white/6 px-4 py-3">
-          {attachment && (
-            <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl">
-              <Paperclip size={11} className="text-emerald-400 shrink-0" />
-              <span className="text-[11px] text-emerald-300 truncate flex-1">
-                {attachment.title} — uploaded to your library{attachment.indexing ? ', indexing…' : ' and indexed'}
-              </span>
-              <span className="text-[10px] font-mono text-gray-500">will be referenced in your next message</span>
-              <button
-                onClick={() => setAttachment(null)}
-                aria-label="Remove attached file"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-red-500/10 hover:text-red-400"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          )}
-          <div className="flex items-end gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 focus-within:border-indigo-500/40 transition-colors">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.gif,.webp"
-              className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(f); e.target.value = ''; }}
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading || isLoading}
-              className="w-8 h-8 shrink-0 rounded-xl text-gray-500 hover:text-indigo-300 hover:bg-white/5 disabled:opacity-30 flex items-center justify-center transition-colors"
-              aria-label="Attach a file"
-              title="Attach a file — it's added to your Resource Library, chunked for search, and the copilot can file it under a goal/task/milestone if you ask"
-            >
-              {uploading ? <RefreshCw size={14} className="animate-spin" /> : <Paperclip size={14} />}
-            </button>
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-              aria-label="Message Copilot"
-              placeholder="Ask about your schedule, or say what you need to get done…"
-              rows={1}
-              className="flex-1 bg-transparent text-[13px] text-white placeholder-gray-600 outline-none resize-none leading-relaxed max-h-28 overflow-y-auto"
-              style={{ minHeight: 24 }}
-              onInput={e => {
-                const t = e.currentTarget;
-                t.style.height = 'auto';
-                t.style.height = Math.min(t.scrollHeight, 112) + 'px';
-              }}
-            />
-            <button
-              onClick={() => send(input)}
-              disabled={!input.trim() || isLoading}
-              aria-label="Send message"
-              className="w-8 h-8 shrink-0 rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
-            >
-              <Send size={13} className="text-white" />
-            </button>
+      {apiKeyMissing && <div role="alert" className="mx-4 mt-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Copilot couldn’t connect to its model. Check your AI connection in Settings.</div>}
+
+      <div ref={scrollRef} onScroll={handleChatScroll} className="copilot-messages" aria-label="Messages">
+        {isEmpty && !isLoading ? <div className="copilot-welcome">
+          <span className="copilot-welcome-icon"><Zap size={24} /></span>
+          <h1 className="font-headline">A little clarity for your day.</h1>
+          <p>Talk through a task, make a plan,<br className="sm:hidden" /> or find your next step.</p>
+          <div className="copilot-starters">
+            {STARTERS.map(starter => <button key={starter.label} onClick={() => void send(starter.prompt)}><starter.icon size={20} /><span>{starter.label}<small>{starter.detail}</small></span><ChevronRight size={15} /></button>)}
           </div>
-          <p className="text-[10px] text-gray-700 mt-1.5 px-1">Enter to send · Shift+Enter for new line</p>
-        </div>
+        </div> : <div className="copilot-message-list">
+          {messages.map(msg => <MessageBubble key={msg.id} msg={msg} sessionId={activeSessionId} onConfirmAction={handleConfirmAction} onSkipAction={handleSkipAction} />)}
+          {isLoading && <WorkingIndicator />}
+        </div>}
       </div>
 
-      {/* ── Right: Schedule Preview ── */}
-      <div className="hidden lg:flex flex-col w-64 xl:w-80 shrink-0 overflow-hidden bg-[#0b0b18]">
-        <SchedulePreviewPanel />
+      <div className="copilot-composer-wrap">
+        {!atBottom && !isEmpty && <button className="copilot-latest" onClick={() => scrollToLatest('smooth')} aria-label="Jump to latest message"><ArrowDown size={17} /> Latest</button>}
+        <div className="copilot-composer">
+          {attachment && <div className="copilot-attachment"><Paperclip size={16} /><span className="truncate">{attachment.title}</span><button aria-label="Remove attached file" className="copilot-icon-button" onClick={() => setAttachment(null)}><X size={17} /></button></div>}
+          <textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !isMobile && !event.nativeEvent.isComposing) { event.preventDefault(); void send(input); } }} aria-label="Message Copilot" placeholder="Message Marina…" rows={1} />
+          <div className="copilot-composer-tools">
+            <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file); event.target.value = ''; }} />
+            <button className="copilot-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || isLoading} aria-label="Attach a file" title="Attach a file">{uploading ? <RefreshCw size={20} className="animate-spin" /> : <Plus size={22} />}</button>
+            <button className="copilot-icon-button" onClick={() => setPanel('settings')} aria-label="Chat tools" title="Chat tools"><SlidersHorizontal size={19} /></button>
+            <button className="copilot-dismiss-keyboard copilot-icon-button" aria-label="Hide keyboard" onClick={() => inputRef.current?.blur()}><Keyboard size={20} /><ChevronDown size={12} /></button>
+            <button className="copilot-send" onPointerDown={event => { if (document.activeElement === inputRef.current) event.preventDefault(); }} onClick={() => void send(input)} disabled={!input.trim() || isLoading || uploading} aria-label="Send message">{isLoading ? <RefreshCw size={19} className="animate-spin" /> : <ArrowUp size={21} />}</button>
+          </div>
+        </div>
+        <p className="copilot-keyboard-hint">Enter to send · Shift + Enter for a new line</p>
       </div>
-    </div>
+    </section>
   );
 }

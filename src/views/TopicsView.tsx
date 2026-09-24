@@ -1,3 +1,4 @@
+import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Tags, Check, X, Sparkles, Trash2, RefreshCw, Target, CheckSquare, BookOpen, FileText, Calendar, StickyNote, Diamond } from 'lucide-react';
@@ -87,7 +88,7 @@ function SuggestionInbox() {
   if (!suggestions.length) {
     return (
       <p className="text-xs text-gray-400 font-mono px-1 py-3">
-        No pending suggestions. Run “Find candidates” to generate some.
+        No pending suggestions. Run “Find suggestions” to generate some.
       </p>
     );
   }
@@ -245,13 +246,13 @@ export function TopicsView() {
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
-      <div className="flex justify-between items-end mb-6">
+      <div className="mobile-toolbar flex justify-between items-end mb-6">
         <div>
           <h2 className="font-headline text-2xl font-bold text-black flex items-center gap-2">
             <Tags size={20} /> Topics
           </h2>
           <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mt-1">
-            Semantic clusters — manual assertions are authoritative
+            Group related work, reading and ideas.
           </p>
         </div>
         <button
@@ -264,19 +265,19 @@ export function TopicsView() {
           {generate.isPending
             ? <RefreshCw size={13} className="animate-spin" />
             : <Sparkles size={13} />}
-          Find candidates
+          Find suggestions
         </button>
       </div>
 
-      <div className="bg-[#EEF2FF] border border-[#4648d4]/15 rounded-xl px-4 py-3 mb-5 text-[12px] text-gray-600 leading-relaxed">
+      <div className="mb-4"><MobileDisclosure title="How topics work" storageKey="topics-help"><div className="bg-[#EEF2FF] border border-[#4648d4]/15 rounded-xl px-4 py-3 mb-5 text-[12px] text-gray-600 leading-relaxed">
         <b className="text-[#4648d4]">Topics = your tags, grown up.</b> Tag any record (resource, task, journal) with a
         topic’s name and it <b>joins that topic automatically</b> — your word is authoritative. Creating a topic here
         retroactively pulls in everything already tagged with its name. AI-extracted tags only <i>suggest</i> membership
         and wait in the inbox. Add members directly from any goal/resource/journal page via the
         <span className="font-mono text-[10px] bg-white px-1 rounded border border-gray-200 mx-1">＋ chip</span>
-        too. <b>“Find candidates”</b> adds semantic suggestions (meaning, links, names). Chat, search and the graph all
+        too. <b>“Find suggestions”</b> adds semantic suggestions (meaning, links, names). Chat, search and the graph all
         use your topics to pull the right context.
-      </div>
+      </div></MobileDisclosure></div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Topic list + creation */}
@@ -291,7 +292,7 @@ export function TopicsView() {
               value={newName}
               onChange={e => setNewName(e.target.value)}
               placeholder="New topic name…"
-              className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#4648d4]"
+              className="min-w-0 flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#4648d4]"
             />
             <button
               type="submit"
@@ -306,7 +307,7 @@ export function TopicsView() {
           {isLoading && <p className="text-xs text-gray-400 font-mono">Loading topics…</p>}
           {!isLoading && topics.length === 0 && (
             <div className="bg-[#EEF2FF] rounded-xl p-5 border border-dashed border-[#4648d4]/20 text-center text-xs text-gray-600">
-              Create your first topic, add a few entities manually, then run “Find candidates”
+              Create your first topic, add a few entities manually, then run “Find suggestions”
               to let semantic search suggest what else belongs.
             </div>
           )}

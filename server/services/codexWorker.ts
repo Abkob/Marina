@@ -5,11 +5,11 @@ import { appendAgentEvent, finishAgentRun, setAgentIntent, startAgentRun } from 
 export function getCodexWorkerStatus() {
   return {
     installed: true,
-    enabled: process.env.AMINA_CODEX_WORKER_ENABLED === 'true',
+    enabled: process.env.MARINA_CODEX_WORKER_ENABLED === 'true',
     mode: 'read-only',
     network_access: false,
     approval_policy: 'never',
-    model: process.env.AMINA_CODEX_MODEL ?? null,
+    model: process.env.MARINA_CODEX_MODEL ?? null,
   };
 }
 
@@ -19,8 +19,8 @@ export async function runCodexWorker(input: {
   sessionId?: string | null;
   workingDirectory?: string;
 }): Promise<{ runId: string; threadId: string | null; response: string }> {
-  if (process.env.AMINA_CODEX_WORKER_ENABLED !== 'true') {
-    throw new Error('Codex worker is disabled. Set AMINA_CODEX_WORKER_ENABLED=true after configuring authentication.');
+  if (process.env.MARINA_CODEX_WORKER_ENABLED !== 'true') {
+    throw new Error('Codex worker is disabled. Set MARINA_CODEX_WORKER_ENABLED=true after configuring authentication.');
   }
   const workingDirectory = path.resolve(input.workingDirectory ?? process.cwd());
   const runId = await startAgentRun({
@@ -28,10 +28,10 @@ export async function runCodexWorker(input: {
     agentKind: 'codex_worker',
     sessionId: input.sessionId ?? null,
     userMessage: input.prompt,
-    model: process.env.AMINA_CODEX_MODEL ?? null,
+    model: process.env.MARINA_CODEX_MODEL ?? null,
     metadata: { working_directory: workingDirectory, sandbox: 'read-only' },
   });
-  await setAgentIntent(runId, input.intent, 1, { delegated_by: 'amina' });
+  await setAgentIntent(runId, input.intent, 1, { delegated_by: 'marina' });
 
   try {
     const codex = new Codex({ apiKey: process.env.CODEX_API_KEY });
@@ -41,7 +41,7 @@ export async function runCodexWorker(input: {
       approvalPolicy: 'never',
       networkAccessEnabled: false,
       webSearchMode: 'disabled',
-      ...(process.env.AMINA_CODEX_MODEL ? { model: process.env.AMINA_CODEX_MODEL } : {}),
+      ...(process.env.MARINA_CODEX_MODEL ? { model: process.env.MARINA_CODEX_MODEL } : {}),
     });
     const turn = await thread.run(input.prompt);
     for (const item of turn.items) await logSafeCodexItem(runId, item);

@@ -6,7 +6,7 @@ import {
   verifyGoogleOAuthState,
 } from '../../../server/services/googleWorkspaceAuth';
 import {
-  aminaTaskTitleFromGoogle,
+  marinaTaskTitleFromGoogle,
   buildGoogleCalendarPayload,
   buildGoogleTaskPayload,
   buildGoogleTaskProjections,
@@ -60,21 +60,21 @@ describe('Google mapping', () => {
     expect(payload.title).toBe('Week 4: Finish problem set');
     expect(payload.notes).toContain('Goal: PSYCI 210');
     expect(payload.notes).toContain('Parent: Week 4');
-    expect(payload.notes).toContain('Amina path: Coursework > Week 4 > Finish problem set');
-    expect(payload.notes).toContain(`Amina task: ${task.id}`);
+    expect(payload.notes).toContain('Marina path: Coursework > Week 4 > Finish problem set');
+    expect(payload.notes).toContain(`Marina task: ${task.id}`);
   });
 
-  it('names only flattened leaves as Parent: Child and keeps Amina titles clean', () => {
+  it('names only flattened leaves as Parent: Child and keeps Marina titles clean', () => {
     expect(googleTaskDisplayTitle('Finish Studying', ['Incomplete Courses', 'Physics 210', 'Finish Studying']))
       .toBe('Physics 210: Finish Studying');
     expect(googleTaskDisplayTitle('Physics 210', ['Incomplete Courses', 'Physics 210']))
       .toBe('Physics 210');
-    expect(aminaTaskTitleFromGoogle(
+    expect(marinaTaskTitleFromGoogle(
       'Physics 210: Finish Chapter 6',
       'Finish Studying',
       ['Incomplete Courses', 'Physics 210', 'Finish Studying'],
     )).toBe('Finish Chapter 6');
-    expect(aminaTaskTitleFromGoogle(
+    expect(marinaTaskTitleFromGoogle(
       'Review for the exam',
       'Finish Studying',
       ['Incomplete Courses', 'Physics 210', 'Finish Studying'],
@@ -111,10 +111,10 @@ describe('Google mapping', () => {
     const payload = buildGoogleCalendarPayload({ kind: 'task_day', row: task }, 'Asia/Beirut');
     expect(payload.start).toEqual({ date: '2026-08-18' });
     expect(payload.end).toEqual({ date: '2026-08-19' });
-    expect(payload.extendedProperties.private).toMatchObject({ aminaKind: 'task_day', aminaId: task.id });
+    expect(payload.extendedProperties.private).toMatchObject({ marinaKind: 'task_day', marinaId: task.id });
   });
 
-  it('keeps an Amina focus block attached to its concrete date and timezone', () => {
+  it('keeps an Marina focus block attached to its concrete date and timezone', () => {
     const payload = buildGoogleCalendarPayload({
       kind: 'event',
       row: {
