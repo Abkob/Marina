@@ -112,6 +112,7 @@ describe('model-led conversation', () => {
     expect(result.reply).toBe('Which task do you mean, and its deadline or scheduled time?');
     expect(result.conversation.needs_clarification).toBe(true);
     expect(reviewComplete.mock.calls[0][0]).toContainEqual({ role: 'user', content: 'Please help with my thesis' });
+    expect(reviewComplete.mock.calls[0][1]).toMatchObject({ allowFallback: false, allowLocalFallback: false });
   });
 
   it('withholds proposals if their review fails instead of bypassing it', async () => {
@@ -175,6 +176,7 @@ describe('model-led conversation', () => {
     complete.mockResolvedValueOnce(JSON.stringify(final()));
     expect((await run()).reply).toBe('Here is my actual explanation.');
     expect(complete.mock.calls[0]).toEqual(complete.mock.calls[1]);
+    expect(complete.mock.calls[0][1]).toMatchObject({ allowFallback: false, allowLocalFallback: false });
     expect(execute).not.toHaveBeenCalled();
   });
 

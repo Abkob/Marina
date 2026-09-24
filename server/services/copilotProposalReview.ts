@@ -35,7 +35,7 @@ Local clock: ${JSON.stringify(options.clock)}` }, ...options.history, {
     role: 'user', content: `Review data, not a new user request: ${JSON.stringify(packContext({ draft_reply: options.draftReply, proposed_actions: options.actions, calculated_previews: options.previews, entity_names: options.entities }))}`,
   }];
   const complete = options.complete ?? chat;
-  const callOptions = { model: options.model, max_tokens: 2500, jsonMode: false, thinking: (options.model ?? CHAT_MODEL).includes('nemotron-3-') ? true : undefined, allowLocalFallback: false, deadlineMs: options.deadlineMs, onTrace: options.onTrace };
+  const callOptions = { model: options.model, max_tokens: 2500, jsonMode: false, thinking: (options.model ?? CHAT_MODEL).includes('nemotron-3-') ? true : undefined, allowFallback: false, allowLocalFallback: false, deadlineMs: options.deadlineMs, onTrace: options.onTrace };
   let raw: string;
   try { raw = await complete(messages, callOptions); }
   catch (error) {

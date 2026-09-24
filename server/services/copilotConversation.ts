@@ -140,7 +140,9 @@ export async function runCopilotConversation(options: {
     // Keep the provider's recommended sampling (Nemotron: temperature 1/top_p .95).
     // Ask for JSON in the prompt and validate locally. Constrained decoding
     // combined with provider reasoning produced malformed payloads in live evals.
-    const completionOptions = { model: options.model, max_tokens: 6000, jsonMode: false, thinking: (options.model ?? CHAT_MODEL).includes('nemotron-3-') ? true : undefined, onTrace: options.onTrace, allowLocalFallback: false, deadlineMs };
+    // Preserve the selected provider's error so our bounded overload retry can
+    // handle it. An unrelated fallback error must not mask a recoverable 503.
+    const completionOptions = { model: options.model, max_tokens: 6000, jsonMode: false, thinking: (options.model ?? CHAT_MODEL).includes('nemotron-3-') ? true : undefined, onTrace: options.onTrace, allowFallback: false, allowLocalFallback: false, deadlineMs };
     let raw: string;
     try { raw = await complete(messages, completionOptions); }
     catch (error) {

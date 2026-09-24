@@ -43,6 +43,8 @@ This is an illustrative fixture, not the user's data. Parent rollups and child w
 
 No extra model call summarizes/compresses the facts. Original user and assistant messages stay intact within the existing whole-turn history budget. No keyword classifier or deterministic intent router was added.
 
+Copilot and proposal review keep the selected model for their bounded overload retry. They do not silently switch to DeepSeek: a production check found that its 410 response was masking a recoverable Nemotron overload.
+
 ## Limits and measurements
 
 The raw privacy/archive checks run before encoding, so table columns cannot hide forbidden fields. A raw read has a 500,000-character ceiling; encoded observations have a 50,000-character per-result and 70,000-character per-turn ceiling. Oversized results fail explicitly so the model can request narrower sections/pages. They are not silently summarized or truncated by the codec. Existing source query limits are still reported.
