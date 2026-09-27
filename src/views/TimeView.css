@@ -13,6 +13,8 @@
 .time-year-controls button:disabled { opacity: .22; cursor: default; }
 .time-year-controls button:focus-visible { outline: 2px solid #8b74b6; outline-offset: 1px; }
 .time-year-total { margin-top: 9px; font-size: 11px; color: #928b99; }
+.time-window-range { margin-top: 9px; font: 10px var(--font-mono, monospace); color: #9a929f; }
+.time-window-range + .time-year-total { margin-top: 5px; }
 .time-readout { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; min-width: 180px; min-height: 72px; gap: 4px; text-align: right; }
 .time-readout-date { font: 10px var(--font-mono, monospace); color: #9a929f; }
 .time-readout strong { font-size: 20px; font-weight: 500; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
@@ -32,10 +34,13 @@
 .time-detail-value { flex-shrink: 0; text-align: right; }
 .time-detail-value strong { font-weight: 500; color: #514759; font-variant-numeric: tabular-nums; }
 .time-day-details > p { margin: 10px 0 22px; font-size: 10px; line-height: 1.6; }
-.time-months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 38px; row-gap: 38px; }
+.time-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 38px; row-gap: 38px; }
+.time-swipe-hint { display: none; }
 .time-month { min-width: 0; }
 .time-month-heading { display: flex; align-items: center; justify-content: space-between; max-width: 188px; min-height: 20px; margin-bottom: 11px; padding-left: 20px; }
 .time-month-heading h3 { font-size: 11px; font-weight: 500; letter-spacing: .2px; }
+.time-month-heading h3 small { margin-left: 6px; color: #9a929f; font: 9px var(--font-mono, monospace); }
+.time-month[data-current] h3 { color: #6a4d94; font-weight: 600; }
 .time-month-heading > span { font: 9px var(--font-mono, monospace); color: #9a929f; opacity: 0; transition: opacity .15s; }
 .time-month:hover .time-month-heading > span, .time-month:focus-within .time-month-heading > span { opacity: 1; }
 .time-month-body { display: flex; gap: 7px; max-width: 188px; }
@@ -76,6 +81,7 @@
   .time-year-controls h2 { font-size: 30px; letter-spacing: -1px; }
   .time-year-controls button { width: 32px; }
   .time-year-total { max-width: 160px; font-size: 9px; line-height: 1.5; margin-top: 4px; }
+  .time-window-range { font-size: 9px; margin-top: 6px; }
   .time-readout { min-width: 0; flex: 1; gap: 4px; }
   .time-readout strong { font-size: 15px; }
   .time-readout-date, .time-readout > span:last-child { font-size: 9px; }
@@ -83,7 +89,11 @@
   .time-day-details { margin-top: -16px; margin-bottom: 12px; }
   .time-day-details ul { grid-template-columns: minmax(0, 1fr); }
   .time-day-details summary { font-size: 9px; }
-  .time-months { grid-template-columns: repeat(auto-fit, minmax(144px, 1fr)); column-gap: 20px; row-gap: 26px; }
+  /* Preserve three-month rows and 24px day targets. Start at the right edge
+     so the current month is visible; swiping reveals the preceding columns. */
+  .time-months-viewport { direction: rtl; overflow-x: auto; overscroll-behavior-x: contain; padding: 4px; margin: -4px; scrollbar-width: thin; scrollbar-color: #ddd6e5 transparent; }
+  .time-months { direction: ltr; min-width: 472px; column-gap: 20px; row-gap: 26px; }
+  .time-swipe-hint { display: block; margin: 0 0 12px; text-align: right; font-size: 9px; color: #9a929f; }
   .time-weekdays { display: none; }
   .time-month-heading { padding-left: 3px; margin-bottom: 8px; }
   .time-month-body, .time-month-heading { max-width: none; }
@@ -99,7 +109,6 @@
 }
 @media (max-width: 343px) {
   .time-page { padding-left: 8px; padding-right: 8px; }
-  .time-months { column-gap: 8px; }
   .time-year-controls { flex-wrap: wrap; gap: 0; }
   .time-year-controls > div { margin-left: -10px; }
   .time-year-total { max-width: 128px; }

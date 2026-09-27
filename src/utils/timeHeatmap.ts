@@ -181,6 +181,15 @@ export function timeLabel(minutes: number) {
   return hours ? `${hours}h${rounded % 60 ? ` ${rounded % 60}m` : ''}` : `${rounded}m`;
 }
 
+/** Four rows of three months: oldest to newest within each row, with the
+ * newest row first. The current month is always the third square matrix. */
+export function timeWindow(year: number, month: number) {
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - Math.floor(index / 3) * 3 - 2 + index % 3, 1));
+    return { year: date.getUTCFullYear(), month: date.getUTCMonth(), key: date.toISOString().slice(0, 7) };
+  });
+}
+
 /** Monday-first, week columns × weekday rows, with room for six weeks. */
 export function timeMonth(year: number, month: number): (string | null)[] {
   const start = new Date(Date.UTC(year, month, 1));

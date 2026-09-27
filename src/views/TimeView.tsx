@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useSchedulePrefs } from '../api/hooks';
 import { useCloudWorkTimer } from '../hooks/useCloudWorkTimer';
 import { apiFetch } from '../utils/apiFetch';
 import { addRoutineDays } from '../utils/routines';
-import { mergeLiveTime, timeDate, timeLabel, timeLevel, timeMonth, type TimeHeatmap, type TimeLiveDay } from '../utils/timeHeatmap';
+import { mergeLiveTime, timeDate, timeLabel, timeLevel, timeMonth, timeWindow, type TimeHeatmap, type TimeLiveDay } from '../utils/timeHeatmap';
 import './TimeView.css';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -22,28 +22,49 @@ export function TimeView() {
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const fallbackToday = timeDate(cloud.nowMs, prefs.data?.timezone ?? 'Asia/Beirut');
   const currentYear = Number(fallbackToday.slice(0, 4));
+  const currentMonth = Number(fallbackToday.slice(5, 7)) - 1;
   const year = chosenYear ?? currentYear;
-  const query = useQuery({
-    queryKey: ['work-sessions', 'heatmap', year],
-    queryFn: ({ signal }) => apiFetch<TimeHeatmap>(`/api/work-sessions/heatmap?year=${year}`, { signal, cache: 'no-store' }),
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: 'always',
-    staleTime: 10_000,
+  const months = useMemo(() => timeWindow(year, currentMonth).map(month => ({
+    ...month, name: MONTHS[month.month], cells: timeMonth(month.year, month.month),
+  })), [year, currentMonth]);
+  const years = [...new Set(months.map(month => month.year))];
+  const queries = useQueries({
+    queries: years.map(dataYear => ({
+      queryKey: ['work-sessions', 'heatmap', dataYear],
+      queryFn: ({ signal }: { signal: AbortSignal }) => apiFetch<TimeHeatmap>(`/api/work-sessions/heatmap?year=${dataYear}`, { signal, cache: 'no-store' }),
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: 'always' as const,
+      staleTime: 10_000,
+    })),
   });
-  const today = query.data ? timeDate(cloud.nowMs, query.data.timezone) : fallbackToday;
+  const firstData = queries[0]?.data, secondData = queries[1]?.data;
+  const unavailable = queries.some(query => !query.data);
+  const isError = queries.some(query => query.isError);
+  const today = firstData ? timeDate(cloud.nowMs, firstData.timezone) : fallbackToday;
   // Displayed durations have minute precision. Avoid rebuilding a year's
   // calendar on every second of a running timer.
   const nowMinute = Math.floor(cloud.nowMs / 60_000) * 60_000;
-  const days = useMemo(() => query.data ? mergeLiveTime(query.data, cloud.timer, nowMinute) : new Map<string, TimeLiveDay>(), [query.data, cloud.timer, nowMinute]);
-  const months = useMemo(() => MONTHS.map((name, month) => ({ name, cells: timeMonth(year, month) })), [year]);
+  const days = useMemo(() => {
+    const result = new Map<string, TimeLiveDay>();
+    if (unavailable) return result;
+    const visible = new Set(months.map(month => month.key));
+    for (const data of [firstData, secondData]) if (data) {
+      for (const [date, day] of mergeLiveTime(data, cloud.timer, nowMinute)) {
+        if (visible.has(date.slice(0, 7))) result.set(date, day);
+      }
+    }
+    return result;
+  }, [firstData, secondData, unavailable, months, cloud.timer, nowMinute]);
+  const oldest = months[9], newest = months[2];
+  const rangeLabel = `${oldest.name.slice(0, 3)} ${oldest.year} – ${newest.name.slice(0, 3)} ${newest.year}`;
   const total = [...days.values()].reduce((sum, day) => sum + day.minutes, 0);
-  const activeDate = hovered ?? selected ?? (year === currentYear ? today : null);
+  const visibleDate = (date: string | null) => date && months.some(month => date.startsWith(month.key)) ? date : null;
+  const activeDate = visibleDate(hovered) ?? visibleDate(selected) ?? (year === currentYear ? today : null);
   const activeDay = activeDate ? days.get(activeDate) : null;
   // Hover previews must not add/remove content above the matrix and move the
   // square beneath the pointer. Only an intentional selection changes details.
-  const detailDate = selected ?? (year === currentYear ? today : null);
+  const detailDate = visibleDate(selected) ?? (year === currentYear ? today : null);
   const detailDay = detailDate ? days.get(detailDate) : null;
-  const unavailable = !query.data;
 
   function changeYear(next: number) {
     setChosenYear(next); setSelected(null); setFocused(null); setHovered(null);
@@ -63,18 +84,19 @@ export function TimeView() {
       <span className="time-eyebrow">A year in focus</span>
     </header>
 
-    <figure className="time-atlas" aria-label={`Accounted time in ${year}`} aria-busy={query.isPending}>
+    <figure className="time-atlas" aria-label={`Accounted time, ${rangeLabel}`} aria-busy={queries.some(query => query.isPending)}>
       <div className="time-toolbar">
         <div className="time-year-block">
           <div className="time-year-controls">
             <h2>{year}</h2>
             <div>
-              <button onClick={() => changeYear(year - 1)} disabled={year <= 2000} aria-label="Previous year"><ChevronLeft size={15} /></button>
+              <button onClick={() => changeYear(year - 1)} disabled={oldest.year <= 2000} aria-label="Previous year"><ChevronLeft size={15} /></button>
               <button onClick={() => changeYear(year + 1)} disabled={year >= currentYear} aria-label="Next year"><ChevronRight size={15} /></button>
               {year !== currentYear && <button onClick={() => changeYear(currentYear)} aria-label="Return to this year" title="This year"><RotateCcw size={13} /></button>}
             </div>
           </div>
-          <p className="time-year-total">{unavailable ? (query.isError ? 'Time unavailable' : 'Reading your time…') : total > 0 ? `${timeLabel(total)} accounted for${[...days.values()].some(day => day.liveMinutes > 0) ? ' · including live' : ''}` : 'No time recorded this year yet.'}</p>
+          <p className="time-window-range">{rangeLabel}</p>
+          <p className="time-year-total">{unavailable ? (isError ? 'Time unavailable' : 'Reading your time…') : total > 0 ? `${timeLabel(total)} accounted for${[...days.values()].some(day => day.liveMinutes > 0) ? ' · including live' : ''}` : 'No time recorded in these months yet.'}</p>
         </div>
         <div className="time-readout" aria-live="polite" aria-atomic="true">
           {activeDate && !unavailable ? <>
@@ -98,19 +120,20 @@ export function TimeView() {
         <p>Calendar fills elapsed time not already logged. Overlapping blocks share the same time.</p>
       </details>}
 
-      {(query.isError || cloud.error) && <div className="time-error" role="status">
-        <span>{query.isError ? (query.data ? 'Showing the last saved view. New time could not be loaded.' : 'Your time could not be loaded.') : 'Live timer sync is reconnecting.'}</span>
-        {query.isError && <button onClick={() => void query.refetch()}>Retry</button>}
+      {(isError || cloud.error) && <div className="time-error" role="status">
+        <span>{isError ? (!unavailable ? 'Showing the last saved view. New time could not be loaded.' : 'Your time could not be loaded.') : 'Live timer sync is reconnecting.'}</span>
+        {isError && <button onClick={() => { for (const query of queries) if (query.isError) void query.refetch(); }}>Retry</button>}
       </div>}
 
-      <div className={`time-months${unavailable ? ' time-months-loading' : ''}`}>
-        {months.map(({ name, cells }, month) => {
-          const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+      <p className="time-swipe-hint">Swipe to see all three months</p>
+      <div className="time-months-viewport">
+        <div className={`time-months${unavailable ? ' time-months-loading' : ''}`}>
+        {months.map(({ name, cells, key: monthKey, year: monthYear }) => {
           const firstDay = `${monthKey}-01`;
           const tabDate = focused?.startsWith(monthKey) ? focused : today.startsWith(monthKey) ? today : firstDay;
           const monthTotal = cells.reduce((sum, date) => sum + (date ? days.get(date)?.minutes ?? 0 : 0), 0);
-          return <div className="time-month" key={name} role="group" aria-label={name}>
-            <div className="time-month-heading"><h3>{name}</h3><span>{monthTotal > 0 ? timeLabel(monthTotal) : ''}</span></div>
+          return <div className="time-month" key={monthKey} role="group" aria-label={`${name} ${monthYear}`} data-month={monthKey} data-current={today.startsWith(monthKey) || undefined}>
+            <div className="time-month-heading"><h3>{name}{monthYear !== year && <small>{monthYear}</small>}</h3><span>{monthTotal > 0 ? timeLabel(monthTotal) : ''}</span></div>
             <div className="time-month-body">
               <div className="time-weekdays" aria-hidden="true">{WEEKDAYS.map((day, i) => <span key={i}>{i % 2 === 0 ? day : ''}</span>)}</div>
               <div className="time-month-grid">
@@ -133,6 +156,7 @@ export function TimeView() {
             </div>
           </div>;
         })}
+        </div>
       </div>
 
       <figcaption className="time-caption">

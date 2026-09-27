@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { mergeLiveTime, timeDate, timeDays, timeLevel, timeMonth, type TimeInterval, type TimeHeatmap } from '../timeHeatmap';
+import { mergeLiveTime, timeDate, timeDays, timeLevel, timeMonth, timeWindow, type TimeInterval, type TimeHeatmap } from '../timeHeatmap';
 
 const session = (started_at: string, ended_at: string | null, minutes: number): TimeInterval => ({ id: 'session', started_at, ended_at, minutes });
 describe('time matrix dates and truthful totals', () => {
+  it('places the current month third and continues backward across years without duplicate months', () => {
+    expect(timeWindow(2026, 8).map(month => month.key)).toEqual([
+      '2026-07', '2026-08', '2026-09', '2026-04', '2026-05', '2026-06',
+      '2026-01', '2026-02', '2026-03', '2025-10', '2025-11', '2025-12',
+    ]);
+    const january = timeWindow(2025, 0);
+    expect(january.slice(0, 3).map(month => month.key)).toEqual(['2024-11', '2024-12', '2025-01']);
+    const dates = january.flatMap(month => timeMonth(month.year, month.month).filter(Boolean));
+    expect(dates).toHaveLength(366);
+    expect(new Set(dates).size).toBe(366);
+    expect(dates).toContain('2024-02-29');
+  });
   it('shows all dates, including leap day, once and in Monday-first week columns', () => {
     const year = Array.from({ length: 12 }, (_, month) => timeMonth(2024, month).filter(Boolean)).flat();
     expect(year).toHaveLength(366); expect(new Set(year).size).toBe(366);

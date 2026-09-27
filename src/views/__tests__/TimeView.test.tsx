@@ -6,12 +6,23 @@ import type { TimeHeatmap } from '../../utils/timeHeatmap';
 
 const state = vi.hoisted(() => ({
   data: undefined as TimeHeatmap | undefined, isError: false, refetch: vi.fn(), timer: null as { sessionId: string; startedAt: string } | null,
+  previous: undefined as TimeHeatmap | undefined, previousError: false,
+  nowMs: Date.parse('2026-09-27T12:00:00Z'), requestedYears: [] as number[],
 }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: state.data, isError: state.isError, isPending: !state.data && !state.isError, refetch: state.refetch }) }));
+vi.mock('@tanstack/react-query', () => ({ useQueries: ({ queries }: { queries: { queryKey: unknown[] }[] }) => {
+  state.requestedYears = queries.map(query => Number(query.queryKey[2]));
+  return state.requestedYears.map(year => {
+    const data = state.isError ? undefined : year === 2026 ? state.data : year === 2025 ? state.previous : { ...state.previous, year, days: [] };
+    const isError = state.isError || (year === 2025 && state.previousError);
+    return { data, isError, isPending: !data && !isError, refetch: state.refetch };
+  });
+} }));
 vi.mock('../../api/hooks', () => ({ useSchedulePrefs: () => ({ data: { timezone: 'Asia/Beirut' } }) }));
-vi.mock('../../hooks/useCloudWorkTimer', () => ({ useCloudWorkTimer: () => ({ nowMs: Date.parse('2026-09-27T12:00:00Z'), timer: state.timer, error: null }) }));
+vi.mock('../../hooks/useCloudWorkTimer', () => ({ useCloudWorkTimer: () => ({ nowMs: state.nowMs, timer: state.timer, error: null }) }));
 beforeEach(() => {
   state.data = { year: 2026, timezone: 'Asia/Beirut', today: '2026-09-27', days: [{ date: '2026-09-26', minutes: 125, sessions: 2 }], loggedSessionIds: [] };
+  state.previous = { ...state.data, year: 2025, days: [] };
+  state.previousError = false; state.nowMs = Date.parse('2026-09-27T12:00:00Z');
   state.isError = false; state.timer = null; state.refetch.mockClear();
 });
 afterEach(cleanup);
@@ -19,6 +30,10 @@ afterEach(cleanup);
 it('renders twelve monthly matrices from saved time and lets touch reveal a day', () => {
   render(<TimeView />);
   expect(screen.getAllByRole('group')).toHaveLength(12);
+  expect(screen.getAllByRole('group').map(group => group.getAttribute('aria-label'))).toEqual([
+    'July 2026', 'August 2026', 'September 2026', 'April 2026', 'May 2026', 'June 2026',
+    'January 2026', 'February 2026', 'March 2026', 'October 2025', 'November 2025', 'December 2025',
+  ]);
   const square = screen.getByRole('button', { name: 'Saturday, September 26, 2026: 2h 5m' });
   expect(square).toHaveAttribute('data-level', '3');
   fireEvent.click(square);
@@ -28,7 +43,7 @@ it('renders twelve monthly matrices from saved time and lets touch reveal a day'
 });
 it('keeps the matrix keyboard navigable without hundreds of tab stops', () => {
   render(<TimeView />);
-  const september = screen.getByRole('group', { name: 'September' });
+  const september = screen.getByRole('group', { name: 'September 2026' });
   expect(within(september).getAllByRole('button').filter(button => button.tabIndex === 0)).toHaveLength(1);
   const today = screen.getByRole('button', { name: 'Sunday, September 27, 2026: No time logged' });
   today.focus(); fireEvent.keyDown(today, { key: 'ArrowUp' });
@@ -43,8 +58,37 @@ it('includes the actual running timer without starting or stopping it', () => {
 it('offers a visible retry instead of treating a failed read as zero work', () => {
   state.data = undefined; state.isError = true; render(<TimeView />);
   expect(screen.getByText('Your time could not be loaded.')).toBeInTheDocument();
-  expect(screen.queryByText('No time recorded this year yet.')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(state.refetch).toHaveBeenCalledOnce();
+  expect(screen.queryByText('No time recorded in these months yet.')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(state.refetch).toHaveBeenCalledTimes(2);
+});
+it('includes the preceding year and counts only months in the rolling window', () => {
+  state.previous!.days = [{ date: '2025-10-10', minutes: 60, sessions: 1 }, { date: '2025-09-10', minutes: 400, sessions: 1 }];
+  state.data!.days.push({ date: '2026-10-10', minutes: 200, sessions: 1 });
+  render(<TimeView />);
+  expect(state.requestedYears).toEqual([2026, 2025]);
+  expect(screen.getByText('3h 5m accounted for')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Friday, October 10, 2025: 1h' })).toHaveAttribute('data-level', '2');
+  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Oct 2025 – Sep 2026');
+});
+it('does not show missing previous-year data as empty days or a complete total', () => {
+  state.previous = undefined; state.previousError = true;
+  render(<TimeView />);
+  expect(screen.getByText('Time unavailable')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Friday, October 10, 2025: Time unavailable' })).toBeInTheDocument();
+  expect(screen.queryByText('2h 5m accounted for')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(state.refetch).toHaveBeenCalledOnce();
+});
+it('rotates automatically when the workspace enters the next month', () => {
+  const { rerender } = render(<TimeView />);
+  fireEvent.click(screen.getByRole('button', { name: 'Friday, October 10, 2025: No time logged' }));
+  // Midnight in Beirut, while it is still September in UTC.
+  state.nowMs = Date.parse('2026-09-30T21:00:00Z');
+  rerender(<TimeView />);
+  expect(screen.getAllByRole('group').slice(0, 3).map(group => group.getAttribute('aria-label'))).toEqual(['August 2026', 'September 2026', 'October 2026']);
+  expect(screen.queryByRole('group', { name: 'October 2025' })).not.toBeInTheDocument();
+  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Nov 2025 – Oct 2026');
+  expect(screen.getByText('Oct 1 · Today')).toBeInTheDocument();
 });
 it('offers a discreet day breakdown with linked calendar and miscellaneous time', () => {
   state.data!.days = [{ date: '2026-09-26', minutes: 90, sessions: 0, calendarMinutes: 90, details: [
