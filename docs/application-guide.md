@@ -87,8 +87,9 @@ The Time design uses the contribution-calendar pattern documented by
 and the monthly calendar heatmap approach illustrated in
 [Apache ECharts](https://echarts.apache.org/examples/en/index.html).
 
-In **Day**, hold an event briefly, then drag it to move it. Hold the top or bottom
-handle and drag to change its start or end. Hold empty time and drag to select a
+In **Day**, hold an event briefly, then drag it to move it. Drag the top or bottom
+handle directly to change its start or end; resizing does not open the editor.
+Hold empty time and drag to select a
 new block's length. The preview snaps to 15 minutes, scrolls near the timeline's
 edges, and saves existing blocks on release; **Undo** restores the previous time.
 Swiping horizontally changes the day, or changes the week/month when swiping

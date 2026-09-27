@@ -59,14 +59,16 @@ describe('finger gestures in the day calendar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' })); await settle();
     expect(p.onChangeEvent).toHaveBeenLastCalledWith(event, { date: p.date, startHour: 9, durationHours: 1 });
   });
-  it('extends the end or changes the start using the edge handles', async () => {
+  it('resizes immediately from either edge without a hold or opening the editor', async () => {
     const p = props(); render(<MobileDayTimeline {...p} />);
     const bottom = screen.getByRole('button', { name: 'Change duration of Focus block' });
-    start(bottom); hold(); move(bottom, 120, 186); end(bottom, 120, 186); await settle();
+    start(bottom); move(bottom, 120, 186); end(bottom, 120, 186); await settle();
     expect(p.onChangeEvent).toHaveBeenLastCalledWith(event, { date: p.date, startHour: 9, durationHours: 1.5 });
+    fireEvent.click(bottom, { detail: 1 }); expect(p.onOpen).not.toHaveBeenCalled();
     const top = screen.getByRole('button', { name: 'Change start time of Focus block' });
-    start(top); hold(); move(top, 120, 168); end(top, 120, 168); await settle();
+    start(top); move(top, 120, 168); end(top, 120, 168); await settle();
     expect(p.onChangeEvent).toHaveBeenLastCalledWith(event, { date: p.date, startHour: 9.25, durationHours: 0.75 });
+    fireEvent.click(top, { detail: 1 }); expect(p.onOpen).not.toHaveBeenCalled();
   });
   it('does not save on interruption, Escape or a second finger', () => {
     const p = props(); render(<MobileDayTimeline {...p} />);
@@ -77,6 +79,16 @@ describe('finger gestures in the day calendar', () => {
     start(block()); hold(); move(block(), 120, 222);
     fireEvent.touchStart(document.body, { touches: [point(120, 222), point(200, 200, 2)] });
     end(block(), 120, 222); expect(p.onChangeEvent).not.toHaveBeenCalled();
+  });
+  it('keeps edge taps inert while keyboard activation opens precise editing', () => {
+    const p = props(); render(<MobileDayTimeline {...p} />);
+    const edge = screen.getByRole('button', { name: 'Change duration of Focus block' });
+    start(edge); end(edge, 120, 150); fireEvent.click(edge, { detail: 1 });
+    expect(p.onChangeEvent).not.toHaveBeenCalled();
+    expect(p.onOpen).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(601));
+    fireEvent.click(edge, { detail: 0 }); // Native keyboard/assistive activation.
+    expect(p.onOpen).toHaveBeenCalledExactlyOnceWith(p.items[0]);
   });
   it('leaves locked events fixed', () => {
     const p = props(true); render(<MobileDayTimeline {...p} />);

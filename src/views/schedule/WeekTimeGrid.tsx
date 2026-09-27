@@ -283,11 +283,14 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
     if (drag) setDrag(d => d && { ...d, dy, dDay: Math.round(dx / d.colW) });
   };
   const onBlockPointerUp = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (cancelled.current) {
       cancelled.current = false;
       return;
     }
-    const moved = gesture.current?.moved;
+    // Child controls can release here without starting a block gesture.
+    if (!gesture.current) return;
+    const moved = gesture.current.moved;
     gesture.current = null;
     if (!moved) {
       setDrag(null);
@@ -317,20 +320,31 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
     setResizeDelta(0);
   };
   const onResizePointerMove = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (!gesture.current || resizeDelta === null) return;
-    gesture.current.moved = true;
-    setResizeDelta(e.clientY - gesture.current.startY);
+    const delta = e.clientY - gesture.current.startY;
+    if (Math.abs(delta) > 5) gesture.current.moved = true;
+    setResizeDelta(delta);
   };
-  const onResizePointerUp = () => {
+  const onResizePointerUp = (e: React.PointerEvent) => {
+    e.stopPropagation();
     if (cancelled.current) {
       cancelled.current = false;
       return;
     }
+    const moved = gesture.current?.moved;
     gesture.current = null;
-    if (resizeDelta !== null) {
+    if (moved && resizeDelta !== null && previewDuration !== duration) {
       onResize(ev, previewDuration);
-      setResizeDelta(null);
     }
+    setResizeDelta(null);
+  };
+  const onPointerCancel = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    cancelled.current = true;
+    gesture.current = null;
+    setDrag(null);
+    setResizeDelta(null);
   };
 
   const top = hourToY(previewStart, hourPx);
@@ -346,6 +360,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
       onPointerDown={onBlockPointerDown}
       onPointerMove={onBlockPointerMove}
       onPointerUp={onBlockPointerUp}
+      onPointerCancel={onPointerCancel}
       onClick={e => e.stopPropagation()}
       className={`group absolute rounded-md border-l-[3px] text-left shadow-sm select-none touch-none
         ${style}
@@ -402,6 +417,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
           onPointerDown={onResizePointerDown}
           onPointerMove={onResizePointerMove}
           onPointerUp={onResizePointerUp}
+          onPointerCancel={onPointerCancel}
           className="absolute inset-x-0 bottom-0 h-2.5 cursor-ns-resize"
           title="Drag to change how long this block runs"
         >

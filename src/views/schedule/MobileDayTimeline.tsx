@@ -137,14 +137,18 @@ export function MobileDayTimeline(props: Props) {
       const original = { date: latest.current.date, startHour: item?.start ?? hour, durationHours: item ? item.minutes / 60 : Math.min(0.5, 24 - hour) };
       const mode = canEdit ? handle === 'start' ? 'resize-start' : handle === 'end' ? 'resize-end' : 'move' : slot && latest.current.online ? 'create' : null;
       gesture = { id, source, x, y, lastY: y, scrollTop: element.scrollTop, item, mode, original, last: original, active: false, cancelled: false, moved: false };
-      if (mode) holdTimer = setTimeout(() => {
+      const activate = () => {
         if (!gesture || gesture.cancelled) return;
         gesture.active = true;
         setError('');
         updateDraft();
         lastFrame = 0;
         scrollFrame = requestAnimationFrame(scroll);
-      }, CALENDAR_HOLD_MS);
+      };
+      // An explicit edge handle expresses resize intent immediately. The block
+      // body still waits for a hold so normal vertical scrolling stays natural.
+      if (canEdit && handle) activate();
+      else if (mode) holdTimer = setTimeout(activate, CALENDAR_HOLD_MS);
     };
     const move = (x: number, y: number, event: Event) => {
       if (!gesture) return;
@@ -283,10 +287,10 @@ export function MobileDayTimeline(props: Props) {
                 {duration >= 1 && <span className="mt-1 block truncate text-[10px] opacity-60" title={item.context}>{item.context || item.detail}</span>}
               </button>
               {editable && <>
-                <button data-calendar-resize="start" aria-label={`Change start time of ${item.title}`} title="Hold and drag to change the start time"
-                  onClick={() => onOpen(item)} className="absolute -top-2 right-0 flex h-11 w-11 items-start justify-end rounded-lg pr-1 pt-1 text-indigo-500"><span className="h-1.5 w-5 rounded-full border border-white bg-indigo-400" /></button>
-                <button data-calendar-resize="end" aria-label={`Change duration of ${item.title}`} title="Hold and drag to extend or shorten"
-                  onClick={() => onOpen(item)} className="absolute -bottom-2 left-0 flex h-11 w-11 items-end justify-start rounded-lg pb-1 pl-1 text-indigo-500"><span className="h-1.5 w-5 rounded-full border border-white bg-indigo-400" /></button>
+                <button data-calendar-resize="start" aria-label={`Change start time of ${item.title}`} title="Drag to change the start time"
+                  style={{ touchAction: 'none' }} onClick={event => { if (event.detail === 0) onOpen(item); }} className="absolute -top-2 right-0 flex h-11 w-11 items-start justify-end rounded-lg pr-1 pt-1 text-indigo-500"><span className="h-1.5 w-5 rounded-full border border-white bg-indigo-400" /></button>
+                <button data-calendar-resize="end" aria-label={`Change duration of ${item.title}`} title="Drag to extend or shorten"
+                  style={{ touchAction: 'none' }} onClick={event => { if (event.detail === 0) onOpen(item); }} className="absolute -bottom-2 left-0 flex h-11 w-11 items-end justify-start rounded-lg pb-1 pl-1 text-indigo-500"><span className="h-1.5 w-5 rounded-full border border-white bg-indigo-400" /></button>
               </>}
             </div>;
           })}
@@ -297,6 +301,6 @@ export function MobileDayTimeline(props: Props) {
     </div>
     {error && <p role="alert" className="mt-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     {undo && !saving && !draft && <div role="status" className="absolute inset-x-2 top-2 z-30 flex items-center justify-between gap-2 rounded-xl bg-indigo-50 px-3 text-xs text-indigo-800 shadow-md"><span>Block updated · {fmtTimeRange(undo.after.startHour, undo.after.durationHours)}</span><button disabled={!props.online} onClick={() => void save(undo.event, undo.after, undo.before, true)} className="flex min-h-11 shrink-0 items-center gap-1.5 px-2 font-semibold disabled:opacity-40"><Undo2 size={15} /> Undo</button></div>}
-    <p className="mt-2 flex items-start gap-1 pr-16 text-xs leading-5 text-slate-400"><GripHorizontal size={14} className="mt-0.5 shrink-0" /><span>Hold to move or resize. Swipe for another day.</span></p>
+    <p className="mt-2 flex items-start gap-1 pr-16 text-xs leading-5 text-slate-400"><GripHorizontal size={14} className="mt-0.5 shrink-0" /><span>Hold to move. Drag an edge to resize. Swipe for another day.</span></p>
   </div>;
 }
