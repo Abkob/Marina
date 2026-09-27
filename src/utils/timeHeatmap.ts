@@ -1,4 +1,4 @@
-import { addRoutineDays } from './routines';
+import { addRoutineDays } from './routines.js';
 
 export type TimeDay = { date: string; minutes: number; sessions: number };
 export type TimeInterval = { id: string; started_at: string; ended_at: string | null; minutes: number | null };

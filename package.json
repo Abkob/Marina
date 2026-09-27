@@ -15,7 +15,7 @@
     "backup:verify": "tsx scripts/verify-portable-backup.ts",
     "backup:restore": "tsx scripts/restore-portable-backup.ts",
     "storage:migrate": "tsx scripts/migrate-storage-to-blob.ts",
-    "vercel:bundle": "esbuild api/index.ts --bundle --platform=node --target=node24 --format=esm --packages=external --outfile=tmp/vercel-api.mjs",
+    "vercel:bundle": "esbuild api/index.ts --bundle --platform=node --target=node24 --format=esm --packages=external --outfile=tmp/vercel-api.mjs --metafile=tmp/vercel-api-meta.json",
     "vercel:entry-check": "npm run vercel:bundle && tsx scripts/check-serverless-entry.ts",
     "vercel:preflight": "tsx scripts/vercel-preflight.ts",
     "vercel:preflight:env": "tsx scripts/vercel-preflight.ts --env",
