@@ -110,6 +110,16 @@ browser receives a ten-minute signed download link. This avoids Vercel's functio
 response-size limit. The private server copy remains listed in Settings until you
 explicitly delete it. Locally, the ZIP is written atomically under `backups/`.
 
+Production also schedules `/api/cron/backup` daily at 01:00 UTC, independently of
+AI maintenance. It uses the existing `CRON_SECRET`, takes a read-only database
+snapshot with attachments, and reads the private cloud ZIP back to check its
+SHA-256 and size before recording success. Overlapping runs are locked out;
+a verified backup from the last 20 hours avoids duplicate work. Backups remain
+until explicitly deleted. Settings shows the last verified backup and warns
+when it is more than 36 hours old. Daily backups are recovery snapshots, not
+continuous point-in-time recovery; create and verify a fresh backup before
+production data or schema changes.
+
 Always verify a downloaded copy before relying on it:
 
 ```powershell

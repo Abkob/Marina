@@ -5,8 +5,8 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { PassThrough } from 'stream';
-import { BlobNotFoundError, del, head, issueSignedToken, list, presignUrl, put } from '@vercel/blob';
+import { Readable, Transform } from 'stream';
+import { BlobNotFoundError, del, get, head, issueSignedToken, list, presignUrl, put } from '@vercel/blob';
 import { LEGACY_BACKUP_PREFIX, legacyBackupName, marinaBackupName } from '../utils/brandCompatibility.js';
 import { canUseLocalPersistence, isBlobStorageConfigured, isVercelRuntime } from '../runtime.js';
 import { createPortableBackupArchive } from '../services/portableBackup.js';
@@ -19,6 +19,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const BACKUPS_DIR = path.resolve(__dirname, '..', '..', 'backups');
 const KEEP_LAST = Number(process.env.MARINA_BACKUP_KEEP ?? 14);
 const PORTABLE_PREFIX = 'marina/backups/portable/';
+const VERIFIED_PREFIX = 'marina/backups/verified/';
+
+export async function cloudBackupStatus(now = Date.now()) {
+  let latest: string | null = null;
+  if (isBlobStorageConfigured()) {
+    let cursor: string | undefined;
+    do {
+      const page = await list({ prefix: VERIFIED_PREFIX, cursor, limit: 1000 });
+      for (const blob of page.blobs) {
+        const verifiedAt = blob.uploadedAt.toISOString();
+        // Blob timestamps can round up or differ slightly from the app clock.
+        if (Date.parse(verifiedAt) <= now + 60_000 && (!latest || verifiedAt > latest)) latest = verifiedAt;
+      }
+      cursor = page.hasMore ? page.cursor : undefined;
+    } while (cursor);
+  }
+  return {
+    enabled: isVercelRuntime && isBlobStorageConfigured(),
+    last_verified_at: latest,
+    overdue: !latest || now - Date.parse(latest) > 36 * 60 * 60_000,
+  };
+}
 
 // pg_dump discovery: explicit env override, then known install paths (verified
 // on disk), then bare 'pg_dump' only as a last resort (PATH may not have it).
@@ -153,12 +175,20 @@ async function createLocalPortableBackup(name: string) {
   }
 }
 
-async function createCloudPortableBackup(name: string) {
+export async function createCloudPortableBackup(name = newPortableName(), includeDownloadLink = true) {
   if (!isBlobStorageConfigured()) {
     throw Object.assign(new Error('Create a private Vercel Blob store before downloading a complete cloud backup'), { status: 503 });
   }
   const pathname = portablePath(name);
-  const archiveStream = new PassThrough();
+  const archiveHash = crypto.createHash('sha256');
+  const archiveStream = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      archiveHash.update(chunk);
+      callback(null, chunk);
+    },
+  });
+  // The upload promise reports failures even if generation has already finished.
+  archiveStream.on('error', () => undefined);
   const upload = put(pathname, archiveStream, {
     access: 'private',
     addRandomSuffix: false,
@@ -173,19 +203,39 @@ async function createCloudPortableBackup(name: string) {
     createPortableBackupArchive(archiveStream),
     upload,
   ]);
-  const signed = await signedPortableUrl(name);
+  const sha256 = archiveHash.digest('hex');
+  const downloaded = await get(pathname, { access: 'private', useCache: false });
+  if (!downloaded || downloaded.statusCode !== 200) throw new Error('Cloud backup could not be read back for verification');
+  const downloadedHash = crypto.createHash('sha256');
+  let downloadedBytes = 0;
+  for await (const chunk of Readable.fromWeb(downloaded.stream as never)) {
+    downloadedHash.update(chunk);
+    downloadedBytes += chunk.byteLength;
+  }
+  if (downloadedBytes !== result.bytes || downloadedHash.digest('hex') !== sha256) {
+    throw new Error('Cloud backup verification failed');
+  }
+  const verifiedAt = new Date().toISOString();
+  await put(`${VERIFIED_PREFIX}${name}.json`, JSON.stringify({
+    filename: name, sha256, bytes: result.bytes, verified_at: verifiedAt,
+    table_count: result.manifest.database.tables.length,
+    row_count: result.manifest.database.total_rows,
+    file_count: result.manifest.total_files,
+  }), { access: 'private', addRandomSuffix: false, contentType: 'application/json' });
+  const signed = includeDownloadLink ? await signedPortableUrl(name) : null;
   return {
     filename: name,
     bytes: result.bytes,
-    sha256: null,
+    sha256,
+    verified_at: verifiedAt,
     etag: blob.etag,
     table_count: result.manifest.database.tables.length,
     row_count: result.manifest.database.total_rows,
     file_count: result.manifest.total_files,
     file_bytes: result.manifest.total_file_bytes,
     storage: 'private_blob' as const,
-    download_url: signed.url,
-    expires_at: signed.expires_at,
+    download_url: signed?.url ?? null,
+    expires_at: signed?.expires_at ?? null,
   };
 }
 
@@ -237,6 +287,7 @@ router.get('/', async (_req, res) => {
         includes_files: true,
       },
       portable_backups: portableBackups,
+      automatic_backup: await cloudBackupStatus(),
     });
   }
   fs.mkdirSync(BACKUPS_DIR, { recursive: true });
@@ -297,6 +348,7 @@ router.delete('/portable/:name', async (req, res) => {
   if (isVercelRuntime) {
     if (!isBlobStorageConfigured()) return res.status(503).json({ error: 'Private Blob storage is not configured' });
     await del(await existingCloudPortablePath(name));
+    await del(`${VERIFIED_PREFIX}${name}.json`);
   } else {
     const full = existingLocalPortablePath(name);
     if (!fs.existsSync(full)) return res.status(404).json({ error: 'not found' });

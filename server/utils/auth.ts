@@ -96,7 +96,7 @@ export function clearSessionCookie(res: Response): void {
 }
 
 export function requireApiAuth(req: Request, res: Response, next: NextFunction) {
-  if (req.path === '/cron/maintenance' && isAuthorizedCronRequest(req)) return next();
+  if (['/cron/maintenance', '/cron/backup'].includes(req.path) && isAuthorizedCronRequest(req)) return next();
   if (!isAuthenticationRequired()) return next();
   if (!isAuthConfigured()) {
     return res.status(503).json({ error: 'Authentication is not configured. Set MARINA_ACCESS_PASSWORD and MARINA_SESSION_SECRET.' });

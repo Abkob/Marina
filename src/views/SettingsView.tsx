@@ -625,6 +625,7 @@ interface BackupList {
   dir?: string;
   keep_last?: number;
   pg_dump_available?: boolean;
+  automatic_backup?: { enabled: boolean; last_verified_at: string | null; overdue: boolean };
   backups: Array<{ name: string; bytes: number; created_at: string }>;
   portable_export: {
     available: boolean;
@@ -663,7 +664,7 @@ function CompleteBackupsSection() {
   const { triggerToast, showConfirm } = useAppStore();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const { data } = useQuery<BackupList>({
+  const { data, error } = useQuery<BackupList>({
     queryKey: ['backups'],
     queryFn: () => apiFetch<BackupList>('/api/backups'),
     staleTime: 30_000,
@@ -722,6 +723,14 @@ function CompleteBackupsSection() {
       {data?.portable_export?.available === false && (
         <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3">
           {data.portable_export.reason}
+        </p>
+      )}
+      {error && <p role="alert" className="mt-3 text-xs text-amber-700">Could not check your cloud backups. Please try again.</p>}
+      {data?.automatic_backup?.enabled && (
+        <p role={data.automatic_backup.overdue ? 'alert' : undefined} className={`mt-3 text-[11px] leading-relaxed ${data.automatic_backup.overdue ? 'text-amber-700' : 'text-gray-500'}`}>
+          {data.automatic_backup.overdue
+            ? 'Cloud backup overdue. Create a backup now to protect your latest changes.'
+            : `Daily cloud backups · Last verified ${new Date(data.automatic_backup.last_verified_at!).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
         </p>
       )}
       <p className="text-[10px] text-gray-400 font-mono mt-3">
