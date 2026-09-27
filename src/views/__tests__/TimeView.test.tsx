@@ -60,6 +60,12 @@ it('offers a discreet day breakdown with linked calendar and miscellaneous time'
   expect(screen.getByText('Quiz 1 · Biology')).toBeVisible();
   expect(screen.getByText('Miscellaneous')).toBeVisible();
   expect(screen.getByText('1h 30m from calendar')).toBeInTheDocument();
+  const hover = new Event('pointerover', { bubbles: true });
+  Object.defineProperty(hover, 'pointerType', { value: 'mouse' });
+  fireEvent(screen.getByRole('button', { name: 'Monday, September 28, 2026: Future day' }), hover);
+  expect(screen.getByText('Ahead of you')).toBeInTheDocument();
+  expect(screen.getByText('Quiz 1 · Biology')).toBeVisible();
+  expect(screen.getByRole('list', { name: 'Time breakdown for Saturday, September 26, 2026' })).toBeInTheDocument();
 });
 it('supports previous years and returning to the current year', () => {
   render(<TimeView />); expect(screen.getByRole('button', { name: 'Next year' })).toBeDisabled();

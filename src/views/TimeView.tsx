@@ -39,6 +39,10 @@ export function TimeView() {
   const total = [...days.values()].reduce((sum, day) => sum + day.minutes, 0);
   const activeDate = hovered ?? selected ?? (year === currentYear ? today : null);
   const activeDay = activeDate ? days.get(activeDate) : null;
+  // Hover previews must not add/remove content above the matrix and move the
+  // square beneath the pointer. Only an intentional selection changes details.
+  const detailDate = selected ?? (year === currentYear ? today : null);
+  const detailDay = detailDate ? days.get(detailDate) : null;
   const unavailable = !query.data;
 
   function changeYear(next: number) {
@@ -81,10 +85,10 @@ export function TimeView() {
         </div>
       </div>
 
-      {!!activeDay?.details?.length && <details className="time-day-details">
-        <summary><span>Day breakdown</span><ChevronDown size={12} aria-hidden="true" /></summary>
-        <ul aria-label={activeDate ? `Time breakdown for ${fullDate(activeDate)}` : 'Time breakdown'}>
-          {activeDay.details.map(row => <li key={row.key}>
+      {!!detailDay?.details?.length && <details className="time-day-details">
+        <summary><span>Day breakdown</span>{detailDate && <span>{new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${detailDate}T12:00:00Z`))}</span>}<ChevronDown size={12} aria-hidden="true" /></summary>
+        <ul aria-label={detailDate ? `Time breakdown for ${fullDate(detailDate)}` : 'Time breakdown'}>
+          {detailDay.details.map(row => <li key={row.key}>
             <div className="time-detail-name"><strong>{row.title}</strong><span>{row.source === 'calendar'
               ? [row.taskTitle, row.goalTitle].filter(Boolean).join(' · ') || 'Miscellaneous'
               : row.goalTitle || (row.taskId ? 'Task' : 'Miscellaneous')}</span></div>
