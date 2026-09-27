@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useSchedulePrefs } from '../api/hooks';
@@ -19,14 +19,32 @@ export function TimeView() {
   const [selected, setSelected] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [columns, setColumns] = useState<1 | 2 | 3>(3);
+  const monthGrid = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
+  useLayoutEffect(() => {
+    const grid = monthGrid.current;
+    if (!grid) return;
+    const measure = () => {
+      if (!grid.clientWidth) return;
+      const style = getComputedStyle(grid);
+      const minimum = parseFloat(style.getPropertyValue('--time-month-min')) || 164;
+      const gap = parseFloat(style.columnGap) || 0;
+      setColumns(Math.max(1, Math.min(3, Math.floor((grid.clientWidth + gap) / (minimum + gap)))) as 1 | 2 | 3);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(grid);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
   const fallbackToday = timeDate(cloud.nowMs, prefs.data?.timezone ?? 'Asia/Beirut');
   const currentYear = Number(fallbackToday.slice(0, 4));
   const currentMonth = Number(fallbackToday.slice(5, 7)) - 1;
   const year = chosenYear ?? currentYear;
-  const months = useMemo(() => timeWindow(year, currentMonth).map(month => ({
+  const months = useMemo(() => timeWindow(year, currentMonth, columns).map(month => ({
     ...month, name: MONTHS[month.month], cells: timeMonth(month.year, month.month),
-  })), [year, currentMonth]);
+  })), [year, currentMonth, columns]);
   const years = [...new Set(months.map(month => month.year))];
   const queries = useQueries({
     queries: years.map(dataYear => ({
@@ -55,7 +73,7 @@ export function TimeView() {
     }
     return result;
   }, [firstData, secondData, unavailable, months, cloud.timer, nowMinute]);
-  const oldest = months[9], newest = months[2];
+  const oldest = months[12 - columns], newest = months[columns - 1];
   const rangeLabel = `${oldest.name.slice(0, 3)} ${oldest.year} – ${newest.name.slice(0, 3)} ${newest.year}`;
   const total = [...days.values()].reduce((sum, day) => sum + day.minutes, 0);
   const visibleDate = (date: string | null) => date && months.some(month => date.startsWith(month.key)) ? date : null;
@@ -125,9 +143,7 @@ export function TimeView() {
         {isError && <button onClick={() => { for (const query of queries) if (query.isError) void query.refetch(); }}>Retry</button>}
       </div>}
 
-      <p className="time-swipe-hint">Swipe to see all three months</p>
-      <div className="time-months-viewport">
-        <div className={`time-months${unavailable ? ' time-months-loading' : ''}`}>
+      <div ref={monthGrid} className={`time-months${unavailable ? ' time-months-loading' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
         {months.map(({ name, cells, key: monthKey, year: monthYear }) => {
           const firstDay = `${monthKey}-01`;
           const tabDate = focused?.startsWith(monthKey) ? focused : today.startsWith(monthKey) ? today : firstDay;
@@ -156,7 +172,6 @@ export function TimeView() {
             </div>
           </div>;
         })}
-        </div>
       </div>
 
       <figcaption className="time-caption">

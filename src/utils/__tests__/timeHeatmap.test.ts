@@ -15,6 +15,15 @@ describe('time matrix dates and truthful totals', () => {
     expect(new Set(dates).size).toBe(366);
     expect(dates).toContain('2024-02-29');
   });
+  it('keeps the same twelve-month history when switching to two or one columns', () => {
+    const wide = timeWindow(2026, 0).map(month => month.key).sort();
+    const phone = timeWindow(2026, 0, 2).map(month => month.key);
+    expect(phone.slice(0, 4)).toEqual(['2025-12', '2026-01', '2025-10', '2025-11']);
+    expect([...phone].sort()).toEqual(wide);
+    const narrow = timeWindow(2026, 0, 1).map(month => month.key);
+    expect(narrow.slice(0, 3)).toEqual(['2026-01', '2025-12', '2025-11']);
+    expect([...narrow].sort()).toEqual(wide);
+  });
   it('shows all dates, including leap day, once and in Monday-first week columns', () => {
     const year = Array.from({ length: 12 }, (_, month) => timeMonth(2024, month).filter(Boolean)).flat();
     expect(year).toHaveLength(366); expect(new Set(year).size).toBe(366);

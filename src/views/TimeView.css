@@ -34,8 +34,7 @@
 .time-detail-value { flex-shrink: 0; text-align: right; }
 .time-detail-value strong { font-weight: 500; color: #514759; font-variant-numeric: tabular-nums; }
 .time-day-details > p { margin: 10px 0 22px; font-size: 10px; line-height: 1.6; }
-.time-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 38px; row-gap: 38px; }
-.time-swipe-hint { display: none; }
+.time-months { --time-month-min: 164px; display: grid; column-gap: 38px; row-gap: 38px; }
 .time-month { min-width: 0; }
 .time-month-heading { display: flex; align-items: center; justify-content: space-between; max-width: 188px; min-height: 20px; margin-bottom: 11px; padding-left: 20px; }
 .time-month-heading h3 { font-size: 11px; font-weight: 500; letter-spacing: .2px; }
@@ -69,7 +68,7 @@
 .time-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0 24px; font-size: 12px; color: #927444; }
 .time-error button { text-decoration: underline; min-height: 44px; }
 .time-months-loading { opacity: .45; }
-@media (min-width: 768px) and (max-width: 1170px) { .time-page { padding: 28px; } .time-months { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px; } }
+@media (min-width: 768px) and (max-width: 1170px) { .time-page { padding: 28px; } .time-months { gap: 30px; } }
 @media (max-width: 767px), (max-width: 1023px) and (max-height: 500px) {
   .time-page { padding: 22px 18px 20px; }
   .time-page-heading { margin-bottom: 24px; }
@@ -89,11 +88,8 @@
   .time-day-details { margin-top: -16px; margin-bottom: 12px; }
   .time-day-details ul { grid-template-columns: minmax(0, 1fr); }
   .time-day-details summary { font-size: 9px; }
-  /* Preserve three-month rows and 24px day targets. Start at the right edge
-     so the current month is visible; swiping reveals the preceding columns. */
-  .time-months-viewport { direction: rtl; overflow-x: auto; overscroll-behavior-x: contain; padding: 4px; margin: -4px; scrollbar-width: thin; scrollbar-color: #ddd6e5 transparent; }
-  .time-months { direction: ltr; min-width: 472px; column-gap: 20px; row-gap: 26px; }
-  .time-swipe-hint { display: block; margin: 0 0 12px; text-align: right; font-size: 9px; color: #9a929f; }
+  /* Columns follow available width; neighboring months never require a pan. */
+  .time-months { --time-month-min: 144px; column-gap: 20px; row-gap: 26px; }
   .time-weekdays { display: none; }
   .time-month-heading { padding-left: 3px; margin-bottom: 8px; }
   .time-month-body, .time-month-heading { max-width: none; }
@@ -109,6 +105,7 @@
 }
 @media (max-width: 343px) {
   .time-page { padding-left: 8px; padding-right: 8px; }
+  .time-months { column-gap: 8px; }
   .time-year-controls { flex-wrap: wrap; gap: 0; }
   .time-year-controls > div { margin-left: -10px; }
   .time-year-total { max-width: 128px; }

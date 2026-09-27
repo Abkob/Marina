@@ -51,14 +51,14 @@ Apply `server/migrations/026-cloud-work-timer.sql` after a verified production
 backup before deploying the shared timer UI.
 
 **Time** shows the latest twelve monthly matrices, available in the sidebar
-and under **More** on phones (`?view=time`). The current month sits third in the
-top row, after its two preceding months. Each row below goes back another three
-months: in September, July–August–September, then April–May–June, then
+and under **More** on phones (`?view=time`). The current month stays in the top
+row. Columns adapt to the available space, up to three, without sideways
+scrolling. Wide screens show July–August–September, then April–May–June, then
 January–February–March, then October–November–December of the previous year.
 The window rotates automatically with the workspace's calendar month, and the
-year arrows move it twelve months at a time. On phones the same three columns
-swipe sideways, starting with the current month visible and keeping day targets
-large enough to tap. Each square is a day; darker violet
+year arrows move it twelve months at a time. Phones usually show August–September
+at the top, then June–July below, with day targets large enough to tap. Very
+narrow layouts show the current month first in a single column. Each square is a day; darker violet
 means more accounted time, with fixed levels at 1, 2, 4 and 6 hours. Pale squares
 mean no recorded time and outlined squares are future dates. Missing logs are not
 assumed to be confirmed rest. Tap, hover or use arrow keys to inspect a day;

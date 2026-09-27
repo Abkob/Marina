@@ -25,7 +25,34 @@ beforeEach(() => {
   state.previousError = false; state.nowMs = Date.parse('2026-09-27T12:00:00Z');
   state.isError = false; state.timer = null; state.refetch.mockClear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup(); vi.restoreAllMocks();
+  document.getElementById('time-responsive-test-style')?.remove();
+});
+
+it('adapts to available width while keeping the current month in the top row', () => {
+  let width = 333;
+  const style = document.createElement('style');
+  style.id = 'time-responsive-test-style';
+  style.textContent = '.time-months { --time-month-min: 144px; column-gap: 20px; }';
+  document.head.appendChild(style);
+  const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')?.get;
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
+    return this.classList.contains('time-months') ? width : clientWidth?.call(this) ?? 0;
+  });
+  render(<TimeView />);
+  const labels = () => screen.getAllByRole('group').map(group => group.getAttribute('aria-label'));
+  expect(labels().slice(0, 4)).toEqual(['August 2026', 'September 2026', 'June 2026', 'July 2026']);
+  expect(screen.queryByText('Swipe to see all three months')).not.toBeInTheDocument();
+  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Oct 2025 – Sep 2026');
+  width = 640;
+  fireEvent(window, new Event('resize'));
+  expect(labels().slice(0, 3)).toEqual(['July 2026', 'August 2026', 'September 2026']);
+  width = 200;
+  fireEvent(window, new Event('resize'));
+  expect(labels().slice(0, 3)).toEqual(['September 2026', 'August 2026', 'July 2026']);
+  expect(screen.getByText('2h 5m accounted for')).toBeInTheDocument();
+});
 
 it('renders twelve monthly matrices from saved time and lets touch reveal a day', () => {
   render(<TimeView />);
