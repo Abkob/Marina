@@ -5,7 +5,7 @@ import { useSchedulePrefs } from '../api/hooks';
 import { useCloudWorkTimer } from '../hooks/useCloudWorkTimer';
 import { apiFetch } from '../utils/apiFetch';
 import { addRoutineDays } from '../utils/routines';
-import { mergeLiveTime, timeDate, timeLabel, timeLevel, timeMonth, timeWindow, type TimeHeatmap, type TimeLiveDay } from '../utils/timeHeatmap';
+import { mergeLiveTime, timeDate, timeLabel, timeLevel, timeMonth, timeWindow, timeWindowPosition, type TimeHeatmap, type TimeLiveDay } from '../utils/timeHeatmap';
 import './TimeView.css';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -20,7 +20,9 @@ export function TimeView() {
   const [focused, setFocused] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [columns, setColumns] = useState<1 | 2 | 3>(3);
+  const [anchorRequest, setAnchorRequest] = useState(0);
   const monthGrid = useRef<HTMLDivElement>(null);
+  const monthScroll = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   useLayoutEffect(() => {
     const grid = monthGrid.current;
@@ -42,9 +44,17 @@ export function TimeView() {
   const currentYear = Number(fallbackToday.slice(0, 4));
   const currentMonth = Number(fallbackToday.slice(5, 7)) - 1;
   const year = chosenYear ?? currentYear;
-  const months = useMemo(() => timeWindow(year, currentMonth, columns).map(month => ({
+  const months = useMemo(() => timeWindow(year, currentMonth).map(month => ({
     ...month, name: MONTHS[month.month], cells: timeMonth(month.year, month.month),
-  })), [year, currentMonth, columns]);
+  })), [year, currentMonth]);
+  const { anchorIndex, leadingSlots } = timeWindowPosition(columns);
+  const anchorMonth = months[anchorIndex].key;
+  useLayoutEffect(() => {
+    const scroll = monthScroll.current, grid = monthGrid.current;
+    const anchor = grid?.querySelector<HTMLElement>(`[data-month="${anchorMonth}"]`);
+    if (!scroll || !grid || !anchor) return;
+    scroll.scrollTop = anchor.getBoundingClientRect().top - grid.getBoundingClientRect().top;
+  }, [anchorMonth, columns, anchorRequest]);
   const years = [...new Set(months.map(month => month.year))];
   const queries = useQueries({
     queries: years.map(dataYear => ({
@@ -55,7 +65,7 @@ export function TimeView() {
       staleTime: 10_000,
     })),
   });
-  const firstData = queries[0]?.data, secondData = queries[1]?.data;
+  const firstData = queries[0]?.data, secondData = queries[1]?.data, thirdData = queries[2]?.data;
   const unavailable = queries.some(query => !query.data);
   const isError = queries.some(query => query.isError);
   const today = firstData ? timeDate(cloud.nowMs, firstData.timezone) : fallbackToday;
@@ -66,14 +76,14 @@ export function TimeView() {
     const result = new Map<string, TimeLiveDay>();
     if (unavailable) return result;
     const visible = new Set(months.map(month => month.key));
-    for (const data of [firstData, secondData]) if (data) {
+    for (const data of [firstData, secondData, thirdData]) if (data) {
       for (const [date, day] of mergeLiveTime(data, cloud.timer, nowMinute)) {
         if (visible.has(date.slice(0, 7))) result.set(date, day);
       }
     }
     return result;
-  }, [firstData, secondData, unavailable, months, cloud.timer, nowMinute]);
-  const oldest = months[12 - columns], newest = months[columns - 1];
+  }, [firstData, secondData, thirdData, unavailable, months, cloud.timer, nowMinute]);
+  const oldest = months[0], newest = months[months.length - 1];
   const rangeLabel = `${oldest.name.slice(0, 3)} ${oldest.year} – ${newest.name.slice(0, 3)} ${newest.year}`;
   const total = [...days.values()].reduce((sum, day) => sum + day.minutes, 0);
   const visibleDate = (date: string | null) => date && months.some(month => date.startsWith(month.key)) ? date : null;
@@ -85,7 +95,10 @@ export function TimeView() {
   const detailDay = detailDate ? days.get(detailDate) : null;
 
   function changeYear(next: number) {
-    setChosenYear(next); setSelected(null); setFocused(null); setHovered(null);
+    setChosenYear(next === currentYear ? null : next); setSelected(null); setFocused(null); setHovered(null);
+  }
+  function returnToNow() {
+    changeYear(currentYear); setAnchorRequest(value => value + 1);
   }
   function move(event: KeyboardEvent<HTMLButtonElement>, date: string) {
     const offset = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }[event.key];
@@ -99,7 +112,7 @@ export function TimeView() {
   return <section className="time-page" aria-labelledby="time-title">
     <header className="time-page-heading">
       <div><h1 id="time-title">Time</h1><p>Your time, day by day.</p></div>
-      <span className="time-eyebrow">A year in focus</span>
+      <span className="time-eyebrow">Month by month</span>
     </header>
 
     <figure className="time-atlas" aria-label={`Accounted time, ${rangeLabel}`} aria-busy={queries.some(query => query.isPending)}>
@@ -110,7 +123,7 @@ export function TimeView() {
             <div>
               <button onClick={() => changeYear(year - 1)} disabled={oldest.year <= 2000} aria-label="Previous year"><ChevronLeft size={15} /></button>
               <button onClick={() => changeYear(year + 1)} disabled={year >= currentYear} aria-label="Next year"><ChevronRight size={15} /></button>
-              {year !== currentYear && <button onClick={() => changeYear(currentYear)} aria-label="Return to this year" title="This year"><RotateCcw size={13} /></button>}
+              <button onClick={returnToNow} aria-label="Return to current month" title="Current month"><RotateCcw size={13} /></button>
             </div>
           </div>
           <p className="time-window-range">{rangeLabel}</p>
@@ -143,7 +156,9 @@ export function TimeView() {
         {isError && <button onClick={() => { for (const query of queries) if (query.isError) void query.refetch(); }}>Retry</button>}
       </div>}
 
+      <div ref={monthScroll} className="time-month-scroll" role="region" aria-label="Monthly timeline. Scroll up for earlier months and down for later months.">
       <div ref={monthGrid} className={`time-months${unavailable ? ' time-months-loading' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        {Array.from({ length: leadingSlots }, (_, index) => <span key={`space-${index}`} aria-hidden="true" />)}
         {months.map(({ name, cells, key: monthKey, year: monthYear }) => {
           const firstDay = `${monthKey}-01`;
           const tabDate = focused?.startsWith(monthKey) ? focused : today.startsWith(monthKey) ? today : firstDay;
@@ -172,6 +187,7 @@ export function TimeView() {
             </div>
           </div>;
         })}
+      </div>
       </div>
 
       <figcaption className="time-caption">

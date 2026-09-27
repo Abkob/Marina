@@ -181,13 +181,18 @@ export function timeLabel(minutes: number) {
   return hours ? `${hours}h${rounded % 60 ? ` ${rounded % 60}m` : ''}` : `${rounded}m`;
 }
 
-/** Oldest to newest within each row, with the newest row first. The current
- * month stays in the top row as the available number of columns changes. */
-export function timeWindow(year: number, month: number, columns: 1 | 2 | 3 = 3) {
-  return Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(Date.UTC(year, month - Math.floor(index / columns) * columns - (columns - 1) + index % columns, 1));
+/** A chronological timeline with a year of history and a year ahead. The
+ * viewport opens near the current month; earlier months stay above it. */
+export function timeWindow(year: number, month: number) {
+  return Array.from({ length: 25 }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - 12 + index, 1));
     return { year: date.getUTCFullYear(), month: date.getUTCMonth(), key: date.toISOString().slice(0, 7) };
   });
+}
+
+export function timeWindowPosition(columns: 1 | 2 | 3) {
+  const anchorIndex = 12 - Math.max(1, columns - 1);
+  return { anchorIndex, leadingSlots: (columns - anchorIndex % columns) % columns };
 }
 
 /** Monday-first, week columns × weekday rows, with room for six weeks. */

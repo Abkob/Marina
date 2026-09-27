@@ -50,15 +50,18 @@ timer to upload it. Refresh other older pages to receive the shared timer.
 Apply `server/migrations/026-cloud-work-timer.sql` after a verified production
 backup before deploying the shared timer UI.
 
-**Time** shows the latest twelve monthly matrices, available in the sidebar
-and under **More** on phones (`?view=time`). The current month stays in the top
-row. Columns adapt to the available space, up to three, without sideways
-scrolling. Wide screens show July–August–September, then April–May–June, then
-January–February–March, then October–November–December of the previous year.
-The window rotates automatically with the workspace's calendar month, and the
-year arrows move it twelve months at a time. Phones usually show August–September
-at the top, then June–July below, with day targets large enough to tap. Very
-narrow layouts show the current month first in a single column. Each square is a day; darker violet
+**Time** shows a chronological timeline of monthly matrices, available in the
+sidebar and under **More** on phones (`?view=time`). It opens near the current
+month with one or two preceding months visible. Columns adapt to the available
+space, up to three, without sideways scrolling. In September, phones usually
+open on August–September, with October–November below. Wider screens open on
+July–August–September, followed by October–November–December. Very narrow
+layouts show August, September, October vertically in one column. Scroll up
+for earlier months and down for upcoming months; the timeline includes a year
+behind and a year ahead. The year arrows reach further history, and the quiet
+return arrow brings the current month back into view. Timer updates preserve
+the scroll position. The starting position advances with the workspace's
+calendar month. Each square is a day; darker violet
 means more accounted time, with fixed levels at 1, 2, 4 and 6 hours. Pale squares
 mean no recorded time and outlined squares are future dates. Missing logs are not
 assumed to be confirmed rest. Tap, hover or use arrow keys to inspect a day;

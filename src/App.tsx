@@ -183,7 +183,7 @@ function AppInner() {
   // Full-bleed tabs own their entire viewport below the header: no page
   // padding, no outer scroll — otherwise they become a scrollable "page
   // inside a page" with a dead white gutter underneath.
-  const FULL_BLEED: ReadonlySet<string> = new Set(['Copilot', 'Graph']);
+  const FULL_BLEED: ReadonlySet<string> = new Set(['Copilot', 'Graph', 'Time']);
   const isFullBleed = FULL_BLEED.has(currentTab);
 
   return (

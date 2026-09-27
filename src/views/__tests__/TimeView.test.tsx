@@ -30,7 +30,7 @@ afterEach(() => {
   document.getElementById('time-responsive-test-style')?.remove();
 });
 
-it('adapts to available width while keeping the current month in the top row', () => {
+it('opens near now at each width, with older months above and upcoming months below', () => {
   let width = 333;
   const style = document.createElement('style');
   style.id = 'time-responsive-test-style';
@@ -40,26 +40,44 @@ it('adapts to available width while keeping the current month in the top row', (
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
     return this.classList.contains('time-months') ? width : clientWidth?.call(this) ?? 0;
   });
-  render(<TimeView />);
+  // Give each actual grid row a height so the scroll position is observable.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    const grid = this.closest<HTMLElement>('.time-months');
+    const columns = Number(grid?.style.gridTemplateColumns.match(/repeat\((\d)/)?.[1] ?? 1);
+    const index = grid ? [...grid.children].indexOf(this) : -1;
+    return { top: index < 0 ? 0 : Math.floor(index / columns) * 250 } as DOMRect;
+  });
+  const { rerender } = render(<TimeView />);
+  const timeline = screen.getByRole('region', { name: /Monthly timeline/ });
   const labels = () => screen.getAllByRole('group').map(group => group.getAttribute('aria-label'));
-  expect(labels().slice(0, 4)).toEqual(['August 2026', 'September 2026', 'June 2026', 'July 2026']);
+  const order = labels();
+  expect(order.slice(11, 15)).toEqual(['August 2026', 'September 2026', 'October 2026', 'November 2026']);
+  expect(timeline.scrollTop).toBe(6 * 250);
   expect(screen.queryByText('Swipe to see all three months')).not.toBeInTheDocument();
-  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Oct 2025 – Sep 2026');
+  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Sep 2025 – Sep 2027');
+  timeline.scrollTop = 3 * 250;
+  state.nowMs += 60_000;
+  state.data = { ...state.data!, days: [...state.data!.days] };
+  rerender(<TimeView />);
+  expect(timeline.scrollTop).toBe(3 * 250);
+  fireEvent.click(screen.getByRole('button', { name: 'Return to current month' }));
+  expect(timeline.scrollTop).toBe(6 * 250);
   width = 640;
   fireEvent(window, new Event('resize'));
-  expect(labels().slice(0, 3)).toEqual(['July 2026', 'August 2026', 'September 2026']);
+  expect(timeline.scrollTop).toBe(4 * 250);
+  expect(labels()).toEqual(order);
   width = 200;
   fireEvent(window, new Event('resize'));
-  expect(labels().slice(0, 3)).toEqual(['September 2026', 'August 2026', 'July 2026']);
+  expect(timeline.scrollTop).toBe(11 * 250);
+  expect(labels()).toEqual(order);
   expect(screen.getByText('2h 5m accounted for')).toBeInTheDocument();
 });
 
-it('renders twelve monthly matrices from saved time and lets touch reveal a day', () => {
+it('renders chronological monthly matrices from saved time and lets touch reveal a day', () => {
   render(<TimeView />);
-  expect(screen.getAllByRole('group')).toHaveLength(12);
-  expect(screen.getAllByRole('group').map(group => group.getAttribute('aria-label'))).toEqual([
-    'July 2026', 'August 2026', 'September 2026', 'April 2026', 'May 2026', 'June 2026',
-    'January 2026', 'February 2026', 'March 2026', 'October 2025', 'November 2025', 'December 2025',
+  expect(screen.getAllByRole('group')).toHaveLength(25);
+  expect(screen.getAllByRole('group').slice(10, 16).map(group => group.getAttribute('aria-label'))).toEqual([
+    'July 2026', 'August 2026', 'September 2026', 'October 2026', 'November 2026', 'December 2026',
   ]);
   const square = screen.getByRole('button', { name: 'Saturday, September 26, 2026: 2h 5m' });
   expect(square).toHaveAttribute('data-level', '3');
@@ -86,16 +104,15 @@ it('offers a visible retry instead of treating a failed read as zero work', () =
   state.data = undefined; state.isError = true; render(<TimeView />);
   expect(screen.getByText('Your time could not be loaded.')).toBeInTheDocument();
   expect(screen.queryByText('No time recorded in these months yet.')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(state.refetch).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(state.refetch).toHaveBeenCalledTimes(3);
 });
 it('includes the preceding year and counts only months in the rolling window', () => {
-  state.previous!.days = [{ date: '2025-10-10', minutes: 60, sessions: 1 }, { date: '2025-09-10', minutes: 400, sessions: 1 }];
-  state.data!.days.push({ date: '2026-10-10', minutes: 200, sessions: 1 });
+  state.previous!.days = [{ date: '2025-10-10', minutes: 60, sessions: 1 }, { date: '2025-08-10', minutes: 400, sessions: 1 }];
   render(<TimeView />);
-  expect(state.requestedYears).toEqual([2026, 2025]);
+  expect(state.requestedYears).toEqual([2025, 2026, 2027]);
   expect(screen.getByText('3h 5m accounted for')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Friday, October 10, 2025: 1h' })).toHaveAttribute('data-level', '2');
-  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Oct 2025 – Sep 2026');
+  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Sep 2025 – Sep 2027');
 });
 it('does not show missing previous-year data as empty days or a complete total', () => {
   state.previous = undefined; state.previousError = true;
@@ -106,15 +123,15 @@ it('does not show missing previous-year data as empty days or a complete total',
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(state.refetch).toHaveBeenCalledOnce();
 });
-it('rotates automatically when the workspace enters the next month', () => {
+it('moves the default position forward when the workspace enters the next month', () => {
   const { rerender } = render(<TimeView />);
-  fireEvent.click(screen.getByRole('button', { name: 'Friday, October 10, 2025: No time logged' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Wednesday, September 10, 2025: No time logged' }));
   // Midnight in Beirut, while it is still September in UTC.
   state.nowMs = Date.parse('2026-09-30T21:00:00Z');
   rerender(<TimeView />);
-  expect(screen.getAllByRole('group').slice(0, 3).map(group => group.getAttribute('aria-label'))).toEqual(['August 2026', 'September 2026', 'October 2026']);
-  expect(screen.queryByRole('group', { name: 'October 2025' })).not.toBeInTheDocument();
-  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Nov 2025 – Oct 2026');
+  expect(screen.getAllByRole('group').slice(10, 15).map(group => group.getAttribute('aria-label'))).toEqual(['August 2026', 'September 2026', 'October 2026', 'November 2026', 'December 2026']);
+  expect(screen.queryByRole('group', { name: 'September 2025' })).not.toBeInTheDocument();
+  expect(screen.getByRole('figure')).toHaveAccessibleName('Accounted time, Oct 2025 – Oct 2027');
   expect(screen.getByText('Oct 1 · Today')).toBeInTheDocument();
 });
 it('offers a discreet day breakdown with linked calendar and miscellaneous time', () => {
@@ -138,10 +155,14 @@ it('offers a discreet day breakdown with linked calendar and miscellaneous time'
   expect(screen.getByText('Quiz 1 · Biology')).toBeVisible();
   expect(screen.getByRole('list', { name: 'Time breakdown for Saturday, September 26, 2026' })).toBeInTheDocument();
 });
-it('supports previous years and returning to the current year', () => {
-  render(<TimeView />); expect(screen.getByRole('button', { name: 'Next year' })).toBeDisabled();
+it('supports previous years and keeps following now after returning to the current month', () => {
+  const { rerender } = render(<TimeView />); expect(screen.getByRole('button', { name: 'Next year' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Previous year' }));
   expect(screen.getByRole('heading', { name: '2025' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Return to this year' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Return to current month' }));
   expect(screen.getByRole('heading', { name: '2026' })).toBeInTheDocument();
+  state.nowMs = Date.parse('2026-12-31T22:00:00Z');
+  rerender(<TimeView />);
+  expect(screen.getByRole('heading', { name: '2027' })).toBeInTheDocument();
+  expect(screen.getByText('Jan 1 · Today')).toBeInTheDocument();
 });
