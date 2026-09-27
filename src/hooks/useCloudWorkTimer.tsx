@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, apiDelete, apiFetch, apiPatch, apiPost } from '../utils/apiFetch';
-import { readActiveWorkTimer, writeActiveWorkTimer, type ActiveWorkTimer } from '../utils/workTimer';
+import { apiDelete, apiFetch, apiPatch, apiPost } from '../utils/apiFetch';
+import { WORK_TIMER_STORAGE_KEY, readActiveWorkTimer, writeActiveWorkTimer, type ActiveWorkTimer } from '../utils/workTimer';
 
 export const CLOUD_TIMER_KEY = ['cloud-work-timer'];
-const MIGRATED_KEY = 'marina-work-timer-cloud-v1';
+const timerIdentity = (timer: ActiveWorkTimer | null) => timer
+  ? JSON.stringify([timer.taskId, timer.routineId, timer.startedAt, timer.sessionId]) : null;
 type CloudTimer = ActiveWorkTimer & { sessionId: string };
 type Reply = { timer: CloudTimer | null; serverNow: string; started?: boolean; minutes?: number; duplicate?: boolean };
-type Snapshot = Reply & { serverTime: number; receivedAt: number };
-const snapshot = (reply: Reply): Snapshot => ({ ...reply, serverTime: Date.parse(reply.serverNow), receivedAt: performance.now() });
+type Snapshot = Reply & { serverTime: number; receivedAt: number; observedLocalTimer: string | null };
+const snapshot = (reply: Reply, observedLocalTimer: string | null): Snapshot => ({ ...reply, observedLocalTimer, serverTime: Date.parse(reply.serverNow), receivedAt: performance.now() });
 type TimerContext = {
   timer: CloudTimer | null; nowMs: number; ready: boolean; busy: boolean; error: string | null;
   start: (input: { taskId: string; routineId?: string; notes?: string }) => Promise<Reply>;
@@ -20,7 +21,10 @@ const Context = createContext<TimerContext | null>(null);
 
 export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const initialized = useRef(false);
+  // A browser-wide migration flag can miss timers started later in an old tab.
+  // Track the actual timer mirrored by this session; the server's tombstones
+  // prevent a stopped/discarded timer from being imported again after reload.
+  const mirroredTimer = useRef<string | null | undefined>(undefined);
   const mutationInFlight = useRef(false);
   const previousSession = useRef<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -30,23 +34,16 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
     queryKey: CLOUD_TIMER_KEY,
     queryFn: async ({ signal }) => {
       let reply: Reply | undefined;
-      if (!initialized.current) {
-        let migrated = false;
-        try { migrated = localStorage.getItem(MIGRATED_KEY) === '1'; } catch { /* optional cache */ }
-        const legacy = !migrated ? readActiveWorkTimer() : null;
-        if (legacy) {
-          // Preserve the original before adopting the cloud's authoritative timer.
-          try { localStorage.setItem(`marina-work-timer-recovery:${legacy.sessionId ?? legacy.startedAt}`, JSON.stringify(legacy)); } catch { /* optional cache */ }
-          try { reply = await apiPost<Reply>('/api/work-timer/import', legacy); }
-          catch (error) {
-            if (!(error instanceof ApiError) || ![404, 409].includes(error.status)) throw error;
-          }
-        }
+      const local = readActiveWorkTimer();
+      const observedLocalTimer = timerIdentity(local);
+      if (local && observedLocalTimer !== mirroredTimer.current) {
+        // Preserve the original before adopting the cloud's authoritative timer.
+        try { localStorage.setItem(`marina-work-timer-recovery:${local.sessionId ?? local.startedAt}`, JSON.stringify(local)); } catch { /* optional cache */ }
+        // Failed imports leave the local timer intact for the next retry.
+        reply = await apiPost<Reply>('/api/work-timer/import', local);
       }
       reply ??= await apiFetch<Reply>('/api/work-timer', { signal, cache: 'no-store' });
-      initialized.current = true;
-      try { localStorage.setItem(MIGRATED_KEY, '1'); } catch { /* optional cache */ }
-      return snapshot(reply);
+      return snapshot(reply, observedLocalTimer);
     },
     refetchInterval: 3000,
     refetchIntervalInBackground: true,
@@ -57,7 +54,16 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
   });
   useEffect(() => {
     if (!query.data) return;
-    writeActiveWorkTimer(query.data.timer);
+    const localIdentity = timerIdentity(readActiveWorkTimer());
+    const cloudIdentity = timerIdentity(query.data.timer);
+    if (localIdentity === query.data.observedLocalTimer || localIdentity === cloudIdentity) {
+      writeActiveWorkTimer(query.data.timer);
+      mirroredTimer.current = cloudIdentity;
+    } else {
+      // An older tab started a timer while this request was in flight. Import
+      // it before replacing the only copy with a stale (possibly empty) reply.
+      void qc.invalidateQueries({ queryKey: CLOUD_TIMER_KEY });
+    }
     const session = query.data.timer?.sessionId ?? null;
     if (previousSession.current !== undefined && previousSession.current !== session) {
       for (const key of ['work-sessions', 'work-session-stats', 'tasks', 'goals', 'routines', 'routine-entries', 'schedule-preview']) {
@@ -66,6 +72,13 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
     }
     previousSession.current = session;
   }, [query.data, qc]);
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key === WORK_TIMER_STORAGE_KEY) void qc.invalidateQueries({ queryKey: CLOUD_TIMER_KEY });
+    };
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, [qc]);
   useEffect(() => {
     const data = query.data;
     if (!data?.timer) return;
@@ -84,11 +97,11 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
     mutationInFlight.current = true;
     setBusy(true); setActionError(null);
     await qc.cancelQueries({ queryKey: CLOUD_TIMER_KEY });
+    const observedLocalTimer = timerIdentity(readActiveWorkTimer());
     try {
       const reply = await request();
       await qc.cancelQueries({ queryKey: CLOUD_TIMER_KEY });
-      qc.setQueryData(CLOUD_TIMER_KEY, snapshot(reply));
-      writeActiveWorkTimer(reply.timer);
+      qc.setQueryData(CLOUD_TIMER_KEY, snapshot(reply, observedLocalTimer));
       if (refreshLogs) for (const key of ['work-sessions', 'work-session-stats', 'tasks', 'goals', 'routines', 'routine-entries', 'schedule-preview']) {
         void qc.invalidateQueries({ queryKey: [key] });
       }
@@ -104,7 +117,7 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
     timer: data?.timer ?? null,
     nowMs: data ? data.serverTime + Math.max(0, performance.now() - data.receivedAt) : Date.now(),
     ready: Boolean(data), busy,
-    error: actionError ?? (query.error ? 'Timer sync is unavailable. Reconnect to see changes from other devices.' : null),
+    error: actionError ?? (query.error ? 'Timer sync is unavailable. Your saved timer is preserved; reconnect to retry.' : null),
     start: input => mutate(() => apiPost<Reply>('/api/work-timer/start', { ...input, sessionId: crypto.randomUUID() })),
     stop: (id, input = {}) => mutate(() => apiPost<Reply>(`/api/work-timer/${encodeURIComponent(id)}/stop`, input), true),
     discard: id => mutate(() => apiDelete<Reply>(`/api/work-timer/${encodeURIComponent(id)}`)),

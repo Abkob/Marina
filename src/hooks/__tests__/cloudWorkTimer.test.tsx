@@ -35,6 +35,7 @@ beforeEach(() => {
   vi.mocked(apiPost).mockImplementation(async (url, body) => {
     const input = body as Record<string, string>;
     if (url.endsWith('/start') || url.endsWith('/import')) {
+      if (logged.has(input.sessionId ?? 'legacy-import')) return { ...reply(), started: false } as never;
       active ??= { sessionId: input.sessionId ?? 'legacy-import', taskId: input.taskId, notes: input.notes ?? '', title: 'Shared focus', startedAt: input.startedAt ?? new Date().toISOString() };
       return { ...reply(), started: true } as never;
     }
@@ -101,4 +102,62 @@ it('does not replace a running cloud timer with an older device timer', async ()
   mount('phone'); await settle();
   expect(screen.getByTestId('phone-timer')).toHaveTextContent('cloud-wins');
   expect(active.taskId).toBe('task-2');
+});
+
+it('recovers a local timer even when this browser was previously marked migrated', async () => {
+  localStorage.setItem('marina-work-timer-cloud-v1', '1');
+  const legacy = { taskId: 'task-1', notes: 'Quiz revision', startedAt: '2026-09-27T11:30:00Z' };
+  localStorage.setItem(WORK_TIMER_STORAGE_KEY, JSON.stringify(legacy));
+  mount('laptop'); await settle();
+  expect(apiPost).toHaveBeenCalledWith('/api/work-timer/import', legacy);
+  expect(active?.startedAt).toBe(legacy.startedAt);
+  expect(screen.getByTestId('laptop-timer')).toHaveTextContent('legacy-import');
+});
+
+it('adopts a timer started in an older tab after this session has connected', async () => {
+  mount('laptop'); await settle();
+  const legacy = { taskId: 'task-1', notes: '', startedAt: '2026-09-27T11:40:00Z' };
+  localStorage.setItem(WORK_TIMER_STORAGE_KEY, JSON.stringify(legacy));
+  window.dispatchEvent(new StorageEvent('storage', { key: WORK_TIMER_STORAGE_KEY }));
+  await settle();
+  expect(apiPost).toHaveBeenCalledWith('/api/work-timer/import', legacy);
+  expect(active?.startedAt).toBe(legacy.startedAt);
+  expect(screen.getByTestId('laptop-timer')).toHaveTextContent('legacy-import');
+});
+
+it('preserves a local timer created while an empty cloud response is in flight', async () => {
+  mount('laptop'); await settle();
+  let respond!: (value: unknown) => void;
+  vi.mocked(apiFetch).mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }) as never);
+  await act(async () => { void clients[0].invalidateQueries({ queryKey: ['cloud-work-timer'] }); });
+  const legacy = { taskId: 'task-1', notes: 'Do not lose this', startedAt: '2026-09-27T11:40:00Z' };
+  localStorage.setItem(WORK_TIMER_STORAGE_KEY, JSON.stringify(legacy));
+  await act(async () => { respond({ timer: null, serverNow: new Date().toISOString() }); });
+  await settle(100);
+  expect(apiPost).toHaveBeenCalledWith('/api/work-timer/import', legacy);
+  expect(active?.startedAt).toBe(legacy.startedAt);
+  expect(JSON.parse(localStorage.getItem(WORK_TIMER_STORAGE_KEY)!)).toMatchObject(legacy);
+});
+
+it('keeps an unuploaded timer through an import failure and retries successfully', async () => {
+  const legacy = { taskId: 'task-1', notes: 'Keep me', startedAt: '2026-09-27T11:30:00Z' };
+  localStorage.setItem(WORK_TIMER_STORAGE_KEY, JSON.stringify(legacy));
+  vi.mocked(apiPost).mockRejectedValueOnce(new Error('Offline'));
+  mount('laptop'); await settle();
+  expect(JSON.parse(localStorage.getItem(WORK_TIMER_STORAGE_KEY)!)).toEqual(legacy);
+  expect(active).toBeNull();
+  await settle(1500);
+  expect(active?.startedAt).toBe(legacy.startedAt);
+  expect(screen.getByTestId('laptop-timer')).toHaveTextContent('legacy-import');
+});
+
+it('reconciles a stale stopped timer on reload without reviving it', async () => {
+  const stale = { sessionId: 'already-stopped', taskId: 'task-1', notes: '', startedAt: '2026-09-27T11:30:00Z' };
+  logged.add(stale.sessionId);
+  localStorage.setItem(WORK_TIMER_STORAGE_KEY, JSON.stringify(stale));
+  mount('phone'); await settle();
+  expect(apiPost).toHaveBeenCalledWith('/api/work-timer/import', stale);
+  expect(active).toBeNull();
+  expect(screen.getByTestId('phone-timer')).toHaveTextContent('idle');
+  expect(localStorage.getItem(WORK_TIMER_STORAGE_KEY)).toBeNull();
 });

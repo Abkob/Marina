@@ -41,8 +41,12 @@ three seconds and on reconnect; elapsed time follows the server clock and keeps
 running while a page is closed. Start, Stop, notes and Discard use the same timer
 ID. Concurrent stops log one work session, including routine progress, in a
 single database transaction. Failed saves leave the timer running for a retry.
-The first visit imports an old device-only timer when no cloud timer is running;
-a local recovery copy is kept, and an existing cloud timer takes priority.
+On load and when another tab changes its local timer, the app imports any
+unuploaded device timer when no cloud timer is running. It preserves the original
+start and a local recovery copy; an existing cloud timer takes priority, and
+finished timers cannot restart through an old cached copy. A page left open from
+before cloud timers were introduced needs one refresh on the device running the
+timer to upload it. Refresh other older pages to receive the shared timer.
 Apply `server/migrations/026-cloud-work-timer.sql` after a verified production
 backup before deploying the shared timer UI.
 
