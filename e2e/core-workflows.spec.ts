@@ -1,7 +1,7 @@
 /**
  * Browser E2E — core user workflows against the production frontend + backend.
- * The API server runs on marina_test (see playwright.config.ts); the live
- * database is never touched.
+ * The API server uses the guarded DATABASE_URL_TEST (see playwright.config.ts);
+ * the live database is never touched.
  *
  * Deterministic by construction: the topic-suggestion test seeds a graph edge
  * (+0.25) and a title/alias match (+0.20) so the candidate score meets the
@@ -23,9 +23,9 @@ async function apiJson<T>(request: APIRequestContext, method: 'get' | 'post' | '
 test.describe('App shell', () => {
   test('loads with sidebar navigation and live header', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Topics' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Schedule' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Copilot' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Topics', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Schedule', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copilot AI', exact: true })).toBeVisible();
     // Header search input is the real global search, not decoration
     await expect(page.getByPlaceholder('Search everything…')).toBeVisible();
   });
@@ -64,7 +64,7 @@ test.describe('Topic suggestion workflow', () => {
 
   test('create topic → add member → generate → explainable suggestion → accept', async ({ page, request }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Topics' }).click();
+    await page.getByRole('button', { name: 'Topics', exact: true }).click();
 
     // Create the topic through the real UI
     await page.getByPlaceholder('New topic name…').fill(topicName);
@@ -77,7 +77,7 @@ test.describe('Topic suggestion workflow', () => {
     await apiJson(request, 'post', `/api/topics/${topicId}/members`, { entity_type: 'goal', entity_id: goalId });
 
     // Generate candidates — graph(0.25) + alias(0.20) = 0.45 meets the threshold
-    await page.getByRole('button', { name: 'Find candidates' }).click();
+    await page.getByRole('button', { name: 'Find topic membership candidates' }).click();
     const suggestionCard = page.getByTestId('topic-suggestion').filter({ hasText: taskTitle }).first();
     await expect(suggestionCard).toBeVisible({ timeout: 15_000 });
     // Evidence is explainable, not a bare score
@@ -119,24 +119,24 @@ test.describe('Schedule propose → preview → apply workflow', () => {
 
   test('Plan my week creates a reviewable proposal; applying sets start_date', async ({ page, request }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Schedule' }).click();
+    await page.getByRole('button', { name: 'Schedule', exact: true }).click();
 
     // Preview must not mutate: task has no start_date before any confirmation
     const before = await apiJson<{ start_date: string | null }>(request, 'get', `/api/tasks/${taskId}`);
     expect(before.start_date ?? null).toBeNull();
 
-    await page.getByRole('button', { name: 'Plan my week' }).click();
+    await page.getByRole('button', { name: /Plan assist/ }).click();
     const proposalCard = page.getByTestId('schedule-proposal').filter({ hasText: taskTitle }).first();
     await expect(proposalCard).toBeVisible({ timeout: 15_000 });
     // Before/after diff is shown to the user
-    await expect(proposalCard.getByText(/Start:/)).toBeVisible();
+    await expect(proposalCard.getByText(/Mon|Tue|Wed|Thu|Fri|Sat|Sun/)).toBeVisible();
 
     // Still no mutation until the user confirms
     const mid = await apiJson<{ start_date: string | null }>(request, 'get', `/api/tasks/${taskId}`);
     expect(mid.start_date ?? null).toBeNull();
 
     await proposalCard.getByTitle('Apply').click();
-    await expect(page.getByText('Start date applied.')).toBeVisible();
+    await expect(page.getByText(/Scheduled for \d{4}-\d{2}-\d{2}\./)).toBeVisible();
 
     // Canonical DB change happened via the transactional proposal path
     await expect.poll(async () => {

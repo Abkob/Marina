@@ -4,8 +4,15 @@ import { initSchema } from './db.js';
 import { seedIfEmpty } from './seed.js';
 import { ensureDefaultSchedulePrefs } from './routes/schedule-prefs.js';
 import { processEmbeddingJobs, reclaimExpiredJobs } from './services/embeddingWorker.js';
+import { scheduleObsidianVaultSync } from './services/obsidianVaultSync.js';
 import { EMBED_DIMENSION, EMBED_MODEL } from './embeddingProvider.js';
-import { CHAT_HOST, CHAT_MODEL_PRIMARY, CHAT_MODEL_FALLBACK, isCloudChatModel } from './config/providers.js';
+import {
+  CHAT_HOST,
+  CHAT_MODEL_PRIMARY,
+  CHAT_MODEL_FALLBACK,
+  NVIDIA_FALLBACK_MODEL,
+  isCloudChatModel,
+} from './config/providers.js';
 
 const PORT = 3001;
 
@@ -22,9 +29,9 @@ async function startServer() {
     await seedIfEmpty();
     const app = createApp();
     const server = app.listen(PORT, '127.0.0.1', () => {
-      console.log(`[server] Amina API running on http://127.0.0.1:${PORT}`);
+      console.log(`[server] Marina API running on http://127.0.0.1:${PORT}`);
       const rawDbUrl = process.env.DATABASE_URL ?? '';
-      let dbDisplay = 'localhost:5432/amina';
+      let dbDisplay = 'localhost:5432/marina';
       try {
         if (rawDbUrl) {
           const u = new URL(rawDbUrl);
@@ -36,10 +43,17 @@ async function startServer() {
       // vars — the old line read OLLAMA_MODEL with a stale default and lied.
       console.log(
         `[server] Chat: ${CHAT_MODEL_PRIMARY}${isCloudChatModel(CHAT_MODEL_PRIMARY) ? ' (cloud)' : ''}` +
-        ` · fallback ${CHAT_MODEL_FALLBACK}${isCloudChatModel(CHAT_MODEL_FALLBACK) ? ' (cloud)' : ' (local)'}` +
-        ` · via ${CHAT_HOST}`,
+        (process.env.NVIDIA_API_KEY && NVIDIA_FALLBACK_MODEL !== CHAT_MODEL_PRIMARY
+          ? ` Â· fallback ${NVIDIA_FALLBACK_MODEL} (NVIDIA cloud)`
+          : '') +
+        (CHAT_MODEL_FALLBACK
+          ? ` · fallback ${CHAT_MODEL_FALLBACK}${isCloudChatModel(CHAT_MODEL_FALLBACK) ? ' (cloud)' : ' (local)'}`
+          : '') +
+        (CHAT_MODEL_FALLBACK || !isCloudChatModel(CHAT_MODEL_PRIMARY) ? ` · via ${CHAT_HOST}` : ''),
       );
       console.log(`[server] Embeddings: ${EMBED_MODEL} (${EMBED_DIMENSION} dimensions)`);
+      const vault = scheduleObsidianVaultSync('startup');
+      if (vault.enabled) console.log(`[obsidian-vault] sync enabled: ${vault.vault_dir}`);
 
       // Reclaim any 'processing' jobs left by a prior crash
       reclaimExpiredJobs().then(n => {
@@ -99,7 +113,7 @@ async function startServer() {
       setInterval(rollupTick, 60 * 60_000).unref?.();
 
       // Daily automatic backup (skipped in test mode). Rotation keeps the
-      // newest AMINA_BACKUP_KEEP (default 14).
+      // newest MARINA_BACKUP_KEEP (default 14).
       const backupTick = async () => {
         try {
           const { createBackup, rotateBackups } = await import('./routes/backups.js');
@@ -110,10 +124,10 @@ async function startServer() {
           console.error('[backup] auto backup failed:', (err as Error).message);
         }
       };
-      if (process.env.NODE_ENV !== 'test' && process.env.AMINA_AUTO_BACKUP !== 'false') {
+      if (process.env.NODE_ENV !== 'test' && process.env.MARINA_AUTO_BACKUP !== 'false') {
         setTimeout(backupTick, 60_000);                       // first backup 1min after boot
         setInterval(backupTick, 24 * 60 * 60_000).unref?.();  // then daily
-        console.log('[backup] auto-backup enabled (daily, keep last ' + (process.env.AMINA_BACKUP_KEEP ?? 14) + ')');
+        console.log('[backup] auto-backup enabled (daily, keep last ' + (process.env.MARINA_BACKUP_KEEP ?? 14) + ')');
       }
 
       // Auto-retry failed journal entries every 5 minutes (max 3 attempts).

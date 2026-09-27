@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Amina OS — PostgreSQL schema
+-- Marina OS — PostgreSQL schema
 -- Run once on a fresh database, or idempotently with IF NOT EXISTS / DO NOTHING
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   time_rollup_mode     TEXT    NOT NULL DEFAULT 'additive' CHECK (time_rollup_mode IN ('additive','inclusive')),
   actual_minutes       INTEGER,
   weight_percent       REAL,
+  feel_score           INTEGER CHECK (feel_score BETWEEN 0 AND 100),
   completed            BOOLEAN NOT NULL DEFAULT false,
   position             INTEGER NOT NULL DEFAULT 0,
   last_activity_at     TEXT,
@@ -184,6 +185,9 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at               TEXT NOT NULL
 );
 
+-- Existing notes remain unfinished and carry forward until explicitly finished.
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS completed_at TEXT;
+
 -- ─── Resources ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS resources (
   id                TEXT PRIMARY KEY,
@@ -227,6 +231,42 @@ CREATE TABLE IF NOT EXISTS resource_logs (
   created_at  TEXT NOT NULL,
   FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
 );
+
+-- Research knowledge layer. Papers remain resources (and reuse resource_chunks /
+-- embeddings); these tables add scholarly metadata and claim-level provenance.
+CREATE TABLE IF NOT EXISTS research_papers (
+  id             TEXT PRIMARY KEY,
+  resource_id    TEXT NOT NULL UNIQUE,
+  doi            TEXT,
+  authors_json   TEXT NOT NULL DEFAULT '[]',
+  publication_year INTEGER,
+  venue          TEXT,
+  abstract       TEXT,
+  ingestion_status TEXT NOT NULL DEFAULT 'indexed',
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS research_claims (
+  id              TEXT PRIMARY KEY,
+  paper_id        TEXT NOT NULL,
+  claim_type      TEXT NOT NULL DEFAULT 'finding',
+  claim_text      TEXT NOT NULL,
+  source_chunk_id TEXT,
+  page_start      INTEGER,
+  page_end        INTEGER,
+  confidence      REAL NOT NULL DEFAULT 0.0,
+  verification_status TEXT NOT NULL DEFAULT 'unreviewed',
+  created_by      TEXT NOT NULL DEFAULT 'ai',
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  FOREIGN KEY (paper_id) REFERENCES research_papers(id) ON DELETE CASCADE,
+  FOREIGN KEY (source_chunk_id) REFERENCES resource_chunks(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_claims_paper ON research_claims(paper_id);
+CREATE INDEX IF NOT EXISTS idx_research_claims_chunk ON research_claims(source_chunk_id);
 
 -- ─── Graph edges ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS edges (
@@ -750,6 +790,41 @@ CREATE INDEX IF NOT EXISTS idx_topic_memberships_status ON topic_memberships(sta
 -- feasibility, citations) so reloading a conversation restores its cards.
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS metadata_json TEXT;
 
+-- M-022: append-only agent execution ledger. Agent runs are durable summaries;
+-- events are the ordered audit trail used by the UI and Obsidian projection.
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id                 TEXT PRIMARY KEY,
+  source             TEXT NOT NULL DEFAULT 'copilot',
+  agent_kind         TEXT NOT NULL DEFAULT 'semantic_planner',
+  session_id         TEXT REFERENCES chat_sessions(id) ON DELETE SET NULL,
+  user_message       TEXT NOT NULL DEFAULT '',
+  intent             TEXT,
+  intent_confidence  REAL CHECK (intent_confidence BETWEEN 0 AND 1 OR intent_confidence IS NULL),
+  model              TEXT,
+  status             TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','completed','failed','cancelled')),
+  summary            TEXT,
+  error              TEXT,
+  started_at         TEXT NOT NULL,
+  finished_at        TEXT,
+  metadata_json      TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_events (
+  id            TEXT PRIMARY KEY,
+  run_id        TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+  sequence      INTEGER NOT NULL,
+  event_type    TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  detail        TEXT,
+  status        TEXT NOT NULL DEFAULT 'recorded',
+  data_json     TEXT NOT NULL DEFAULT '{}',
+  created_at    TEXT NOT NULL,
+  UNIQUE (run_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_run ON agent_events(run_id, sequence);
+
 -- M-020: journal entries created from a Capture note remember their source so
 -- re-logging the same note UPDATES the entry (and re-ingests) instead of
 -- creating a duplicate.
@@ -759,7 +834,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_source_note
 
 -- M-021: Real date-based planning (replaces vague Q1/Q2-style deadlines).
 -- Semantics: start_date = may begin; target_date = would like to finish;
--- hard_deadline = must be done; scheduling_enabled = Amina may place it on the
+-- hard_deadline = must be done; scheduling_enabled = Marina may place it on the
 -- calendar (only ever acts when a date AND a duration exist).
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS start_date TEXT;
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS target_date TEXT;
@@ -779,6 +854,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS scheduling_enabled BOOLEAN NOT NULL D
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS flexibility TEXT CHECK (flexibility IN ('flexible','fixed','urgent') OR flexibility IS NULL);
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS can_split BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS min_session_minutes INTEGER;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS feel_score INTEGER CHECK (feel_score BETWEEN 0 AND 100);
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_rollup_mode TEXT NOT NULL DEFAULT 'additive'
   CHECK (time_rollup_mode IN ('additive','inclusive'));
 
@@ -799,6 +875,49 @@ UPDATE tasks SET target_date = due_date
 
 -- Journal end-of-day rollup marker (capture wall → journal book)
 ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS source TEXT;
+
+-- M-023: Durable, encrypted Google Tasks + Calendar synchronization.
+-- The connection contains only encrypted OAuth refresh-token material and
+-- sync health. Remote IDs live in a generic link table so Marina's canonical
+-- goal/task/event rows stay provider-agnostic.
+CREATE TABLE IF NOT EXISTS google_sync_connections (
+  id                      TEXT PRIMARY KEY DEFAULT 'primary',
+  account_email           TEXT,
+  encrypted_refresh_token TEXT NOT NULL,
+  calendar_id             TEXT,
+  calendar_name           TEXT NOT NULL DEFAULT 'Marina Schedule',
+  initial_sync_complete   BOOLEAN NOT NULL DEFAULT false,
+  auto_sync_enabled       BOOLEAN NOT NULL DEFAULT true,
+  last_synced_at          TEXT,
+  last_error              TEXT,
+  sync_lease_until        TEXT,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS google_sync_links (
+  id                     TEXT PRIMARY KEY,
+  connection_id          TEXT NOT NULL DEFAULT 'primary' REFERENCES google_sync_connections(id) ON DELETE CASCADE,
+  entity_type            TEXT NOT NULL CHECK (entity_type IN ('goal','task','event','meeting','task_day','system')),
+  entity_id              TEXT NOT NULL,
+  remote_type            TEXT NOT NULL CHECK (remote_type IN ('task_list','task','calendar_event')),
+  remote_container_id    TEXT,
+  remote_id              TEXT NOT NULL,
+  remote_etag            TEXT,
+  remote_updated_at      TEXT,
+  local_updated_at       TEXT,
+  sync_status            TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('synced','conflict','remote_deleted','error')),
+  conflict_json          TEXT,
+  last_synced_at         TEXT NOT NULL,
+  created_at             TEXT NOT NULL,
+  updated_at             TEXT NOT NULL,
+  UNIQUE (connection_id, remote_type, entity_type, entity_id),
+  UNIQUE (connection_id, remote_type, remote_container_id, remote_id)
+);
+CREATE INDEX IF NOT EXISTS idx_google_sync_links_remote
+  ON google_sync_links(connection_id, remote_type, remote_container_id, remote_id);
+CREATE INDEX IF NOT EXISTS idx_google_sync_links_status
+  ON google_sync_links(connection_id, sync_status);
 
 -- Backfill existing migrations so the registry reflects current state
 INSERT INTO schema_migrations (name) VALUES
@@ -824,5 +943,45 @@ INSERT INTO schema_migrations (name) VALUES
   ('M-018-semantic-topics'),
   ('M-019-chat-message-metadata'),
   ('M-020-journal-source-note'),
-  ('M-021-real-date-planning')
+  ('M-021-real-date-planning'),
+  ('M-023-google-workspace-sync')
 ON CONFLICT (name) DO NOTHING;
+
+-- M-024: Routines. Production rollout uses migrations/024-routines.sql only.
+CREATE TABLE IF NOT EXISTS routines (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  goal_id TEXT REFERENCES goals(id) ON DELETE SET NULL,
+  cadence TEXT NOT NULL CHECK (cadence IN ('daily', 'weekly')),
+  weekdays JSONB NOT NULL CHECK (jsonb_typeof(weekdays) = 'array'),
+  weekly_target INTEGER NOT NULL CHECK (weekly_target BETWEEN 1 AND 7),
+  target_count INTEGER NOT NULL CHECK (target_count > 0),
+  target_unit TEXT NOT NULL CHECK (target_unit IN ('minutes','problems','pages','sessions')),
+  planned_minutes INTEGER NOT NULL CHECK (planned_minutes BETWEEN 1 AND 1440),
+  preferred_time TEXT,
+  start_date TEXT NOT NULL,
+  archived_at TEXT,
+  archived_on TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS routine_entries (
+  id TEXT PRIMARY KEY,
+  routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE RESTRICT,
+  date TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('completed','skipped','partial')),
+  minutes INTEGER NOT NULL DEFAULT 0 CHECK (minutes >= 0),
+  completed_count INTEGER NOT NULL DEFAULT 0 CHECK (completed_count >= 0),
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (routine_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_routine_entries_date ON routine_entries(date);
+CREATE INDEX IF NOT EXISTS idx_routines_goal ON routines(goal_id);
+ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS routine_id TEXT REFERENCES routines(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_work_sessions_routine ON work_sessions(routine_id) WHERE routine_id IS NOT NULL;
+INSERT INTO schema_migrations (name) VALUES ('M-024-routines') ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO schema_migrations (name) VALUES ('M-025-note-completion') ON CONFLICT (name) DO NOTHING;

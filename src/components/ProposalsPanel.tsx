@@ -5,10 +5,16 @@ import { useAppStore } from '../store/useAppStore';
 import { apiPost } from '../utils/apiFetch';
 
 const ACTION_COLORS: Record<string, string> = {
+  create_routine: 'bg-teal-500/20 text-teal-300',
+  update_routine: 'bg-teal-500/20 text-teal-300',
+  check_in_routine: 'bg-teal-500/20 text-teal-300',
   create_task:      'bg-blue-500/20 text-blue-300',
+  break_down_task:  'bg-cyan-500/20 text-cyan-300',
   update_task:      'bg-indigo-500/20 text-indigo-300',
   create_goal:      'bg-purple-500/20 text-purple-300',
+  create_goal_with_tasks: 'bg-purple-500/20 text-purple-300',
   create_milestone: 'bg-teal-500/20 text-teal-300',
+  move_schedule_items: 'bg-violet-500/20 text-violet-300',
 };
 
 function ConfidenceBar({ value }: { value: number }) {
@@ -42,7 +48,7 @@ function ProposalRow({ proposal, onApply, onReject }: {
   return (
     <div className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-900/40 transition-colors">
       <span className={`mt-0.5 shrink-0 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${colorClass}`}>
-        {proposal.action_type.replace('_', ' ')}
+        {proposal.action_type.replace(/_/g, ' ')}
       </span>
       <div className="flex-1 min-w-0 space-y-1">
         <p className="text-xs text-gray-300 leading-snug">{snippet}{(proposal.explanation?.length ?? 0) > 80 ? '…' : ''}</p>
@@ -87,7 +93,7 @@ export function ProposalsPanel() {
     invalidate.aiProposals();
     invalidate.allTasks();
     invalidate.goals();
-    triggerToast(`Applied: ${type.replace('_', ' ')}`, 'success');
+    triggerToast(`Applied: ${type.replace(/_/g, ' ')}`, 'success');
   };
 
   const reject = async (id: string) => {

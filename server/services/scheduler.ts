@@ -5,14 +5,21 @@ export interface SchedulerTask {
   id: string;
   title: string;
   estimated_minutes: number;
+  /** Distinguishes a real estimate reduced to zero from a missing estimate. */
+  has_estimate?: boolean;
+  /** Earliest date on which this task may receive work. */
+  start_date?: string | null;
   due_date: string | null;
   priority: 'high' | 'medium' | 'low' | string;
   blocker_ids: string[];
+  max_daily_minutes?: number;
 }
 
 export interface SchedulerMeeting {
   date: string;    // YYYY-MM-DD
   duration_minutes: number;
+  /** Routine time is reserved even when a day has a manual capacity override. */
+  routine?: boolean;
 }
 
 export interface SchedulerPrefs {
@@ -43,8 +50,37 @@ export interface SchedulerInput {
 export interface DayAssignment {
   date: string;
   available_minutes: number;
+  routine_minutes?: number;
   used_minutes: number;
   task_ids: string[];
+  /** Exact minutes the scheduler allocated to each task on this day. */
+  task_minutes: Record<string, number>;
+}
+
+export interface TaskScheduleDiagnosticDay {
+  date: string;
+  capacity_minutes: number;
+  committed_before_minutes: number;
+  available_before_minutes: number;
+  allocated_minutes: number;
+}
+
+export interface TaskScheduleDiagnostic {
+  task_id: string;
+  outcome: 'fit' | 'overflow' | 'unestimated';
+  required_minutes: number;
+  due_date: string | null;
+  earliest_date: string;
+  available_before_deadline_minutes: number;
+  allocated_minutes: number;
+  shortfall_minutes: number;
+  /** Work placed in the horizon after the on-time attempt failed. */
+  recovery_allocated_minutes: number;
+  /** Projected recovery finish when the remaining task fits in the horizon. */
+  recovery_finish_date: string | null;
+  /** Work still unplaced after both the deadline attempt and recovery pass. */
+  unscheduled_minutes: number;
+  days: TaskScheduleDiagnosticDay[];
 }
 
 export interface SchedulerResult {
@@ -57,6 +93,8 @@ export interface SchedulerResult {
   unestimated_task_ids: string[];     // flagged separately, not scheduled
   cycle_task_ids: string[];           // tasks involved in dependency cycles
   day_assignments: DayAssignment[];
+  capacity_days: DayAssignment[];     // every work day in the horizon, including unused days
+  task_diagnostics: TaskScheduleDiagnostic[];
   impossible_reason?: string;
 }
 
@@ -177,7 +215,8 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
   const { tasks, meetings, prefs, overrides, horizon_days, start_date } = input;
 
   // Split off unestimated tasks — they can't be scheduled
-  const unestimated = tasks.filter(t => !t.estimated_minutes || t.estimated_minutes <= 0);
+  const covered = tasks.filter(t => (!t.estimated_minutes || t.estimated_minutes <= 0) && t.has_estimate === true);
+  const unestimated = tasks.filter(t => (!t.estimated_minutes || t.estimated_minutes <= 0) && t.has_estimate !== true);
   const estimable = tasks.filter(t => t.estimated_minutes > 0);
 
   // Build work-day capacity map
@@ -192,8 +231,10 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
   today.setHours(0, 0, 0, 0);
   const overrideMap = new Map(overrides.map(o => [o.date, o.available_minutes]));
   const meetingMinutesByDay = new Map<string, number>();
+  const routineMinutesByDay = new Map<string, number>();
   for (const m of meetings) {
-    meetingMinutesByDay.set(m.date, (meetingMinutesByDay.get(m.date) ?? 0) + m.duration_minutes);
+    const destination = m.routine ? routineMinutesByDay : meetingMinutesByDay;
+    destination.set(m.date, (destination.get(m.date) ?? 0) + Math.max(0, m.duration_minutes));
   }
 
   const workDaySet = new Set(prefs.work_days);
@@ -216,9 +257,10 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     } else {
       avail = bufferedCapacity - (meetingMinutesByDay.get(ymd) ?? 0);
     }
-    avail = Math.max(0, avail);
+    const routineMinutes = routineMinutesByDay.get(ymd) ?? 0;
+    avail = Math.max(0, avail - routineMinutes);
 
-    days.push({ date: ymd, available_minutes: avail, used_minutes: 0, task_ids: [] });
+    days.push({ date: ymd, available_minutes: avail, ...(routineMinutes > 0 ? { routine_minutes: routineMinutes } : {}), used_minutes: 0, task_ids: [], task_minutes: {} });
   }
 
   const totalAvailable = days.reduce((s, d) => s + d.available_minutes, 0);
@@ -234,12 +276,31 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
   // Topological sort respects blocker ordering
   const sorted = topologicalSort(estimable);
 
-  const tasksFit: string[] = [];
+  const tasksFit: string[] = covered.map(task => task.id);
   const tasksOverflow: string[] = [];
+  const zeroMinuteDiagnostic = (task: SchedulerTask, outcome: 'fit' | 'unestimated'): TaskScheduleDiagnostic => ({
+    task_id: task.id,
+    outcome,
+    required_minutes: 0,
+    due_date: task.due_date,
+    earliest_date: task.start_date && task.start_date > todayStr ? task.start_date : todayStr,
+    available_before_deadline_minutes: 0,
+    allocated_minutes: 0,
+    shortfall_minutes: 0,
+    recovery_allocated_minutes: 0,
+    recovery_finish_date: null,
+    unscheduled_minutes: 0,
+    days: [],
+  });
+  const taskDiagnostics: TaskScheduleDiagnostic[] = [
+    ...covered.map(task => zeroMinuteDiagnostic(task, 'fit')),
+    ...unestimated.map(task => zeroMinuteDiagnostic(task, 'unestimated')),
+  ];
 
   for (const task of sorted) {
-    // Earliest possible date: after all blockers are fully scheduled
-    let earliestDate = toYMD(today);
+    // Earliest possible date: today, the task/goal timeline start, or the date
+    // on which all blockers have been fully scheduled â€” whichever is latest.
+    let earliestDate = task.start_date && task.start_date > todayStr ? task.start_date : todayStr;
     for (const bid of task.blocker_ids) {
       const bd = taskAssignedDate.get(bid);
       if (bd && bd > earliestDate) earliestDate = bd;
@@ -254,6 +315,7 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     let minutesLeft = task.estimated_minutes;
     let lastDayUsed: string | null = null;
     const allocations: Array<{ day: DayAssignment; allocated: number }> = [];
+    const diagnosticDays: TaskScheduleDiagnosticDay[] = [];
 
     for (const day of days) {
       if (minutesLeft <= 0) break;
@@ -263,9 +325,21 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
       const freeMinutes = day.available_minutes - day.used_minutes;
       if (freeMinutes <= 0) continue;
 
-      const allocate = Math.min(freeMinutes, minutesLeft);
+      const allocate = Math.min(
+        freeMinutes,
+        minutesLeft,
+        task.max_daily_minutes ?? Number.POSITIVE_INFINITY,
+      );
+      diagnosticDays.push({
+        date: day.date,
+        capacity_minutes: day.available_minutes,
+        committed_before_minutes: day.used_minutes,
+        available_before_minutes: freeMinutes,
+        allocated_minutes: allocate,
+      });
       day.used_minutes += allocate;
       if (!day.task_ids.includes(task.id)) day.task_ids.push(task.id);
+      day.task_minutes[task.id] = (day.task_minutes[task.id] ?? 0) + allocate;
       minutesLeft -= allocate;
       lastDayUsed = day.date;
       allocations.push({ day, allocated: allocate });
@@ -274,14 +348,85 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     if (minutesLeft <= 0 && lastDayUsed !== null) {
       taskAssignedDate.set(task.id, lastDayUsed);
       tasksFit.push(task.id);
+      taskDiagnostics.push({
+        task_id: task.id,
+        outcome: 'fit',
+        required_minutes: task.estimated_minutes,
+        due_date: deadline,
+        earliest_date: earliestDate,
+        available_before_deadline_minutes: diagnosticDays.reduce((sum, day) => sum + day.available_before_minutes, 0),
+        allocated_minutes: task.estimated_minutes,
+        shortfall_minutes: 0,
+        recovery_allocated_minutes: 0,
+        recovery_finish_date: null,
+        unscheduled_minutes: 0,
+        days: diagnosticDays,
+      });
     } else {
       // Roll back all partial allocations so other tasks can use this capacity
       for (const { day, allocated } of allocations) {
         day.used_minutes -= allocated;
         day.task_ids = day.task_ids.filter(id => id !== task.id);
+        delete day.task_minutes[task.id];
       }
       tasksOverflow.push(task.id);
+      const allocatedMinutes = allocations.reduce((sum, allocation) => sum + allocation.allocated, 0);
+      taskDiagnostics.push({
+        task_id: task.id,
+        outcome: 'overflow',
+        required_minutes: task.estimated_minutes,
+        due_date: deadline,
+        earliest_date: earliestDate,
+        available_before_deadline_minutes: diagnosticDays.reduce((sum, day) => sum + day.available_before_minutes, 0),
+        allocated_minutes: allocatedMinutes,
+        shortfall_minutes: Math.max(0, minutesLeft),
+        recovery_allocated_minutes: 0,
+        recovery_finish_date: null,
+        unscheduled_minutes: task.estimated_minutes,
+        days: diagnosticDays,
+      });
     }
+  }
+
+  // A missed or impossible cutoff must not make work disappear from the plan.
+  // Once every task that can still finish on time has claimed capacity, use the
+  // remaining horizon for best-effort recovery slices, earliest deadline first.
+  // Deadline diagnostics above remain unchanged: recovery is a plan from now,
+  // not a claim that the original cutoff can still be met.
+  const overflowById = new Map(sorted.map(task => [task.id, task]));
+  for (const diagnostic of taskDiagnostics) {
+    if (diagnostic.outcome !== 'overflow') continue;
+    const task = overflowById.get(diagnostic.task_id);
+    if (!task) continue;
+
+    let recoveryLeft = task.estimated_minutes;
+    let recoveryAllocated = 0;
+    let recoveryFinishDate: string | null = null;
+    for (const day of days) {
+      if (recoveryLeft <= 0) break;
+      if (day.date < diagnostic.earliest_date) continue;
+
+      const freeMinutes = day.available_minutes - day.used_minutes;
+      if (freeMinutes <= 0) continue;
+      const alreadyAllocatedToday = day.task_minutes[task.id] ?? 0;
+      const taskDayCapacity = Math.max(
+        0,
+        (task.max_daily_minutes ?? Number.POSITIVE_INFINITY) - alreadyAllocatedToday,
+      );
+      const allocate = Math.min(freeMinutes, recoveryLeft, taskDayCapacity);
+      if (allocate <= 0) continue;
+
+      day.used_minutes += allocate;
+      if (!day.task_ids.includes(task.id)) day.task_ids.push(task.id);
+      day.task_minutes[task.id] = alreadyAllocatedToday + allocate;
+      recoveryLeft -= allocate;
+      recoveryAllocated += allocate;
+      recoveryFinishDate = recoveryLeft <= 0 ? day.date : null;
+    }
+
+    diagnostic.recovery_allocated_minutes = recoveryAllocated;
+    diagnostic.recovery_finish_date = recoveryFinishDate;
+    diagnostic.unscheduled_minutes = Math.max(0, recoveryLeft);
   }
 
   const gap = totalAvailable - totalRequired;
@@ -292,7 +437,16 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
 
   if (tasksOverflow.length > 0) {
     status = 'impossible';
-    impossibleReason = `${tasksOverflow.length} task(s) cannot fit within the ${horizon_days}-day horizon. Short by ${Math.abs(Math.min(0, gap))} minutes.`;
+    const overflowDiagnostics = taskDiagnostics.filter(item => item.outcome === 'overflow');
+    const overdueCount = overflowDiagnostics.filter(item => Boolean(item.due_date && item.due_date < todayStr)).length;
+    const activeFailures = overflowDiagnostics.filter(item => !item.due_date || item.due_date >= todayStr);
+    const activeShortfall = activeFailures.reduce((sum, item) => sum + item.shortfall_minutes, 0);
+    const reasonParts = [`${tasksOverflow.length} task(s) cannot be scheduled in time.`];
+    if (overdueCount > 0) reasonParts.push(`${overdueCount} already past their deadline${overdueCount === 1 ? '' : 's'}.`);
+    if (activeFailures.length > 0) {
+      reasonParts.push(`${activeFailures.length} still ${activeFailures.length === 1 ? 'has' : 'have'} ${activeShortfall} minutes unfinished at the deadline or planning cutoff.`);
+    }
+    impossibleReason = reasonParts.join(' ');
   } else {
     const utilisationRatio = totalRequired / Math.max(1, totalAvailable);
     const lastUsedDay = days.filter(d => d.used_minutes > 0).at(-1);
@@ -320,6 +474,8 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     unestimated_task_ids: unestimated.map(t => t.id),
     cycle_task_ids: cycleTaskIds,
     day_assignments: days.filter(d => d.task_ids.length > 0 || d.used_minutes > 0),
+    capacity_days: days.map(day => ({ ...day, task_ids: [...day.task_ids] })),
+    task_diagnostics: taskDiagnostics,
     ...(fullReason ? { impossible_reason: fullReason } : {}),
   };
 }

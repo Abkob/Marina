@@ -1,3 +1,4 @@
+import { activeEntitySql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import { query, transaction } from '../db.js';
@@ -42,8 +43,8 @@ router.get('/', async (req, res) => {
   const includeArchived = req.query.include_archived === 'true';
   const { rows } = await query(
     `SELECT tp.*,
-       COUNT(tm.id) FILTER (WHERE tm.status='accepted')::int  AS member_count,
-       COUNT(tm.id) FILTER (WHERE tm.status='suggested')::int AS suggestion_count
+       COUNT(tm.id) FILTER (WHERE tm.status='accepted' AND ${activeEntitySql('tm.entity_type', 'tm.entity_id')})::int  AS member_count,
+       COUNT(tm.id) FILTER (WHERE tm.status='suggested' AND ${activeEntitySql('tm.entity_type', 'tm.entity_id')})::int AS suggestion_count
      FROM topics tp
      LEFT JOIN topic_memberships tm ON tm.topic_id = tp.id
      WHERE ($1 OR tp.status = 'active')
@@ -82,7 +83,7 @@ router.get('/suggestions', async (req, res) => {
   const { rows } = await query(
     `SELECT tm.*, tp.name AS topic_name, tp.color AS topic_color, ${TITLE_JOIN_SQL}
      JOIN topics tp ON tp.id = tm.topic_id
-     WHERE tm.status = $1 AND tp.status = 'active'
+     WHERE ${activeEntitySql('tm.entity_type', 'tm.entity_id')} AND tm.status = $1 AND tp.status = 'active'
      ORDER BY tm.confidence DESC, tm.created_at DESC`,
     [status],
   );
@@ -227,8 +228,8 @@ router.get('/of/:entityType/:entityId', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const { rows } = await query(
     `SELECT tp.*,
-       COUNT(tm.id) FILTER (WHERE tm.status='accepted')::int  AS member_count,
-       COUNT(tm.id) FILTER (WHERE tm.status='suggested')::int AS suggestion_count
+       COUNT(tm.id) FILTER (WHERE tm.status='accepted' AND ${activeEntitySql('tm.entity_type', 'tm.entity_id')})::int  AS member_count,
+       COUNT(tm.id) FILTER (WHERE tm.status='suggested' AND ${activeEntitySql('tm.entity_type', 'tm.entity_id')})::int AS suggestion_count
      FROM topics tp
      LEFT JOIN topic_memberships tm ON tm.topic_id = tp.id
      WHERE tp.id=$1
@@ -362,7 +363,7 @@ router.get('/:id/members', async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : 'accepted';
   const { rows } = await query(
     `SELECT tm.*, ${TITLE_JOIN_SQL}
-     WHERE tm.topic_id=$1 AND tm.status=$2
+     WHERE tm.topic_id=$1 AND tm.status=$2 AND ${activeEntitySql('tm.entity_type', 'tm.entity_id')}
      ORDER BY tm.created_at DESC`,
     [req.params.id, status],
   );
@@ -444,7 +445,7 @@ async function generateCandidatesForTopic(topicId: string, topicName: string, ru
     .map(r => `${r.entity_type}:${r.entity_id}`));
 
   const { rows: memberRows } = await query(
-    `SELECT entity_type, entity_id FROM topic_memberships WHERE topic_id=$1 AND status='accepted'`,
+    `SELECT entity_type, entity_id FROM topic_memberships WHERE topic_id=$1 AND status='accepted' AND ${activeEntitySql('entity_type', 'entity_id')}`,
     [topicId],
   );
   const members = memberRows as { entity_type: string; entity_id: string }[];
@@ -467,7 +468,7 @@ async function generateCandidatesForTopic(topicId: string, topicName: string, ru
               (ARRAY_AGG(mv.entity_type || ':' || mv.entity_id ORDER BY (e.embedding_3072 <=> mv.embedding_3072) ASC))[1] AS nearest_member
        FROM embeddings e
        CROSS JOIN member_vecs mv
-       WHERE e.is_stale = false AND e.embedding_3072 IS NOT NULL
+       WHERE e.is_stale = false AND e.embedding_3072 IS NOT NULL AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
          AND e.entity_type IN ('goal','task','milestone','resource','meeting','journal_entry','note')
          AND (e.entity_type || ':' || e.entity_id) <> ALL($1)
        GROUP BY e.entity_type, e.entity_id
@@ -502,7 +503,7 @@ async function generateCandidatesForTopic(topicId: string, topicName: string, ru
                 'journal_link:' || jl.relationship || ':journal_entry:' || jl.journal_entry_id
          FROM journal_links jl WHERE ('journal_entry:' || jl.journal_entry_id) = ANY($1)
        ) x
-       WHERE x.entity_type IN ('goal','task','milestone','resource','meeting','journal_entry','note')`,
+       WHERE ${activeEntitySql('x.entity_type', 'x.entity_id')} AND x.entity_type IN ('goal','task','milestone','resource','meeting','journal_entry','note')`,
       [memberKeys],
     );
     for (const r of graphRows as { entity_type: string; entity_id: string; via: string }[]) {
@@ -524,7 +525,7 @@ async function generateCandidatesForTopic(topicId: string, topicName: string, ru
       if (etype === 'journal_entry') continue; // date column — no meaningful title match
       const conds = terms.map((_, i) => `LOWER(${spec.titleCol}) LIKE $${i + 1}`).join(' OR ');
       const { rows: matchRows } = await query(
-        `SELECT id, ${spec.titleCol} AS title FROM ${spec.table} WHERE ${conds}`,
+        `SELECT id, ${spec.titleCol} AS title FROM ${spec.table} WHERE (${conds}) AND ${activeEntitySql(`'${etype}'`, 'id')}`,
         terms.map(t => `%${t}%`),
       );
       for (const r of matchRows as { id: string; title: string }[]) {

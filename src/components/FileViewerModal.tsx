@@ -119,7 +119,10 @@ export function FileViewerModal(props: Props) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[60] flex flex-col bg-black/95"
+      className="mobile-file-viewer fixed inset-0 z-[60] flex flex-col bg-black/95"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview ${name}`}
     >
       {/* ── Toolbar ── */}
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-[#0d0d0d] px-4 py-3">
@@ -136,6 +139,7 @@ export function FileViewerModal(props: Props) {
           <a
             href={src}
             download={name}
+            aria-label={`Download ${name}`}
             className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 font-mono text-[10px] text-gray-300 transition-colors hover:border-white/20 hover:text-white"
           >
             <Download size={11} />
@@ -143,8 +147,9 @@ export function FileViewerModal(props: Props) {
           </a>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
             title="Close (Esc)"
+            aria-label="Close file preview"
           >
             <X size={15} />
           </button>
@@ -183,6 +188,7 @@ export function FileViewerModal(props: Props) {
             <a
               href={src}
               download={name}
+              aria-label={`Download ${name}`}
               className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 font-mono text-sm text-white transition-colors hover:bg-white/15"
             >
               <Download size={14} />

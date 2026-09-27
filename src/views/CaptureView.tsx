@@ -19,10 +19,10 @@ export function CaptureView() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-center pt-4 pb-1">
+      <div className="mobile-capture-tabs flex justify-center pt-4 pb-1">
         <div className="inline-flex rounded-xl border border-gray-200 bg-white p-0.5 shadow-sm">
           <button
-            onClick={() => setCurrentTab('Brain Dump')}
+            onClick={() => setCurrentTab('Brain Dump')} aria-pressed={segment === 'thoughts'}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-[10px] text-[11px] font-mono uppercase tracking-wider font-bold transition-colors ${
               segment === 'thoughts' ? 'bg-[#4648d4] text-white' : 'text-gray-500 hover:text-gray-800'
             }`}
@@ -31,7 +31,7 @@ export function CaptureView() {
             <BookOpen size={12} /> Thoughts
           </button>
           <button
-            onClick={() => setCurrentTab('Journal')}
+            onClick={() => setCurrentTab('Journal')} aria-pressed={segment === 'journal'}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-[10px] text-[11px] font-mono uppercase tracking-wider font-bold transition-colors ${
               segment === 'journal' ? 'bg-[#4648d4] text-white' : 'text-gray-500 hover:text-gray-800'
             }`}

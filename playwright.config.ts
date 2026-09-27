@@ -1,5 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
+const e2eDatabaseUrl = process.env.DATABASE_URL_TEST;
+if (!e2eDatabaseUrl || !new URL(e2eDatabaseUrl).pathname.toLowerCase().includes('test')) {
+  throw new Error('Playwright requires DATABASE_URL_TEST pointing to a database whose name contains "test".');
+}
+
 /**
  * Browser E2E against the production frontend + backend.
  *
@@ -27,7 +32,8 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 60_000,
       env: {
-        DATABASE_URL: 'postgresql://postgres:pgadmin@localhost:5433/marina_test',
+        NODE_ENV: 'test',
+        DATABASE_URL_TEST: e2eDatabaseUrl,
       },
     },
     {

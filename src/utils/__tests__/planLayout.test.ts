@@ -75,6 +75,23 @@ describe('layoutPlan', () => {
     expect(blocks[1]).toMatchObject({ date: '2026-07-07', start_hour: 9, planned_minutes: 2 * 60 });
   });
 
+  it('preserves the scheduler allocation for each task and day', () => {
+    const { blocks, unplaced } = layoutPlan({
+      dayAssignments: [
+        { date: '2026-07-06', task_ids: ['a'], task_minutes: { a: 120 } },
+        { date: '2026-07-07', task_ids: ['a'], task_minutes: { a: 120 } },
+      ],
+      tasks: [task('a', 240)],
+      workStart: 9,
+      workEnd: 18,
+      busy: [],
+    });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map(block => block.planned_minutes)).toEqual([120, 120]);
+    expect(unplaced).toEqual([]);
+  });
+
   it('skips slivers shorter than the minimum block', () => {
     // 10-minute gap between work start and the meeting: unusable
     const busy: BusyInterval[] = [{ date: '2026-07-06', start_hour: 9 + 10 / 60, end_hour: 12 }];

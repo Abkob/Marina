@@ -46,6 +46,7 @@ async function buildPlanningText(type: string, id: string): Promise<string | nul
       gr.length ? `Goal: ${(gr[0] as Record<string, unknown>).title}` : null,
       mr.length ? `Milestone: ${(mr[0] as Record<string, unknown>).title}${(mr[0] as Record<string, unknown>).due_date ? ` (due ${(mr[0] as Record<string, unknown>).due_date})` : ''}` : null,
       `Status: ${t.status} | Priority: ${t.priority} | Kind: ${t.kind}`,
+      t.feel_score != null ? `Feel score: ${t.feel_score}/100 (user's subjective need signal)` : null,
       t.due_date ? `Due: ${t.due_date}` : null,
       est > 0 ? `Estimated: ${est}min | Logged: ${logged}min | Remaining: ${remaining}min` : null,
       blockers.length ? `Blocked by: ${blockers.map((b: Record<string, unknown>) => b.title).join(', ')}` : null,
@@ -147,10 +148,10 @@ async function buildGraphCardText(type: string, id: string): Promise<string | nu
     return `goal | ${g.title} | ${g.status} | ${g.progress}% complete`;
   }
   if (type === 'task') {
-    const { rows } = await query('SELECT title, status, priority FROM tasks WHERE id=$1', [id]);
+    const { rows } = await query('SELECT title, status, priority, feel_score FROM tasks WHERE id=$1', [id]);
     if (!rows.length) return null;
     const t = rows[0] as Record<string, unknown>;
-    return `task | ${t.title} | ${t.status} | ${t.priority} priority`;
+    return `task | ${t.title} | ${t.status} | ${t.priority} priority${t.feel_score != null ? ` | feel ${t.feel_score}/100` : ''}`;
   }
   if (type === 'milestone') {
     const { rows } = await query('SELECT title, completed, due_date FROM goal_milestones WHERE id=$1', [id]);

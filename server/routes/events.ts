@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeEventSql } from '../utils/archiveVisibility.js';
 import { query, buildUpdate } from '../db.js';
 
 const router = Router();
@@ -9,7 +10,7 @@ const EVENT_UPDATE_FIELDS = new Set([
 ]);
 
 router.get('/', async (_req, res) => {
-  const { rows } = await query('SELECT * FROM events ORDER BY day_index ASC, start_hour ASC LIMIT 500');
+  const { rows } = await query(`SELECT * FROM events WHERE ${activeEventSql()} ORDER BY day_index ASC, start_hour ASC LIMIT 500`);
   res.json(rows);
 });
 

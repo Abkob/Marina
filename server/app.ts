@@ -12,6 +12,7 @@ import { notesRouter } from './routes/notes.js';
 import { eventsRouter } from './routes/events.js';
 import { resourcesRouter } from './routes/resources.js';
 import { edgesRouter } from './routes/edges.js';
+import { agentRunsRouter } from './routes/agent-runs.js';
 import { filesRouter } from './routes/files.js';
 import { meetingsRouter } from './routes/meetings.js';
 import { aiRouter } from './routes/ai.js';
@@ -19,6 +20,7 @@ import { deadlinesRouter } from './routes/deadlines.js';
 import { milestonesRouter } from './routes/milestones.js';
 import { schedulePrefsRouter } from './routes/schedule-prefs.js';
 import { workSessionsRouter } from './routes/work-sessions.js';
+import { routinesRouter } from './routes/routines.js';
 import { eventTaskLinksRouter } from './routes/event-task-links.js';
 import { journalRouter } from './routes/journal.js';
 import { embeddingsRouter } from './routes/embeddings.js';
@@ -28,8 +30,19 @@ import { searchRouter } from './routes/search.js';
 import { topicsRouter } from './routes/topics.js';
 import { backupsRouter } from './routes/backups.js';
 import { databaseAtlasRouter } from './routes/database-atlas.js';
+import { obsidianVaultRouter } from './routes/obsidian-vault.js';
+import { researchRouter } from './routes/research.js';
+import { orchestratorRouter } from './routes/orchestrator.js';
+import { usageRouter } from './routes/usage.js';
+import { authRouter } from './routes/auth.js';
+import { cronRouter } from './routes/cron.js';
+import { uploadsRouter } from './routes/uploads.js';
+import { googleWorkspaceOauthRouter, googleWorkspaceRouter } from './routes/google-workspace.js';
 import { EMBED_DIMENSION, EMBED_MODEL } from './embeddingProvider.js';
-import { getProviderSummary } from './config/providers.js';
+import { getProviderSummary, isNvidiaChatModel } from './config/providers.js';
+import { scheduleObsidianVaultSync, shouldSyncObsidianVaultForRequest } from './services/obsidianVaultSync.js';
+import { requireApiAuth } from './utils/auth.js';
+import { isVercelRuntime, runtimeCapabilities } from './runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -43,9 +56,14 @@ export const UPLOADS_DIR = path.join(__dirname, 'uploads');
 export function createApp(): express.Express {
   const app = express();
 
+  const allowedOrigins = new Set([
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    process.env.APP_URL,
+  ].filter((value): value is string => Boolean(value)));
   app.use(cors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-    credentials: false,
+    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+    credentials: true,
   }));
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -53,7 +71,34 @@ export function createApp(): express.Express {
     res.setHeader('Referrer-Policy', 'no-referrer');
     next();
   });
-  app.use(express.json({ limit: '10mb' }));
+  // Vercel Functions reject request bodies above 4.5 MB. File uploads use
+  // direct-to-Blob tokens, so leave a small margin for JSON/API overhead.
+  app.use(express.json({ limit: isVercelRuntime ? '4mb' : '10mb' }));
+  app.use('/api/auth', authRouter);
+  app.use('/api/google/oauth', googleWorkspaceOauthRouter);
+  // The Blob completion callback has no browser cookie. This router performs
+  // authentication internally for token issuance and lets the SDK validate callbacks.
+  app.use('/api/uploads', uploadsRouter);
+  app.get('/api/health/live', (_req, res) => {
+    res.json({ status: 'ok', runtime: runtimeCapabilities().runtime, timestamp: new Date().toISOString() });
+  });
+  app.use('/api', requireApiAuth);
+  app.use('/api/cron', cronRouter);
+  app.get('/api/runtime', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(runtimeCapabilities());
+  });
+  app.use((req, res, next) => {
+    const shouldSync = shouldSyncObsidianVaultForRequest(req.method, req.path);
+    if (shouldSync) {
+      res.on('finish', () => {
+        if (res.statusCode < 400) {
+          scheduleObsidianVaultSync(`${req.method} ${req.path}`);
+        }
+      });
+    }
+    next();
+  });
 
   app.use('/api/goals', goalsRouter);
   app.use('/api/tasks', tasksRouter);
@@ -61,6 +106,7 @@ export function createApp(): express.Express {
   app.use('/api/events', eventsRouter);
   app.use('/api/resources', resourcesRouter);
   app.use('/api/edges', edgesRouter);
+  app.use('/api/agent-runs', agentRunsRouter);
   app.use('/api/task-note-files', filesRouter);
   app.use('/api/meetings', meetingsRouter);
   app.use('/api/ai', aiRouter);
@@ -68,6 +114,7 @@ export function createApp(): express.Express {
   app.use('/api/milestones', milestonesRouter);
   app.use('/api/schedule-prefs', schedulePrefsRouter);
   app.use('/api/work-sessions', workSessionsRouter);
+  app.use('/api/routines', routinesRouter);
   app.use('/api/event-task-links', eventTaskLinksRouter);
   app.use('/api/journal', journalRouter);
   app.use('/api/embeddings', embeddingsRouter);
@@ -77,6 +124,11 @@ export function createApp(): express.Express {
   app.use('/api/topics', topicsRouter);
   app.use('/api/backups', backupsRouter);
   app.use('/api/database-atlas', databaseAtlasRouter);
+  app.use('/api/obsidian-vault', obsidianVaultRouter);
+  app.use('/api/research', researchRouter);
+  app.use('/api/orchestrator', orchestratorRouter);
+  app.use('/api/usage', usageRouter);
+  app.use('/api/google', googleWorkspaceRouter);
 
   // POST /api/entity-summaries/backfill — generate deterministic planning summaries for all entities missing them
   app.post('/api/entity-summaries/backfill', async (_req, res) => {
@@ -101,11 +153,6 @@ export function createApp(): express.Express {
     res.json({ queued, skipped });
   });
 
-  // GET /api/health/live — fast liveness check, no external I/O
-  app.get('/api/health/live', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
-
   // GET /api/health/ready — readiness check: DB connectivity + configured model availability
   app.get('/api/health/ready', async (_req, res) => {
     let db: 'connected' | 'error' = 'error';
@@ -115,19 +162,44 @@ export function createApp(): express.Express {
       db = 'connected';
     } catch { /* db unreachable */ }
 
-    const { validateChatModels } = await import('./ollama.js');
+    const { validateChatModels, getChatCooldownStatus } = await import('./ollama.js');
     const models = await validateChatModels();
+    const chatCooldown = getChatCooldownStatus();
     const warnings: string[] = [];
     if (!models.reachable) warnings.push('Ollama is unreachable — chat is unavailable');
     if (models.primary.status === 'missing') warnings.push(`Configured primary model "${models.primary.model}" is not installed`);
-    if (models.fallback.status === 'missing') warnings.push(`Configured fallback model "${models.fallback.model}" is not installed`);
-    if (models.primary.status === 'cloud') warnings.push(`Primary model "${models.primary.model}" runs on Ollama cloud — prompts leave this machine`);
+    if (models.fallback?.status === 'missing') warnings.push(`Configured fallback model "${models.fallback.model}" is not installed`);
+    if (models.primary.status === 'cloud') {
+      const provider = models.primary.model.startsWith('gemini-')
+        ? 'Gemini API'
+        : isNvidiaChatModel(models.primary.model)
+          ? 'NVIDIA Build API'
+          : 'Ollama cloud';
+      warnings.push(`Primary model "${models.primary.model}" runs via ${provider} — prompts leave this machine`);
+    }
+
+    if (chatCooldown.active) {
+      warnings.push(`Primary model "${models.primary.model}" is temporarily rate-limited until ${chatCooldown.until}`);
+    }
 
     if (db !== 'connected') {
       return res.status(503).json({ status: 'not_ready', db, models, warnings, timestamp: new Date().toISOString() });
     }
     const status = warnings.some(w => w.includes('not installed') || w.includes('unreachable')) ? 'degraded' : 'ready';
-    res.json({ status, db, models: { primary: models.primary, fallback: models.fallback, reachable: models.reachable }, warnings, timestamp: new Date().toISOString() });
+    res.json({
+      status,
+      db,
+      models: {
+        primary: models.primary,
+        nvidia_fallback: models.nvidia_fallback,
+        fallback: models.fallback,
+        available: models.available,
+        reachable: models.reachable,
+      },
+      chat_cooldown: chatCooldown,
+      warnings,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // GET /api/health — liveness + DB + Ollama connectivity check
@@ -499,6 +571,7 @@ export function createApp(): express.Express {
       'ai_action_proposals', 'resource_chunks', 'schedule_day_overrides',
       'chat_sessions', 'chat_messages', 'schema_migrations',
       'topics', 'topic_aliases', 'topic_memberships', 'suggestion_runs',
+      'google_sync_connections', 'google_sync_links',
     ];
     const counts: Record<string, number> = {};
     await Promise.all(

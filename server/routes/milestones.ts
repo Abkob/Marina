@@ -3,6 +3,7 @@ import { query, transaction } from '../db.js';
 import { generateEntitySummary, deleteEntitySummaries } from '../services/summaryGenerator.js';
 import { queueEmbeddingDelete } from '../services/embeddingLifecycle.js';
 import { requireISODate } from '../utils/localDate.js';
+import { runInBackground } from '../utils/background.js';
 
 const router = Router();
 
@@ -35,7 +36,7 @@ router.post('/', async (req, res) => {
     [id, goal_id, title ?? '', description ?? '', due_date ?? null, color ?? '#6366f1', pos, false, now, now],
   );
   res.json({ id });
-  generateEntitySummary('milestone', id).catch(err => console.error('[summary] milestone create:', err));
+  runInBackground(generateEntitySummary('milestone', id), 'milestone create summary');
 });
 
 // PUT /api/milestones/:id
@@ -64,7 +65,7 @@ router.put('/:id', async (req, res) => {
     [...vals, req.params.id],
   );
   res.json(updated[0]);
-  generateEntitySummary('milestone', req.params.id).catch(err => console.error('[summary] milestone update:', err));
+  runInBackground(generateEntitySummary('milestone', req.params.id), 'milestone update summary');
 });
 
 // DELETE /api/milestones/:id
@@ -77,7 +78,7 @@ router.delete('/:id', async (req, res) => {
   });
   res.json({ ok: true });
   // Async cleanup of derived/graph data (fire-and-forget, non-blocking)
-  Promise.all([
+  runInBackground(Promise.all([
     deleteEntitySummaries('milestone', id),
     query('DELETE FROM embedding_jobs WHERE entity_type=$1 AND entity_id=$2', ['milestone', id]),
     query('DELETE FROM embeddings WHERE entity_type=$1 AND entity_id=$2', ['milestone', id]),
@@ -90,7 +91,7 @@ router.delete('/:id', async (req, res) => {
     query("DELETE FROM entity_aliases WHERE entity_type='milestone' AND entity_id=$1", [id]),
     query("DELETE FROM ai_action_proposals WHERE source_type='milestone' AND source_id=$1 AND status='pending'", [id]),
     queueEmbeddingDelete('milestone', id, null),
-  ]).catch(err => console.error('[milestones] delete cleanup:', err));
+  ]), 'milestone delete cleanup');
 });
 
 // PATCH /api/milestones/assign-task

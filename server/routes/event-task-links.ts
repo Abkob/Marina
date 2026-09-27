@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeTaskSql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
 
 const router = Router();
@@ -12,7 +13,7 @@ router.get('/', async (req, res) => {
               t.title as task_title, t.status as task_status, t.goal_id, t.completed
        FROM event_task_links etl
        JOIN tasks t ON t.id = etl.task_id
-       WHERE etl.event_id=$1`,
+       WHERE etl.event_id=$1 AND ${activeTaskSql('etl.task_id')}`,
       [event_id],
     );
     return res.json(rows);
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
               e.day_index, e.start_hour, e.duration_hours, e.week_start
        FROM event_task_links etl
        JOIN events e ON e.id = etl.event_id
-       WHERE etl.task_id=$1`,
+       WHERE etl.task_id=$1 AND ${activeTaskSql('etl.task_id')}`,
       [task_id],
     );
     return res.json(rows);
@@ -36,6 +37,7 @@ router.get('/', async (req, res) => {
             t.title as task_title, t.status as task_status, t.goal_id, t.completed
      FROM event_task_links etl
      JOIN tasks t ON t.id = etl.task_id
+     WHERE ${activeTaskSql('etl.task_id')}
      LIMIT 2000`,
   );
   return res.json(rows);

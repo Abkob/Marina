@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarPlus, Sparkles } from 'lucide-react';
+import { CalendarPlus, PanelRightClose, Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { ScheduleTaskInfo } from '../../api/hooks';
 import type { DBTask } from '../../db/schema';
@@ -22,13 +22,14 @@ function fmtDay(dateStr: string): string {
   return parseLocalDate(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-export function PlanAssistPanel({ suggestions, taskLookup, unestimated, rollupCount, onPlace, onPlaceAll }: {
+export function PlanAssistPanel({ suggestions, taskLookup, unestimated, rollupCount, onPlace, onPlaceAll, onCollapse }: {
   suggestions: PlanSuggestion[];
   taskLookup: Record<string, ScheduleTaskInfo>;
   unestimated: DBTask[];
   rollupCount: number;
   onPlace: (taskId: string, date: string) => Promise<void> | void;
   onPlaceAll: () => Promise<void>;
+  onCollapse?: () => void;
 }) {
   const { navigateToGoal } = useAppStore();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -45,19 +46,31 @@ export function PlanAssistPanel({ suggestions, taskLookup, unestimated, rollupCo
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3">
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-1 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-[11px] font-bold text-gray-700">
           <Sparkles size={12} className="text-[#4648d4]" /> Plan assist
         </p>
-        {suggestions.length > 1 && (
-          <button
-            onClick={placeAll}
-            disabled={busyAll}
-            className="font-mono text-[10px] uppercase text-[#4648d4] hover:underline disabled:opacity-40"
-          >
-            Place all {suggestions.length}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {suggestions.length > 1 && (
+            <button
+              onClick={placeAll}
+              disabled={busyAll}
+              className="font-mono text-[10px] uppercase text-[#4648d4] hover:underline disabled:opacity-40"
+            >
+              Place all {suggestions.length}
+            </button>
+          )}
+          {onCollapse && (
+            <button
+              onClick={onCollapse}
+              className="rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+              title="Collapse Plan assist"
+              aria-label="Collapse Plan assist"
+            >
+              <PanelRightClose size={13} />
+            </button>
+          )}
+        </div>
       </div>
       <p className="mb-2 text-[10px] text-gray-400">
         Days the auto-planner suggests for your unplaced tasks. Nothing moves until you place it.
@@ -70,7 +83,7 @@ export function PlanAssistPanel({ suggestions, taskLookup, unestimated, rollupCo
         {suggestions.map(s => {
           const info = taskLookup[s.taskId];
           return (
-            <div key={s.taskId} className="flex items-center gap-2 rounded-lg border border-gray-100 px-2 py-1.5">
+            <div key={s.taskId} data-testid="schedule-proposal" className="flex items-center gap-2 rounded-lg border border-gray-100 px-2 py-1.5">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-medium text-gray-800" title={info?.title ?? s.taskId}>
                   {info?.title ?? s.taskId}
@@ -82,6 +95,7 @@ export function PlanAssistPanel({ suggestions, taskLookup, unestimated, rollupCo
               <button
                 onClick={() => place(s)}
                 disabled={busyId === s.taskId || busyAll}
+                title="Apply"
                 className="flex shrink-0 items-center gap-1 rounded bg-[#4648d4] px-2 py-1 text-[9px] font-bold uppercase text-white hover:opacity-90 disabled:opacity-40"
               >
                 <CalendarPlus size={10} /> Place

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Crosshair } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { TYPE_META, REL_EXPLAIN, type GraphData, type GraphNode, type GraphEdge } from './types';
 
@@ -70,6 +71,7 @@ function Chip({ node, dimmed, related, hovered, onHover, onClick, onFocus, regis
   const Icon = meta.Icon;
   const done = node.metadata.completed === true || node.metadata.status === 'done';
   return (
+    <div className="flex min-w-0 items-center gap-1">
     <button
       ref={el => registerRef(node.id, el)}
       onMouseEnter={() => onHover(node.id)}
@@ -77,7 +79,7 @@ function Chip({ node, dimmed, related, hovered, onHover, onClick, onFocus, regis
       onClick={() => onClick(node)}
       onContextMenu={e => { if (onFocus) { e.preventDefault(); onFocus(node.id); } }}
       title={`${meta.label}: ${node.label} — click to open · right-click to focus its connections`}
-      className={`flex items-center gap-1.5 w-full text-left px-2 py-1 rounded-lg border text-[11px] leading-snug transition-all ${meta.chip}
+      className={`flex min-w-0 flex-1 items-center gap-1.5 text-left px-2 py-1 rounded-lg border text-[11px] leading-snug transition-all ${meta.chip}
         ${hovered ? 'ring-2 ring-indigo-400 bg-indigo-500/20' : ''}
         ${related && !hovered ? 'ring-1 ring-indigo-400/70' : ''}
         ${dimmed ? 'opacity-25' : 'hover:brightness-125'}`}
@@ -85,6 +87,8 @@ function Chip({ node, dimmed, related, hovered, onHover, onClick, onFocus, regis
       <Icon size={11} className="shrink-0 opacity-70" />
       <span className={`truncate ${done ? 'line-through opacity-60' : ''}`}>{node.label}</span>
     </button>
+    {onFocus && <button onClick={() => onFocus(node.id)} aria-label={`Explore connections for ${node.label}`} className="flex shrink-0 items-center justify-center rounded-lg bg-slate-800 text-indigo-300 md:hidden"><Crosshair size={17} /></button>}
+    </div>
   );
 }
 
@@ -167,7 +171,7 @@ export function GraphBoard({ data, visibleTypes, onFocus }: { data: GraphData; v
     if (n.type === 'goal') return navigateToGoal(rawId);
     if (n.type === 'task') {
       const gid = n.metadata.goal_id as string | undefined;
-      if (gid) { setSelectedGoalId(gid); setFocusedTaskId(rawId); setCurrentTab('Goals'); }
+      if (gid) { navigateToGoal(gid); setFocusedTaskId(rawId); }
       return;
     }
     if (n.type === 'resource') return navigateToResource(rawId);

@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Target, Calendar, Archive, RotateCcw, CheckSquare, Square, Plus, AlertCircle, Clock, Trash2, Milestone } from 'lucide-react';
+import { Target, Calendar, Archive, RotateCcw, CheckSquare, Square, Plus, AlertCircle, Clock, Trash2, MoreHorizontal, ChevronRight, Milestone } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppStore } from '../store/useAppStore';
+import { MobileSheet } from '../components/MobileSheet';
+import { taskContextMap } from '../utils/taskContext';
 import { ProgressRing } from '../components/ProgressRing';
 import { useGoals, useAllGoals, useAllTasks, useInvalidate } from '../api/hooks';
 import { archiveGoal, restoreGoal, deleteGoal } from '../db/queries/goals';
@@ -11,6 +13,7 @@ import { calculateGoalTaskMetrics, computeGoalStatus, getClosestDueTask, type Go
 import { computeGoalTimeStats, projectedFinishDate, formatProjectedDate } from '../utils/goalTimeAnalytics';
 import type { DBGoal, DBTask } from '../db/schema';
 import { DatabaseAtlas } from '../components/DatabaseAtlas';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 
 const STATUS_BG   = { Safe: 'bg-[#10B981]', Watch: 'bg-[#F59E0B]', Risky: 'bg-[#EF4444]' };
 const STATUS_TEXT = { Safe: 'text-[#10B981]', Watch: 'text-[#F59E0B]', Risky: 'text-[#EF4444]' };
@@ -57,6 +60,8 @@ function GoalCard({
   const { setSelectedGoalId, triggerToast, showConfirm } = useAppStore();
   const invalidate = useInvalidate();
   const isArchived = Boolean(goal.archived_at);
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const status = computeGoalStatus(goal, tasks);
   const timeStats = computeGoalTimeStats(tasks);
   const finishProjection = projectedFinishDate(timeStats);
@@ -102,6 +107,24 @@ function GoalCard({
     );
   };
 
+  const openGoal = () => setSelectedGoalId(goal.id);
+
+  if (isMobile) return <article className="border-b border-slate-100 py-4">
+    <div className="flex items-start gap-2"><button onClick={openGoal} aria-label={'Open goal ' + goal.title} className="min-w-0 flex-1 text-left">
+      <div className="flex items-center gap-2"><h3 className="min-w-0 flex-1 text-base font-semibold leading-6 text-slate-900">{goal.title}</h3><ChevronRight size={16} className="shrink-0 text-slate-300" /></div>
+      <p className="mt-1 text-xs text-slate-500">{metrics.progress}% complete · {finishEstimate.caption} {finishEstimate.label}</p>
+      <div className="mt-3 h-1 overflow-hidden rounded-full bg-slate-100"><div className={'h-full rounded-full ' + STATUS_BG[status]} style={{width: Math.min(100, Math.max(0, metrics.progress)) + '%'}} /></div>
+      {closestDue && <p className="mt-2 truncate text-xs text-amber-700">{closestDue.daysUntil < 0 ? 'Overdue' : closestDue.daysUntil === 0 ? 'Due today' : 'Coming up'} · {closestDue.task.title}{taskContextMap(tasks).get(closestDue.task.id) ? ' · ' + taskContextMap(tasks).get(closestDue.task.id) : ''}</p>}
+      {nextAction && !closestDue && <p className="mt-2 truncate text-xs text-slate-500">Next · {nextAction.title}</p>}
+    </button><button onClick={() => setActionsOpen(true)} aria-label={'Options for goal ' + goal.title} aria-haspopup="dialog" className="mobile-icon-button -mr-2 -mt-1 text-slate-400"><MoreHorizontal size={20} /></button></div>
+    {actionsOpen && <MobileSheet title={goal.title} onClose={() => setActionsOpen(false)}>
+      <button onClick={openGoal} className="min-h-14 w-full text-left text-sm font-medium">Open goal</button>
+      {nextAction && <button onClick={handleToggleNextAction} className="min-h-14 w-full text-left text-sm text-emerald-700">{nextAction.completed ? 'Reopen' : 'Complete'}: {nextAction.title}</button>}
+      <button onClick={event => { handleArchiveToggle(event); setActionsOpen(false); }} className="min-h-14 w-full text-left text-sm text-slate-600">{isArchived ? 'Restore goal' : 'Archive goal'}</button>
+      {isArchived && <button onClick={event => { handleDelete(event); setActionsOpen(false); }} className="min-h-14 w-full text-left text-sm text-red-600">Delete permanently</button>}
+    </MobileSheet>}
+  </article>;
+
   return (
     <motion.div
       layout
@@ -110,8 +133,17 @@ function GoalCard({
       exit={{ opacity: 0, y: 8 }}
       whileHover={{ y: -3 }}
       transition={{ duration: 0.2 }}
-      onClick={() => setSelectedGoalId(goal.id)}
-      className={`bg-white rounded-xl p-5 border border-gray-100 hover:border-gray-200 shadow-card hover:shadow-card-hover relative overflow-hidden group cursor-pointer flex flex-col h-full ${isArchived ? 'opacity-75' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open goal ${goal.title}`}
+      onClick={openGoal}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openGoal();
+        }
+      }}
+      className={`bg-white rounded-xl p-5 border border-gray-100 hover:border-gray-200 shadow-card hover:shadow-card-hover relative overflow-hidden group cursor-pointer flex flex-col h-full focus:outline-none focus:ring-2 focus:ring-[#4648d4]/30 ${isArchived ? 'opacity-75' : ''}`}
     >
       <div className={`absolute top-0 left-0 w-full h-1 ${STATUS_BG[status]}`} />
 
@@ -131,16 +163,18 @@ function GoalCard({
           {isArchived && (
             <button
               onClick={handleDelete}
-              className="text-gray-300 hover:text-red-400 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-red-50 hover:text-red-400"
               title="Delete goal permanently"
+              aria-label={`Delete goal ${goal.title} permanently`}
             >
               <Trash2 size={13} />
             </button>
           )}
           <button
             onClick={handleArchiveToggle}
-            className="text-gray-300 hover:text-[#4648d4] transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-indigo-50 hover:text-[#4648d4]"
             title={isArchived ? 'Restore goal' : 'Archive goal'}
+            aria-label={isArchived ? `Restore goal ${goal.title}` : `Archive goal ${goal.title}`}
           >
             {isArchived ? <RotateCcw size={13} /> : <Archive size={13} />}
           </button>
@@ -183,19 +217,22 @@ function GoalCard({
       <div className="border-t border-gray-100 pt-4" onClick={(e) => e.stopPropagation()}>
         <p className="font-mono text-[9px] text-gray-400 uppercase tracking-widest mb-2 font-bold">Next Action</p>
         {nextAction ? (
-          <div
+          <button
+            type="button"
             onClick={handleToggleNextAction}
-            className="flex items-start gap-2.5 bg-[#f8f9fa] p-2 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+            className="flex w-full items-start gap-2.5 rounded-lg bg-[#f8f9fa] p-2 text-left transition-colors hover:bg-gray-100"
+            aria-pressed={nextAction.completed}
+            aria-label={`${nextAction.completed ? 'Mark incomplete' : 'Mark complete'}: ${nextAction.title}`}
           >
-            <button className="shrink-0 mt-0.5 text-gray-400 hover:text-black transition-colors">
+            <span className="shrink-0 mt-0.5 text-gray-400 transition-colors">
               {nextAction.completed
                 ? <CheckSquare size={14} className="text-[#4648d4]" />
                 : <Square size={14} />}
-            </button>
+            </span>
             <p className={`text-xs text-gray-700 leading-normal ${nextAction.completed ? 'line-through text-gray-400' : ''}`}>
               {nextAction.title}
             </p>
-          </div>
+          </button>
         ) : (
           <p className="text-xs text-gray-400 italic">No next action set.</p>
         )}
@@ -206,6 +243,7 @@ function GoalCard({
           <button
             onClick={(e) => { e.stopPropagation(); setSelectedGoalId(goal.id); }}
             className="flex items-center gap-1.5 text-[11px] font-mono text-gray-400 hover:text-[#4648d4] transition-colors group/ms"
+            aria-label={`Add milestone to ${goal.title}`}
           >
             <span className="w-5 h-5 rounded-md bg-gray-100 group-hover/ms:bg-[#EEF2FF] flex items-center justify-center transition-colors">
               <Milestone size={11} className="group-hover/ms:text-[#4648d4]" />
@@ -220,7 +258,8 @@ function GoalCard({
 
 // ─── Goals Dashboard ──────────────────────────────────────────────────────────
 export function GoalsDashboard() {
-  const { goalsFilter, setGoalsFilter, searchQuery, openNewGoalModal } = useAppStore();
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const { goalsFilter, setGoalsFilter, searchQuery, setSearchQuery, openNewGoalModal } = useAppStore();
 
   // useGoals() returns ACTIVE goals only (server-side filter). The Archived
   // tab needs the full set — without useAllGoals it was permanently empty.
@@ -260,19 +299,25 @@ export function GoalsDashboard() {
 
   return (
     <div className="max-w-[1480px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+      {isMobile ? <div className="mb-4 flex items-center justify-between gap-3">
+        <select aria-label="Goal status" value={goalsFilter} onChange={event => setGoalsFilter(event.target.value as typeof goalsFilter)} className="min-h-11 rounded-xl bg-slate-50 px-3 text-sm font-semibold text-slate-700">
+          <option value="Active">Active goals</option><option value="Completed">Completed goals</option><option value="Archived">Archived goals</option>
+        </select>
+        <button onClick={() => openNewGoalModal()} aria-label="Create new goal" className="flex min-h-11 items-center gap-1 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white"><Plus size={18} />New</button>
+      </div> : <div className="mobile-goals-header flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
           <h2 className="font-headline text-2xl font-bold text-black mb-1">Goals</h2>
           <p className="text-sm text-gray-500 max-w-xl">
-            Bird's-eye view of your current trajectories. Keep your primary objectives in focus.
+            Your projects and next steps.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="mobile-goal-filters flex items-center gap-3">
           <div className="flex items-center gap-1.5 bg-[#f3f4f5] rounded-full p-1 border border-gray-200">
             {(['Active', 'Completed', 'Archived'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setGoalsFilter(f)}
+                aria-pressed={goalsFilter === f}
                 className={`px-3 py-1 font-mono text-xs uppercase tracking-wider rounded-full transition-all ${
                   goalsFilter === f ? 'bg-white text-black font-bold shadow-sm' : 'text-gray-400 hover:text-black'
                 }`}
@@ -283,14 +328,16 @@ export function GoalsDashboard() {
           </div>
           <button
             onClick={() => openNewGoalModal()}
-            className="bg-black text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:scale-[1.03] transition-all active:scale-[0.98]"
+            aria-label="Create new goal"
+            className="mobile-goal-create bg-black text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md hover:scale-[1.03] transition-all active:scale-[0.98]"
           >
-            <Plus size={18} />
+            <Plus size={18} /><span className="md:hidden">New</span>
           </button>
         </div>
-      </div>
+      </div>}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <p className="mb-4 text-xs text-slate-500 md:hidden">{goalsFilter === 'Archived' ? `${archivedGoals.length} archived goals` : `${total} goals · ${needsAttn + atRisk} need attention`}</p>
+      <div className="mobile-goal-stats hidden grid-cols-2 md:grid md:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Total Goals',     value: total,     color: 'text-black' },
           { label: 'On Track',        value: onTrack,   color: STATUS_TEXT.Safe },
@@ -304,19 +351,20 @@ export function GoalsDashboard() {
         ))}
       </div>
 
+      <label className="mb-4 block md:hidden"><span className="sr-only">Find a goal</span><input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Find a goal…" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800" /></label>
       {filtered.length === 0 ? (
         <div className="text-center py-16 bg-[#f8f9fa] rounded-xl border border-dashed border-gray-200">
           <Target size={36} className="text-gray-300 mx-auto mb-3 animate-pulse" />
           <p className="text-gray-800 font-semibold mb-1">No goals match selection filter</p>
           <p className="text-xs text-gray-400 max-w-xs mx-auto mb-4">
-            Capture a new strategic goal using the button below.
+            Try a different filter or create a goal.
           </p>
-          <button onClick={() => openNewGoalModal()} className="bg-black text-white text-xs font-mono py-2 px-4 rounded-xl font-bold shadow-sm">
-            Initialize New Goal
+          <button onClick={() => openNewGoalModal()} className="bg-black text-white text-xs font-mono py-2 px-4 rounded-xl font-bold shadow-sm" aria-label="Create new goal">
+            Create a goal
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 md:gap-6">
           {filtered.map((g) => (
             <GoalCard
               key={g.id}
@@ -332,7 +380,7 @@ export function GoalsDashboard() {
         </div>
       )}
 
-      <DatabaseAtlas />
+      {!isMobile && <DatabaseAtlas />}
     </div>
   );
 }

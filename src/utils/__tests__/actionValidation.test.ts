@@ -11,6 +11,54 @@ describe('validateModelActions — strict model output validation', () => {
     expect(a.params.title).toBe('Write spec');
   });
 
+  it('accepts a daily cap for plan_schedule actions', () => {
+    const [action] = validateModelActions([{
+      id: 'a1',
+      type: 'plan_schedule',
+      description: 'Spread the task across days',
+      params: {
+        task_id: 'task-1',
+        from_date: '2026-07-26',
+        to_date: '2026-08-30',
+        max_daily_minutes: 120,
+      },
+    }]);
+
+    expect(action.rejected_reason).toBeUndefined();
+    expect(action.params.max_daily_minutes).toBe(120);
+  });
+
+  it('accepts a model-selected move of existing schedule records', () => {
+    const [action] = validateModelActions([{
+      id: 'a1',
+      type: 'move_schedule_items',
+      description: 'Move everything currently on Sunday to Monday',
+      params: {
+        source_date: '2026-07-26',
+        target_date: '2026-07-27',
+        entity_types: ['tasks', 'deadlines', 'events'],
+        preserve_event_times: true,
+      },
+    }]);
+
+    expect(action.rejected_reason).toBeUndefined();
+    expect(action.params.source_date).toBe('2026-07-26');
+    expect(action.params.target_date).toBe('2026-07-27');
+  });
+
+  it('rejects a semantic move whose source and target are the same day', () => {
+    const [action] = validateModelActions([{
+      type: 'move_schedule_items',
+      params: {
+        source_date: '2026-07-27',
+        target_date: '2026-07-27',
+        entity_types: ['events'],
+        preserve_event_times: true,
+      },
+    }]);
+    expect(action.rejected_reason).toContain('must differ');
+  });
+
   it('rejects unknown action types', () => {
     const [a] = validateModelActions([
       { id: 'a1', type: 'delete_all_data', params: {} },
@@ -35,9 +83,36 @@ describe('validateModelActions — strict model output validation', () => {
 
   it('rejects out-of-range estimated_minutes', () => {
     const [a] = validateModelActions([
-      { id: 'a1', type: 'create_task', params: { title: 'x', estimated_minutes: 99999 } },
+      { id: 'a1', type: 'create_task', params: { title: 'x', estimated_minutes: 999999 } },
     ]);
     expect(a.rejected_reason).toBeTruthy();
+  });
+
+  it('accepts estimates longer than 24 hours for multi-session tasks', () => {
+    const [action] = validateModelActions([
+      { id: 'a1', type: 'update_task', params: { task_id: 'task-1', estimated_minutes: 60 * 60 } },
+    ]);
+    expect(action.rejected_reason).toBeUndefined();
+    expect(action.params.estimated_minutes).toBe(3600);
+  });
+
+  it('normalizes safe update_task aliases emitted from planning context', () => {
+    const [action] = validateModelActions([{
+      id: 'a1',
+      type: 'update_task',
+      params: {
+        task_id: 'task-1',
+        deadline: '2026-08-30',
+        estimated_minutes: 3600,
+        remaining_minutes: 3600,
+      },
+    }]);
+    expect(action.rejected_reason).toBeUndefined();
+    expect(action.params).toEqual({
+      task_id: 'task-1',
+      due_date: '2026-08-30',
+      estimated_minutes: 3600,
+    });
   });
 
   it('rejects invalid enum values for priority/status', () => {
@@ -71,6 +146,62 @@ describe('validateModelActions — strict model output validation', () => {
     ]);
     expect(out[0].id).toBe('a1');
     expect(out[1].id).toBe('a2');
+  });
+
+  it('accepts a compound goal creation with starter tasks', () => {
+    const [a] = validateModelActions([
+      {
+        id: 'a1',
+        type: 'create_goal_with_tasks',
+        description: 'Create Research Goals with first task',
+        params: {
+          title: 'Research Goals',
+          start_date: '2026-07-09',
+          tasks: [
+            {
+              title: 'Talk to Professor Joseph Constantine',
+              due_date: '2026-07-13',
+              priority: 'medium',
+            },
+          ],
+        },
+      },
+    ]);
+    expect(a.rejected_reason).toBeUndefined();
+    expect(a.type).toBe('create_goal_with_tasks');
+    expect(a.params.title).toBe('Research Goals');
+    expect(Array.isArray(a.params.tasks)).toBe(true);
+  });
+
+  it('accepts a bounded task breakdown with concrete child tasks', () => {
+    const [a] = validateModelActions([{
+      id: 'a1',
+      type: 'break_down_task',
+      description: 'Break the report into next steps',
+      params: {
+        parent_task_id: 'task-1',
+        tasks: [
+          { title: 'Collect source material', estimated_minutes: 45 },
+          { title: 'Draft the outline', estimated_minutes: 30, due_date: '2026-08-01' },
+        ],
+      },
+    }]);
+    expect(a.rejected_reason).toBeUndefined();
+    expect(a.type).toBe('break_down_task');
+    expect(a.params.parent_task_id).toBe('task-1');
+    expect(a.params.tasks).toHaveLength(2);
+  });
+
+  it('rejects a breakdown with fewer than two child tasks', () => {
+    const [a] = validateModelActions([{
+      id: 'a1',
+      type: 'break_down_task',
+      params: {
+        parent_task_id: 'task-1',
+        tasks: [{ title: 'Only one step' }],
+      },
+    }]);
+    expect(a.rejected_reason).toBeTruthy();
   });
 
   it('rejects empty titles', () => {

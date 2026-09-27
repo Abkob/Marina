@@ -1,10 +1,16 @@
+import { usePersistentDraft } from '../hooks/usePersistentDraft';
+import { MobileSheet } from '../components/MobileSheet';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
+import { taskContextMap } from '../utils/taskContext';
+import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Circle, Clock, FileText, Paperclip, Play, Plus, Search,
   Square, Timer, Trash2, Upload, X,
 } from 'lucide-react';
 import {
-  useAllTasks, useCreateWorkSession, useDeleteWorkSession, useGoals,
+  useAllTasks, useCreateWorkSession, useDeleteWorkSession, useAllGoals,
   useInvalidate, useNoteFiles, useTask, useTaskNotes, useTaskWorkSessions,
 } from '../api/hooks';
 import { EntityTopicChips } from '../components/EntityTopicChips';
@@ -14,16 +20,11 @@ import { useAppStore } from '../store/useAppStore';
 import type { DBTask, DBTaskNote, DBTaskNoteFile } from '../db/schema';
 import { addTaskNote, deleteTaskNote, toggleTask, touchTask } from '../db/queries/tasks';
 import { addNoteFile, deleteNoteFile } from '../db/queries/noteFiles';
-import { formatTaskTime, getTaskEstimatedMinutes } from '../utils/taskTime';
+import { formatTaskTime, getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
 import { getEffectiveTaskDueDate, getInheritedTaskDueDate } from '../utils/taskDates';
-
-const TIMER_KEY = 'marina-work-active-timer';
-
-type ActiveTimer = {
-  taskId: string;
-  startedAt: string;
-  notes: string;
-};
+import { getWorkTasks } from '../utils/taskTree';
+import { readActiveWorkTimer, writeActiveWorkTimer, WORK_TIMER_STORAGE_KEY, type ActiveWorkTimer } from '../utils/workTimer';
+import { apiPost } from '../utils/apiFetch';
 
 function formatStopwatch(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -64,10 +65,11 @@ function FileChip({ file, onView }: { file: DBTaskNoteFile; onView: () => void }
         onClick={isViewable ? onView : undefined}
         className={`min-w-0 truncate font-medium ${isViewable ? 'text-gray-700 hover:text-[#4648d4]' : 'text-gray-500'}`}
         title={file.name}
+        aria-label={isViewable ? `Open file ${file.name}` : file.name}
       >
         {file.name}
       </button>
-      <button onClick={remove} className="text-gray-300 opacity-0 transition-opacity hover:text-red-400 group-hover/file:opacity-100">
+      <button onClick={remove} className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-400 group-hover/file:opacity-100 focus:opacity-100" aria-label={`Remove file ${file.name}`}>
         <X size={10} />
       </button>
     </span>
@@ -91,7 +93,7 @@ function WorkNoteItem({
         <time className="font-mono text-[9px] uppercase tracking-widest text-gray-300">
           {formatSessionDate(note.created_at)} {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
         </time>
-        <button onClick={onDelete} className="text-gray-200 opacity-0 transition-opacity hover:text-red-400 group-hover/note:opacity-100">
+        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-200 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-400 group-hover/note:opacity-100 focus:opacity-100" aria-label="Delete work note">
           <Trash2 size={12} />
         </button>
       </div>
@@ -110,44 +112,62 @@ function WorkNoteItem({
 }
 
 export function WorkView() {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const {
     workTaskId,
     setWorkTaskId,
     triggerToast,
     showConfirm,
+    setCurrentTab,
   } = useAppStore();
   const invalidate = useInvalidate();
-  const { data: allTasks = [] } = useAllTasks();
-  const { data: goals = [] } = useGoals();
+  const queryClient = useQueryClient();
+  const { data: taskData, isPlaceholderData: tasksPlaceholder } = useAllTasks();
+  const { data: goalData, isPlaceholderData: goalsPlaceholder } = useAllGoals();
+  const allTasks = taskData ?? [];
+  const goals = goalData ?? [];
+  const tasksReady = taskData !== undefined && goalData !== undefined && !tasksPlaceholder && !goalsPlaceholder;
   const { data: selectedTask } = useTask(workTaskId);
   const { data: notes = [] } = useTaskNotes(workTaskId);
   const { data: sessions = [] } = useTaskWorkSessions(workTaskId);
   const createSession = useCreateWorkSession();
   const deleteSession = useDeleteWorkSession();
 
-  const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(() => {
-    try {
-      const raw = localStorage.getItem(TIMER_KEY);
-      return raw ? JSON.parse(raw) as ActiveTimer : null;
-    } catch {
-      return null;
-    }
-  });
+  const [activeTimer, setActiveTimer] = useState<ActiveWorkTimer | null>(readActiveWorkTimer);
   const [nowMs, setNowMs] = useState(Date.now());
   const [timerNotes, setTimerNotes] = useState(activeTimer?.notes ?? '');
+  const [savingTimer, setSavingTimer] = useState(false);
+  const stoppingTimerRef = useRef(false);
+  const [adjustRoutineTime, setAdjustRoutineTime] = useState(false);
+  const [routineMinutesToSave, setRoutineMinutesToSave] = useState('');
+  const [routineTimeError, setRoutineTimeError] = useState('');
   const [manualMinutes, setManualMinutes] = useState('');
   const [manualNote, setManualNote] = useState('');
   const [manualWhen, setManualWhen] = useState(() => toDateTimeLocal(new Date()));
-  const [journalDraft, setJournalDraft] = useState('');
+  const [journalDraft, setJournalDraft] = usePersistentDraft(`work:${workTaskId ?? 'none'}`);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [viewingFile, setViewingFile] = useState<DBTaskNoteFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (activeTimer) localStorage.setItem(TIMER_KEY, JSON.stringify(activeTimer));
-    else localStorage.removeItem(TIMER_KEY);
+    writeActiveWorkTimer(activeTimer);
   }, [activeTimer]);
+
+  useEffect(() => {
+    setAdjustRoutineTime(false);
+    setRoutineMinutesToSave('');
+    setRoutineTimeError('');
+  }, [activeTimer?.sessionId, activeTimer?.taskId]);
+
+  useEffect(() => {
+    const syncTimer = (event: StorageEvent) => {
+      if (event.key === WORK_TIMER_STORAGE_KEY) setActiveTimer(readActiveWorkTimer());
+    };
+    window.addEventListener('storage', syncTimer);
+    return () => window.removeEventListener('storage', syncTimer);
+  }, []);
 
   useEffect(() => {
     if (!activeTimer) return;
@@ -156,57 +176,119 @@ export function WorkView() {
   }, [activeTimer]);
 
   const goalById = useMemo(() => new Map(goals.map(g => [g.id, g])), [goals]);
+  const workTasks = useMemo(() => tasksReady ? getWorkTasks(allTasks, goals) : [], [allTasks, goals, tasksReady]);
+  const contexts = useMemo(() => taskContextMap(workTasks, goals), [workTasks, goals]);
   const taskOptions = useMemo(() => {
-    return [...allTasks]
-      .filter(t => t.kind !== 'critical_path')
+    return [...workTasks]
       .sort((a, b) => {
         const ap = a.status === 'in_progress' ? 0 : a.completed ? 2 : 1;
         const bp = b.status === 'in_progress' ? 0 : b.completed ? 2 : 1;
         if (ap !== bp) return ap - bp;
         return (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || a.title.localeCompare(b.title);
       });
-  }, [allTasks]);
+  }, [workTasks]);
 
   useEffect(() => {
-    if (workTaskId || taskOptions.length === 0) return;
+    if (!tasksReady || taskOptions.some(task => task.id === workTaskId)) return;
     const starter = taskOptions.find(t => t.status === 'in_progress' && !t.completed) ?? taskOptions.find(t => !t.completed);
-    if (starter) setWorkTaskId(starter.id);
-  }, [workTaskId, taskOptions, setWorkTaskId]);
+    const nextId = starter?.id ?? null;
+    if (nextId !== workTaskId) setWorkTaskId(nextId);
+  }, [workTaskId, taskOptions, setWorkTaskId, tasksReady]);
 
-  const currentTask = selectedTask ?? taskOptions.find(t => t.id === workTaskId) ?? null;
+  const eligibleTask = taskOptions.find(t => t.id === workTaskId);
+  const currentTask = eligibleTask ? (selectedTask?.id === workTaskId ? selectedTask : eligibleTask) : null;
   const timerTask = activeTimer ? allTasks.find(t => t.id === activeTimer.taskId) ?? null : null;
+  const activeRoutine = activeTimer?.routineId ? activeTimer : null;
+  const timerTitle = activeRoutine?.routineTitle ?? workTasks.find(task => task.id === activeTimer?.taskId)?.title ?? 'your task';
   const currentGoal = currentTask?.goal_id ? goalById.get(currentTask.goal_id) ?? null : null;
   const effectiveDueDate = currentTask ? getEffectiveTaskDueDate(currentTask, allTasks) : null;
   const inheritedDueDate = currentTask ? getInheritedTaskDueDate(currentTask, allTasks) : null;
-  const totalLogged = sessions.reduce((sum, s) => sum + (s.minutes ?? 0), 0);
-  const estimated = currentTask ? getTaskEstimatedMinutes(currentTask) : null;
-  const progress = estimated ? Math.min(100, Math.round((totalLogged / estimated) * 100)) : null;
+  const directLogged = sessions.reduce((sum, s) => sum + (s.minutes ?? 0), 0);
+  const actualRollup = currentTask ? getRolledUpActualTime(currentTask, allTasks) : null;
+  const totalLogged = actualRollup?.minutes ?? directLogged;
+  const estimated = currentTask ? getRolledUpTime(currentTask, allTasks).minutes : null;
+  const progress = estimated ? Math.round((totalLogged / estimated) * 100) : null;
 
   const startTimer = async () => {
     if (!currentTask || activeTimer) return;
-    await touchTask(currentTask.id).catch(() => {});
+    const existingTimer = readActiveWorkTimer();
+    if (existingTimer) {
+      setActiveTimer(existingTimer);
+      triggerToast('A focus timer is already running. Stop it before starting another.', 'info');
+      return;
+    }
     const next = { taskId: currentTask.id, startedAt: new Date().toISOString(), notes: timerNotes.trim() };
+    writeActiveWorkTimer(next);
     setActiveTimer(next);
     setTimerNotes('');
     triggerToast('Timer started.', 'success');
+    await touchTask(currentTask.id).catch(() => {});
   };
 
   const stopTimer = async () => {
-    if (!activeTimer) return;
+    if (!activeTimer || stoppingTimerRef.current) return;
     const started = new Date(activeTimer.startedAt);
     const ended = new Date();
-    const minutes = Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60_000));
-    await createSession.mutateAsync({
-      task_id: activeTimer.taskId,
-      goal_id: timerTask?.goal_id ?? null,
-      started_at: started.toISOString(),
-      ended_at: ended.toISOString(),
-      minutes,
-      notes: activeTimer.notes || undefined,
-      source: 'timer',
+    const elapsedMinutes = Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60_000));
+    let minutes = elapsedMinutes;
+    if (activeTimer.routineId && (adjustRoutineTime || elapsedMinutes > 1440)) {
+      const actualMinutes = Number(routineMinutesToSave);
+      if (!routineMinutesToSave || !Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 1440
+        || actualMinutes > Math.ceil((ended.getTime() - started.getTime()) / 60_000) + 1) {
+        setAdjustRoutineTime(true);
+        setRoutineTimeError('Enter the minutes you actually focused: 1–1440, no more than the elapsed session. Your timer has not been discarded.');
+        return;
+      }
+      minutes = actualMinutes;
+    }
+    setRoutineTimeError('');
+    stoppingTimerRef.current = true;
+    setSavingTimer(true);
+    try {
+      let savedMinutes = minutes;
+      if (activeTimer.routineId) {
+        const saved = await apiPost<{ minutes: number }>(`/api/routines/${encodeURIComponent(activeTimer.routineId)}/sessions`, {
+          id: activeTimer.sessionId,
+          date: activeTimer.routineDate,
+          started_at: started.toISOString(),
+          ended_at: ended.toISOString(),
+          minutes,
+          notes: activeTimer.notes || undefined,
+        });
+        savedMinutes = saved.minutes;
+        for (const key of ['routines', 'routine-entries', 'schedule-preview', 'work-sessions', 'work-session-stats']) {
+          void queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      } else {
+        await createSession.mutateAsync({
+          task_id: activeTimer.taskId,
+          goal_id: timerTask?.goal_id ?? null,
+          started_at: started.toISOString(),
+          ended_at: ended.toISOString(),
+          minutes,
+          notes: activeTimer.notes || undefined,
+          source: 'timer',
+        });
+      }
+      writeActiveWorkTimer(null);
+      setActiveTimer(null);
+      triggerToast(`Logged ${formatTaskTime(savedMinutes)}${activeTimer.routineId ? ' to your routine' : ''}.`, 'success');
+    } catch (error) {
+      triggerToast(`Time not saved. Your timer is still available; try Stop again. ${error instanceof Error ? error.message : ''}`.trim(), 'error');
+    } finally {
+      stoppingTimerRef.current = false;
+      setSavingTimer(false);
+    }
+  };
+
+  const discardRoutineTimer = () => {
+    if (!activeTimer?.routineId || stoppingTimerRef.current) return;
+    showConfirm('Discard this unsaved routine timer? No time from this timer will be logged. Previously saved sessions and routine history will stay unchanged.', () => {
+      if (stoppingTimerRef.current) return;
+      writeActiveWorkTimer(null);
+      setActiveTimer(null);
+      triggerToast('Unsaved timer discarded. Previously saved time is unchanged.', 'info');
     });
-    setActiveTimer(null);
-    triggerToast(`Logged ${formatTaskTime(minutes)}.`, 'success');
   };
 
   const logManualTime = async () => {
@@ -271,17 +353,18 @@ export function WorkView() {
   };
 
   const elapsed = activeTimer ? nowMs - new Date(activeTimer.startedAt).getTime() : 0;
+  const routineTimerTooLong = Boolean(activeRoutine) && Math.round(elapsed / 60_000) > 1440;
 
   return (
-    <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-4 py-6 md:px-10">
-      <header className="flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between">
+    <div className="mobile-work mx-auto flex max-w-[1180px] flex-col gap-5 px-4 py-6 md:px-10">
+      <header className={`work-page-header ${activeTimer ? 'work-timer-active' : ''} flex flex-col gap-3 border-b border-gray-100 pb-4 md:flex-row md:items-end md:justify-between`}>
         <div>
           <div className="mb-1 flex items-center gap-2">
             <Timer size={18} className="text-[#4648d4]" />
             <h1 className="font-headline text-2xl font-black text-gray-950">Work</h1>
           </div>
           <p className="text-xs text-gray-400">
-            {activeTimer && timerTask ? `Recording ${timerTask.title}` : 'Pick a task and start logging.'}
+            {activeTimer ? `Recording ${timerTitle}` : 'Pick a task, or start a routine from Schedule.'}
           </p>
         </div>
         {activeTimer && (
@@ -293,30 +376,68 @@ export function WorkView() {
             </div>
             <button
               onClick={stopTimer}
-              className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-950 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-gray-800"
+              disabled={savingTimer}
+              aria-label="Stop active timer and log time"
+              className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-950 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-50"
             >
-              <Square size={12} /> Stop
+              <Square size={12} /> {savingTimer ? 'Saving…' : 'Stop'}
             </button>
           </div>
         )}
       </header>
 
+      <button onClick={() => setTaskPickerOpen(open => !open)} aria-haspopup={isMobile ? 'dialog' : undefined} aria-expanded={taskPickerOpen} className="flex w-full items-center justify-between gap-3 py-1 text-left text-sm font-medium text-slate-500 lg:hidden"><span>{currentTask ? 'Switch task' : 'Choose a task'}</span><Search size={18} /></button>
+      {isMobile && taskPickerOpen && <MobileSheet title="Choose a task" onClose={() => setTaskPickerOpen(false)}><TaskTree tasks={workTasks} goals={goals} mode="select" includeCriticalPath selectedTaskId={currentTask?.id} onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }} searchPlaceholder="Find a task or goal…" /></MobileSheet>}
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-        <aside className="min-w-0">
-          <div className="sticky top-20 max-h-[calc(100vh-140px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
-            <TaskTree
-              tasks={allTasks}
-              goals={goals}
-              mode="select"
-              selectedTaskId={currentTask?.id ?? null}
-              onSelect={task => setWorkTaskId(task.id)}
-              searchPlaceholder="Find a task or goal…"
-            />
+        {!isMobile && <aside id="work-task-picker" className={taskPickerOpen || (!currentTask && !activeRoutine) ? 'min-w-0 block' : 'min-w-0 hidden lg:block'}>
+          <div className="mobile-work-task-picker lg:sticky lg:top-20 lg:max-h-[calc(100vh-140px)] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3">
+            <TaskTree tasks={workTasks} goals={goals} mode="select" includeCriticalPath selectedTaskId={activeRoutine ? null : currentTask?.id ?? null} onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }} searchPlaceholder="Find a task or goal…" />
           </div>
-        </aside>
+        </aside>}
 
-        <main className="min-w-0 space-y-5">
-          {!currentTask ? (
+        <div className="min-w-0 space-y-5">
+          {activeRoutine ? (
+            <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-sm sm:p-7" aria-label="Active routine focus session">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
+                Routine · {activeRoutine.goalId ? goalById.get(activeRoutine.goalId)?.title ?? 'Linked goal' : 'Standalone'}
+              </p>
+              <h2 className="font-headline text-2xl font-black text-gray-950">{activeRoutine.routineTitle}</h2>
+              <p className="mt-2 text-sm text-gray-600">Session for {activeRoutine.routineDate}. Your timer keeps running if you leave this page.</p>
+              <p className="my-6 font-mono text-4xl font-black tabular-nums text-indigo-950" aria-label="Routine elapsed time">{formatStopwatch(elapsed)}</p>
+              <label className="block text-sm font-semibold text-gray-800" htmlFor="routine-focus-notes">What are you reviewing or practising?</label>
+              <textarea
+                id="routine-focus-notes"
+                value={activeRoutine.notes}
+                disabled={savingTimer}
+                onChange={event => setActiveTimer(timer => timer ? { ...timer, notes: event.target.value } : timer)}
+                placeholder="Optional notes for this session"
+                className="mt-2 min-h-24 w-full resize-y rounded-xl border border-indigo-100 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
+              />
+              <p className="mt-3 text-xs leading-relaxed text-gray-600">Stopping saves time toward this day's routine. A minutes target is complete only when enough time is logged. For problems, pages or sessions, use “Done today” in Schedule when you finish your target.</p>
+              <div className="mt-4 rounded-xl border border-indigo-100 bg-white p-3">
+                {routineTimerTooLong && <p className="mb-3 text-sm text-amber-800">This timer has run for over 24 hours. If you forgot it running, enter the time you actually focused before saving. Nothing will be trimmed automatically.</p>}
+                {!routineTimerTooLong && <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={adjustRoutineTime} disabled={savingTimer} onChange={event => { setAdjustRoutineTime(event.target.checked); setRoutineTimeError(''); }} />
+                  Adjust focused minutes before saving
+                </label>}
+                {(adjustRoutineTime || routineTimerTooLong) && <div className="mt-2">
+                  <label htmlFor="routine-focus-minutes" className="block text-sm font-semibold text-gray-800">Minutes to save</label>
+                  <input id="routine-focus-minutes" type="number" min={1} max={1440} step={1} value={routineMinutesToSave} disabled={savingTimer}
+                    onChange={event => { setRoutineMinutesToSave(event.target.value); setRoutineTimeError(''); }}
+                    placeholder="Actual focused minutes" className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-indigo-400" />
+                  <p className="mt-1 text-xs text-gray-500">Save 1–1440 minutes, up to the elapsed session time. The original start and stop timestamps are kept.</p>
+                </div>}
+                {routineTimeError && <p role="alert" className="mt-2 text-sm text-red-700">{routineTimeError}</p>}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button onClick={stopTimer} disabled={savingTimer} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-50" aria-label="Stop routine timer and log time">
+                  <Square size={14} /> {savingTimer ? 'Saving…' : 'Stop & save time'}
+                </button>
+                <button onClick={() => setCurrentTab('Schedule')} className="rounded-lg border border-indigo-200 bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Back to today's routines</button>
+                <button onClick={discardRoutineTimer} disabled={savingTimer} className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">Discard timer</button>
+              </div>
+            </section>
+          ) : !currentTask ? (
             <div className="rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center text-sm text-gray-300">
               Choose a task to open the work surface.
             </div>
@@ -325,18 +446,18 @@ export function WorkView() {
               <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-gray-400">
-                      {currentGoal?.title ?? 'Standalone task'}
+                    <p className="mb-2 text-xs text-slate-500">
+                      {contexts.get(currentTask.id) || currentGoal?.title || 'Standalone task'}
                     </p>
                     <div className="flex items-start gap-2">
-                      <button onClick={toggleDone} className="mt-1 text-gray-300 hover:text-emerald-500">
+                      <button onClick={toggleDone} className="mt-1 flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 hover:bg-emerald-50 hover:text-emerald-500" aria-label={currentTask.completed ? 'Reopen task' : 'Mark task complete'} aria-pressed={currentTask.completed}>
                         {currentTask.completed ? <CheckCircle2 size={20} className="text-emerald-500" /> : <Circle size={20} />}
                       </button>
                       <div className="min-w-0 flex-1">
                         <h2 className={`font-headline text-2xl font-black leading-tight text-gray-950 ${currentTask.completed ? 'line-through opacity-50' : ''}`}>
                           {currentTask.title}
                         </h2>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-gray-400">
+                        <details className="work-task-details mt-2" open={!isMobile}><summary className="min-h-11 cursor-pointer text-xs text-slate-500 md:hidden">Task details</summary><div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-gray-400">
                           <span>{currentTask.status.replace('_', ' ')}</span>
                           {effectiveDueDate && (
                             <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-500">
@@ -344,38 +465,44 @@ export function WorkView() {
                             </span>
                           )}
                           {estimated && <span>{formatTaskTime(estimated)} est</span>}
-                          <span>{formatTaskTime(totalLogged)} logged</span>
-                          {progress !== null && <span>{progress}% time</span>}
+                          <span title={actualRollup?.childrenMinutes ? `${formatTaskTime(actualRollup.childrenMinutes)} logged on child tasks` : undefined}>
+                            {totalLogged === 0 ? '0m' : formatTaskTime(totalLogged)} logged{actualRollup?.childrenMinutes ? ' incl. children' : ''}
+                          </span>
+                          {progress !== null && <span className={progress > 100 ? 'text-amber-600' : undefined}>{progress}% time</span>}
                         </div>
                         <div className="mt-3">
                           <EntityTopicChips entityType="task" entityId={currentTask.id} />
-                        </div>
+                        </div></details>
                       </div>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col gap-2 md:w-56">
                     {!activeTimer ? (
                       <>
-                        <input
+                        <details className="work-timer-note" open={!isMobile}><summary className="min-h-11 cursor-pointer text-xs text-slate-500 md:hidden">Add a timer note</summary><input
+                          aria-label="Timer note"
                           value={timerNotes}
                           onChange={e => setTimerNotes(e.target.value)}
                           placeholder="Timer note"
-                          className="rounded-lg border border-gray-200 bg-[#f8f9fa] px-3 py-2 text-xs outline-none focus:border-[#4648d4] focus:bg-white"
-                        />
+                          className="w-full rounded-lg border border-gray-200 bg-[#f8f9fa] px-3 py-2 text-xs outline-none focus:border-[#4648d4] focus:bg-white"
+                        /></details>
                         <button
                           onClick={startTimer}
                           disabled={currentTask.completed}
-                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#4648d4] px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-[#3436b0] disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Start timer for selected task"
+                          className="work-start-focus inline-flex items-center justify-center gap-2 rounded-lg bg-[#4648d4] px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-[#3436b0] disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Play size={14} /> Start
+                          <Play size={16} /> Start focus
                         </button>
                       </>
                     ) : activeTimer.taskId === currentTask.id ? (
                       <button
                         onClick={stopTimer}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-gray-800"
+                        disabled={savingTimer}
+                        aria-label="Stop timer and log time"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-950 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-50"
                       >
-                        <Square size={14} /> Stop & Log
+                        <Square size={14} /> {savingTimer ? 'Saving…' : 'Stop & Log'}
                       </button>
                     ) : (
                       <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -386,8 +513,8 @@ export function WorkView() {
                 </div>
               </section>
 
-              <section className="grid gap-5 xl:grid-cols-[1fr_300px]">
-                <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <section className="work-content grid gap-5 xl:grid-cols-[1fr_300px]">
+                <div className="work-notebook rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <FileText size={15} className="text-gray-500" />
@@ -395,6 +522,7 @@ export function WorkView() {
                     </div>
                     <button
                       onClick={() => fileInputRef.current?.click()}
+                      aria-label="Attach files to work note"
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-500 hover:bg-gray-50"
                     >
                       <Upload size={12} /> Files
@@ -411,18 +539,19 @@ export function WorkView() {
                     />
                   </div>
                   <div
-                    className={`rounded-xl border bg-[#f8f9fa] p-3 transition-colors ${dragging ? 'border-[#4648d4] bg-[#EEF2FF]' : 'border-gray-150'}`}
+                    className={`rounded-xl border bg-[#f8f9fa] p-3 transition-colors ${dragging ? 'border-[#4648d4] bg-[#EEF2FF]' : 'border-slate-200'}`}
                     onDragOver={e => { e.preventDefault(); setDragging(true); }}
                     onDragLeave={() => setDragging(false)}
                     onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
                   >
                     <textarea
+                      aria-label="Work journal note"
                       value={journalDraft}
                       onChange={e => setJournalDraft(e.target.value)}
                       onKeyDown={e => {
                         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitJournal();
                       }}
-                      placeholder="Real-time note..."
+                      placeholder="What are you working on?"
                       className="min-h-[130px] w-full resize-y bg-transparent text-sm leading-relaxed text-gray-800 outline-none placeholder:text-gray-300"
                     />
                     {pendingFiles.length > 0 && (
@@ -431,7 +560,7 @@ export function WorkView() {
                           <span key={`${file.name}-${index}`} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px]">
                             <Paperclip size={10} className="shrink-0 text-gray-400" />
                             <span className="truncate">{file.name}</span>
-                            <button onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== index))} className="text-gray-300 hover:text-red-400">
+                            <button onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== index))} className="flex h-6 w-6 items-center justify-center rounded-md text-gray-300 hover:bg-red-50 hover:text-red-400" aria-label={`Remove pending file ${file.name}`}>
                               <X size={10} />
                             </button>
                           </span>
@@ -442,6 +571,7 @@ export function WorkView() {
                       <button
                         onClick={submitJournal}
                         disabled={!journalDraft.trim() && pendingFiles.length === 0}
+                        aria-label="Save work note"
                         className="inline-flex items-center gap-1.5 rounded-lg bg-gray-950 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Plus size={12} /> Save Note
@@ -467,14 +597,16 @@ export function WorkView() {
                   </div>
                 </div>
 
-                <aside className="space-y-5">
+                <aside className="space-y-5"><MobileDisclosure title="Time logs" description={`${sessions.length} sessions · ${directLogged} minutes`} storageKey="work-time-logs">
                   <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                     <div className="mb-3 flex items-center gap-2">
                       <Clock size={14} className="text-gray-500" />
                       <h3 className="font-headline text-sm font-bold text-gray-900">Add Time</h3>
                     </div>
                     <div className="space-y-2">
+                      <label htmlFor="work-manual-minutes" className="sr-only">Minutes to log</label>
                       <input
+                        id="work-manual-minutes"
                         type="number"
                         min={1}
                         step={5}
@@ -483,13 +615,17 @@ export function WorkView() {
                         placeholder="Minutes"
                         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#4648d4]"
                       />
+                      <label htmlFor="work-manual-when" className="sr-only">Time log start</label>
                       <input
+                        id="work-manual-when"
                         type="datetime-local"
                         value={manualWhen}
                         onChange={e => setManualWhen(e.target.value)}
                         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs outline-none focus:border-[#4648d4]"
                       />
+                      <label htmlFor="work-manual-note" className="sr-only">Manual time note</label>
                       <textarea
+                        id="work-manual-note"
                         value={manualNote}
                         onChange={e => setManualNote(e.target.value)}
                         placeholder="What got done?"
@@ -498,6 +634,7 @@ export function WorkView() {
                       <button
                         onClick={logManualTime}
                         disabled={!manualMinutes || Number(manualMinutes) <= 0}
+                        aria-label="Log manual time"
                         className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#4648d4] px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-[#3436b0] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <Plus size={12} /> Log Time
@@ -508,7 +645,7 @@ export function WorkView() {
                   <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <h3 className="font-headline text-sm font-bold text-gray-900">Session Log</h3>
-                      <span className="font-mono text-[9px] uppercase tracking-widest text-gray-400">{formatTaskTime(totalLogged)}</span>
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-gray-400">{directLogged === 0 ? '0m' : formatTaskTime(directLogged)}</span>
                     </div>
                     <div className="max-h-[360px] space-y-2 overflow-y-auto">
                       {sessions.length > 0 ? sessions.map(session => (
@@ -521,7 +658,7 @@ export function WorkView() {
                               </p>
                               {session.notes && <p className="mt-1 text-xs text-gray-500">{session.notes}</p>}
                             </div>
-                            <button onClick={() => deleteWorkSession(session.id)} className="text-gray-200 opacity-0 transition-opacity hover:text-red-400 group-hover/session:opacity-100">
+                            <button onClick={() => deleteWorkSession(session.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-200 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-400 group-hover/session:opacity-100 focus:opacity-100" aria-label={`Delete ${formatTaskTime(session.minutes ?? 0)} time log`}>
                               <Trash2 size={12} />
                             </button>
                           </div>
@@ -531,11 +668,11 @@ export function WorkView() {
                       )}
                     </div>
                   </section>
-                </aside>
+                </MobileDisclosure></aside>
               </section>
             </>
           )}
-        </main>
+        </div>
       </div>
 
       {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}

@@ -1,6 +1,8 @@
+import { MobileSettingsSection } from '../components/MobileSettingsSection';
+import { MobileDisplaySettings } from '../components/MobileDisplaySettings';
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Calendar, AlertTriangle, CheckCircle, Info, Database, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Calendar, AlertTriangle, CheckCircle, Info, Database, RefreshCw, Download, ShieldCheck } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { useSchedulePrefs, useScheduleOverrides, useUpsertScheduleOverride, useDeleteScheduleOverride, useEntityAliases, useDeleteEntityAlias, useDataReadiness } from '../api/hooks';
 import { apiFetch, apiPut } from '../utils/apiFetch';
@@ -22,6 +24,32 @@ interface HealthData {
   migration_count: number;
   provider?: ProviderSummary;
   timestamp: string;
+}
+
+interface GoogleSyncStatus {
+  configured: boolean;
+  missing_configuration: string[];
+  schema_ready: boolean;
+  connected: boolean;
+  account_email?: string | null;
+  calendar_name?: string;
+  initial_sync_complete?: boolean;
+  auto_sync_enabled?: boolean;
+  last_synced_at?: string | null;
+  last_error?: string | null;
+  sync_running?: boolean;
+  conflicts?: number;
+  errors?: number;
+}
+
+interface GoogleSyncPreview {
+  goals_as_task_lists: number;
+  one_off_task_list: boolean;
+  tasks: number;
+  timed_schedule_blocks: number;
+  meetings: number;
+  all_day_tasks: number;
+  repeating_blocks_skipped: number;
 }
 
 function useHealth() {
@@ -142,7 +170,9 @@ function PrefsAIAdjuster({ onApplied }: { onApplied: () => void }) {
         and review the proposed changes before anything saves.
       </p>
       <div className="flex gap-2">
+        <label htmlFor="settings-ai-adjuster" className="sr-only">Describe schedule preference changes</label>
         <input
+          id="settings-ai-adjuster"
           value={msg}
           onChange={e => setMsg(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && msg.trim() && !busy && ask()}
@@ -152,6 +182,7 @@ function PrefsAIAdjuster({ onApplied }: { onApplied: () => void }) {
         <button
           onClick={ask}
           disabled={!msg.trim() || busy}
+          aria-label="Suggest schedule preference changes"
           className="px-3 py-2 rounded-lg text-[11px] font-bold bg-[#4648d4] text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
         >
           {busy ? <RefreshCw size={11} className="animate-spin" /> : null}
@@ -224,6 +255,8 @@ function EntityAliasesSection() {
       </p>
       {aliases.length > 6 && (
         <input
+          id="settings-alias-filter"
+          aria-label="Filter AI-learned aliases"
           value={filter}
           onChange={e => setFilter(e.target.value)}
           placeholder="Filter aliases..."
@@ -246,7 +279,8 @@ function EntityAliasesSection() {
               <button
                 onClick={() => deleteAlias.mutate(a.id)}
                 disabled={deleteAlias.isPending}
-                className="text-gray-200 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                aria-label={`Delete alias ${a.alias}`}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-200 opacity-0 transition-colors hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 focus:opacity-100"
                 title="Delete alias"
               >
                 <Trash2 size={12} />
@@ -335,14 +369,15 @@ function SchedulePrefsSection({ onSave }: { onSave: (msg: string) => void }) {
         {/* Work days */}
         <div>
           <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-2">Work Days</label>
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {DAYS.map((label, i) => {
               const val = i + 1;
               return (
                 <button
-                  key={val}
-                  onClick={() => toggleDay(val)}
-                  className={`px-2.5 py-1 text-[10px] font-mono uppercase rounded-lg border transition-colors ${
+                key={val}
+                onClick={() => toggleDay(val)}
+                aria-pressed={workDays.includes(val)}
+                className={`px-2.5 py-1 text-[10px] font-mono uppercase rounded-lg border transition-colors ${
                     workDays.includes(val)
                       ? 'bg-indigo-600 text-white border-indigo-600'
                       : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
@@ -356,57 +391,58 @@ function SchedulePrefsSection({ onSave }: { onSave: (msg: string) => void }) {
         </div>
 
         {/* Work hours */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Start Time</label>
-            <input type="time" value={workStart} onChange={e => setWorkStart(e.target.value)}
+            <label htmlFor="settings-work-start" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Start Time</label>
+            <input id="settings-work-start" type="time" value={workStart} onChange={e => setWorkStart(e.target.value)}
               className="w-full text-xs font-mono border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-400" />
           </div>
           <div>
-            <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">End Time</label>
-            <input type="time" value={workEnd} onChange={e => setWorkEnd(e.target.value)}
+            <label htmlFor="settings-work-end" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">End Time</label>
+            <input id="settings-work-end" type="time" value={workEnd} onChange={e => setWorkEnd(e.target.value)}
               className="w-full text-xs font-mono border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-400" />
           </div>
         </div>
 
         {/* Deep work window */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Deep Work Start</label>
-            <input type="time" value={deepStart} onChange={e => setDeepStart(e.target.value)}
+            <label htmlFor="settings-deep-start" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Deep Work Start</label>
+            <input id="settings-deep-start" type="time" value={deepStart} onChange={e => setDeepStart(e.target.value)}
               className="w-full text-xs font-mono border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-400" />
           </div>
           <div>
-            <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Deep Work End</label>
-            <input type="time" value={deepEnd} onChange={e => setDeepEnd(e.target.value)}
+            <label htmlFor="settings-deep-end" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Deep Work End</label>
+            <input id="settings-deep-end" type="time" value={deepEnd} onChange={e => setDeepEnd(e.target.value)}
               className="w-full text-xs font-mono border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-400" />
           </div>
         </div>
 
         {/* Daily capacity */}
         <div>
-          <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">
+          <label htmlFor="settings-daily-capacity" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">
             Daily Capacity — {capacity} min ({(capacity / 60).toFixed(1)} hrs)
           </label>
-          <input type="number" min={60} max={720} step={30} value={capacity}
+          <input id="settings-daily-capacity" type="number" min={60} max={720} step={30} value={capacity}
             onChange={e => setCapacity(Number(e.target.value))}
             className="w-full text-xs font-mono border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-400" />
         </div>
 
         {/* Buffer ratio */}
         <div>
-          <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">
+          <label htmlFor="settings-buffer" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">
             Buffer — {buffer}% · Effective capacity: <strong>{effective} min</strong> ({(effective / 60).toFixed(1)} hrs)
           </label>
-          <input type="range" min={0} max={50} step={5} value={buffer}
+          <input id="settings-buffer" type="range" min={0} max={50} step={5} value={buffer}
             onChange={e => setBuffer(Number(e.target.value))}
             className="w-full accent-indigo-600" />
         </div>
 
         {/* Timezone */}
         <div>
-          <label className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Timezone (IANA)</label>
+          <label htmlFor="settings-timezone" className="text-xs text-gray-500 font-mono uppercase tracking-wider block mb-1">Timezone (IANA)</label>
           <input
+            id="settings-timezone"
             type="text"
             value={timezone}
             onChange={e => setTimezone(e.target.value)}
@@ -479,27 +515,28 @@ function ScheduleOverridesSection({ onSave }: { onSave: (msg: string, type?: 'su
       </p>
 
       {/* Add form */}
-      <div className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 mb-4 items-end">
+      <div className="grid grid-cols-1 gap-2 mb-4 items-end sm:grid-cols-[1fr_auto_1fr_auto]">
         <div>
-          <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block mb-1">Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          <label htmlFor="settings-override-date" className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block mb-1">Date</label>
+          <input id="settings-override-date" type="date" value={date} onChange={e => setDate(e.target.value)}
             className="w-full text-xs font-mono border border-gray-200 rounded-lg px-2.5 py-2 outline-none focus:border-indigo-400" />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block mb-1">Avail. Min</label>
-          <input type="number" min={0} max={1440} step={30} placeholder="480"
+          <label htmlFor="settings-override-minutes" className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block mb-1">Avail. Min</label>
+          <input id="settings-override-minutes" type="number" min={0} max={1440} step={30} placeholder="480"
             value={minutes} onChange={e => setMinutes(e.target.value)}
-            className="w-20 text-xs font-mono border border-gray-200 rounded-lg px-2.5 py-2 outline-none focus:border-indigo-400" />
+            className="w-full text-xs font-mono border border-gray-200 rounded-lg px-2.5 py-2 outline-none focus:border-indigo-400 sm:w-24" />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block mb-1">Note</label>
-          <input type="text" placeholder="e.g. vacation" value={note} onChange={e => setNote(e.target.value)}
+          <label htmlFor="settings-override-note" className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block mb-1">Note</label>
+          <input id="settings-override-note" type="text" placeholder="e.g. vacation" value={note} onChange={e => setNote(e.target.value)}
             className="w-full text-xs font-mono border border-gray-200 rounded-lg px-2.5 py-2 outline-none focus:border-indigo-400" />
         </div>
         <button
           onClick={handleAdd}
           disabled={adding}
           className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors self-end"
+          aria-label="Add schedule day override"
         >
           {adding ? '…' : 'Add'}
         </button>
@@ -519,8 +556,9 @@ function ScheduleOverridesSection({ onSave }: { onSave: (msg: string, type?: 'su
               </span>
               <button
                 onClick={() => handleDelete(o.date)}
-                className="ml-auto text-gray-300 hover:text-red-500 transition-colors"
+                className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
                 title="Remove override"
+                aria-label={`Remove schedule override for ${o.date}`}
               >
                 <Trash2 size={11} />
               </button>
@@ -550,7 +588,7 @@ function DataReadinessSection() {
               {data.ok ? '✓ All clear' : `${data.total_gaps} gaps`}
             </span>
           )}
-          <button onClick={() => refetch()} className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors">Refresh</button>
+          <button onClick={() => refetch()} className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors" aria-label="Refresh data readiness">Refresh</button>
         </div>
       </div>
       <p className="text-xs text-gray-400 mb-3">Planning gaps that may reduce AI accuracy — these are informational, not errors.</p>
@@ -582,16 +620,135 @@ const INVENTORY_LABELS: Record<string, string> = {
 // ── Backups ───────────────────────────────────────────────────────────────────
 
 interface BackupList {
-  dir: string;
-  keep_last: number;
-  pg_dump_available: boolean;
+  available?: boolean;
+  reason?: string;
+  dir?: string;
+  keep_last?: number;
+  pg_dump_available?: boolean;
   backups: Array<{ name: string; bytes: number; created_at: string }>;
+  portable_export: {
+    available: boolean;
+    reason: string | null;
+    storage: 'local' | 'private_blob';
+    includes_database: true;
+    includes_files: true;
+  };
+  portable_backups: Array<{
+    name: string;
+    bytes: number;
+    created_at: string;
+    storage: 'local' | 'private_blob';
+  }>;
+}
+
+interface PortableBackupCreated {
+  filename: string;
+  bytes: number;
+  table_count: number;
+  row_count: number;
+  file_count: number;
+  file_bytes: number;
+  storage: 'local' | 'private_blob';
+  download_url: string;
+  expires_at: string | null;
 }
 
 function fmtBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function CompleteBackupsSection() {
+  const { triggerToast, showConfirm } = useAppStore();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const { data } = useQuery<BackupList>({
+    queryKey: ['backups'],
+    queryFn: () => apiFetch<BackupList>('/api/backups'),
+    staleTime: 30_000,
+  });
+
+  const createComplete = async () => {
+    setBusy(true);
+    try {
+      const result = await apiFetch<PortableBackupCreated>('/api/backups/portable', { method: 'POST' });
+      const link = document.createElement('a');
+      link.href = result.download_url;
+      link.download = result.filename;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      triggerToast(`Complete backup ready: ${result.row_count} rows + ${result.file_count} files`, 'success');
+      qc.invalidateQueries({ queryKey: ['backups'] });
+    } catch (error) {
+      triggerToast((error as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = (name: string) => {
+    showConfirm(`Delete complete backup ${name}? Keep a downloaded copy first.`, async () => {
+      await apiFetch(`/api/backups/portable/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      qc.invalidateQueries({ queryKey: ['backups'] });
+      triggerToast('Complete backup deleted.', 'info');
+    });
+  };
+
+  return (
+    <div className="bg-white border border-indigo-100 p-5 rounded-xl shadow-sm">
+      <div className="flex items-start justify-between gap-4 mb-2">
+        <div>
+          <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-black flex items-center gap-2">
+            <ShieldCheck size={13} className="text-[#4648d4]" />
+            Complete disaster backup
+          </h3>
+          <p className="text-[11px] text-gray-500 mt-2 max-w-lg">
+            One private ZIP with every PostgreSQL table and every Resource/task-note file, plus SHA-256 checksums.
+          </p>
+        </div>
+        <button
+          onClick={createComplete}
+          disabled={busy || !data || data.portable_export.available === false}
+          aria-label="Download complete database and file backup"
+          className="px-3 py-2 rounded-lg text-[11px] font-bold bg-[#4648d4] text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+        >
+          {busy ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+          {busy ? 'Building…' : 'Download everything'}
+        </button>
+      </div>
+      {data?.portable_export?.available === false && (
+        <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3">
+          {data.portable_export.reason}
+        </p>
+      )}
+      <p className="text-[10px] text-gray-400 font-mono mt-3">
+        Verify after download: npm run backup:verify -- &lt;file.zip&gt;
+      </p>
+      <div className="space-y-1 max-h-44 overflow-y-auto mt-3">
+        {(data?.portable_backups ?? []).length === 0 && (
+          <p className="text-[11px] text-gray-300 font-mono">no complete backups created yet</p>
+        )}
+        {(data?.portable_backups ?? []).map(backup => (
+          <div key={backup.name} className="flex items-center gap-2 text-[11px] border border-gray-100 rounded-lg px-2.5 py-1.5">
+            <span className="font-mono text-gray-700 truncate flex-1">{backup.name}</span>
+            <span className="text-gray-400 shrink-0">{fmtBytes(backup.bytes)}</span>
+            <span className="text-gray-300 font-mono shrink-0">
+              {new Date(backup.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <a href={`/api/backups/portable/${encodeURIComponent(backup.name)}/download`} className="text-[#4648d4] hover:underline shrink-0" title="Download complete backup">
+              download
+            </a>
+            <button onClick={() => remove(backup.name)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500" title="Delete complete backup" aria-label={`Delete complete backup ${backup.name}`}>
+              <Trash2 size={11} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function BackupsSection() {
@@ -629,10 +786,11 @@ function BackupsSection() {
     <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-black">Database Backups</h3>
-        <button
-          onClick={createNow}
-          disabled={busy || data?.pg_dump_available === false}
-          className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#4648d4] text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+            <button
+              onClick={createNow}
+              disabled={busy || data?.available === false || data?.pg_dump_available === false}
+              aria-label="Create database backup now"
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-[#4648d4] text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
         >
           {busy ? <RefreshCw size={11} className="animate-spin" /> : null}
           Back up now
@@ -662,7 +820,7 @@ function BackupsSection() {
             >
               download
             </a>
-            <button onClick={() => remove(b.name)} className="text-gray-300 hover:text-red-500 shrink-0" title="Delete backup">
+            <button onClick={() => remove(b.name)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500" title="Delete backup" aria-label={`Delete backup ${b.name}`}>
               <Trash2 size={11} />
             </button>
           </div>
@@ -700,6 +858,7 @@ function DBInventorySection() {
         <button
           onClick={refresh}
           disabled={loading}
+          aria-label="Refresh database inventory"
           className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40"
         >
           <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
@@ -710,7 +869,7 @@ function DBInventorySection() {
       {!data && !loading && <p className="text-xs text-gray-400">No data yet.</p>}
       {loading && <p className="text-xs text-gray-400">Loading…</p>}
       {data && (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
           {rows.map(r => (
             <div key={r.key} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
               <span className="text-[11px] text-gray-600">{r.label}</span>
@@ -727,6 +886,275 @@ function DBInventorySection() {
         </p>
       )}
     </div>
+  );
+}
+
+function GoogleWorkspaceSection() {
+  const { triggerToast, showConfirm } = useAppStore();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState<'connect' | 'sync' | 'toggle' | 'disconnect' | null>(null);
+  const statusQuery = useQuery<GoogleSyncStatus>({
+    queryKey: ['google-sync-status'],
+    queryFn: () => apiFetch<GoogleSyncStatus>('/api/google/status'),
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+  });
+  const status = statusQuery.data;
+  const previewQuery = useQuery<GoogleSyncPreview>({
+    queryKey: ['google-sync-preview'],
+    queryFn: () => apiFetch<GoogleSyncPreview>('/api/google/preview'),
+    enabled: Boolean(status?.connected && status.schema_ready && !status.initial_sync_complete),
+    staleTime: 10_000,
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('google');
+    if (!result) return;
+    const message = params.get('google_message');
+    if (result === 'connected') triggerToast('Google connected. Review the preview before the first sync.', 'success');
+    else triggerToast(message || 'Google connection failed.', 'error');
+    params.delete('google');
+    params.delete('google_message');
+    const queryString = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash}`);
+    statusQuery.refetch();
+  }, [statusQuery, triggerToast]);
+
+  const connect = async () => {
+    setBusy('connect');
+    try {
+      const result = await apiFetch<{ authorization_url: string }>('/api/google/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ return_to: '/?google=connected' }),
+      });
+      window.location.assign(result.authorization_url);
+    } catch (error) {
+      triggerToast((error as Error).message, 'error');
+      setBusy(null);
+    }
+  };
+
+  const sync = async (confirmInitial = false) => {
+    setBusy('sync');
+    try {
+      const result = await apiFetch<{ stats: Record<string, number> }>('/api/google/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm_initial: confirmInitial }),
+      });
+      const changed = Object.entries(result.stats).filter(([key, value]) => value > 0 && key !== 'skipped');
+      triggerToast(changed.length ? `Google sync finished · ${changed.reduce((sum, [, value]) => sum + value, 0)} updates` : 'Google is already up to date.', 'success');
+      await Promise.all([
+        statusQuery.refetch(),
+        qc.invalidateQueries({ queryKey: ['goals'] }),
+        qc.invalidateQueries({ queryKey: ['tasks'] }),
+        qc.invalidateQueries({ queryKey: ['events'] }),
+        qc.invalidateQueries({ queryKey: ['meetings'] }),
+        qc.invalidateQueries({ queryKey: ['schedule-preview'] }),
+      ]);
+    } catch (error) {
+      triggerToast((error as Error).message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleAutoSync = async () => {
+    if (!status?.connected) return;
+    setBusy('toggle');
+    try {
+      await apiFetch('/api/google/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_sync_enabled: !status.auto_sync_enabled }),
+      });
+      await statusQuery.refetch();
+      triggerToast(!status.auto_sync_enabled ? 'Live Google sync enabled.' : 'Automatic Google sync paused.', 'success');
+    } catch (error) {
+      triggerToast((error as Error).message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const disconnect = () => {
+    showConfirm('Disconnect Google? Marina will keep all of your Google tasks and calendar events, but live updates will stop.', async () => {
+      setBusy('disconnect');
+      try {
+        await apiFetch('/api/google/connection', { method: 'DELETE' });
+        await statusQuery.refetch();
+        triggerToast('Google disconnected. Existing Google data was kept.', 'success');
+      } catch (error) {
+        triggerToast((error as Error).message, 'error');
+      } finally {
+        setBusy(null);
+      }
+    });
+  };
+
+  const preview = previewQuery.data;
+  const lastSync = status?.last_synced_at ? new Date(status.last_synced_at).toLocaleString() : null;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
+      <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-indigo-50 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+              <Calendar size={19} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900">Google Tasks + Calendar</h3>
+              <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-500">
+                Marina stays the organized home. Google becomes the always-available copy you can check and update anywhere.
+              </p>
+            </div>
+          </div>
+          {status?.connected ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+              <CheckCircle size={11} /> Connected{status.account_email ? ` · ${status.account_email}` : ''}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="space-y-4 p-5">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            ['Goals', 'One Google Tasks list per goal'],
+            ['Tasks', 'Flattened leaves appear as Parent: Child; full paths stay in Marina'],
+            ['One-offs', 'Collected in an Marina · One-offs list'],
+            ['Schedule', 'Focus blocks and meetings use Marina Schedule'],
+            ['All-day work', 'Tasks without a time stay as all-day items'],
+            ['Changes', 'Dates, titles, completion, and time edits sync back'],
+          ].map(([label, text]) => (
+            <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">{label}</p>
+              <p className="mt-0.5 text-xs text-slate-600">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {!status && statusQuery.isLoading ? (
+          <p className="text-xs text-slate-400">Checking Google connection…</p>
+        ) : status && (!status.configured || !status.schema_ready) ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+            <div className="flex gap-2">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-xs font-bold text-amber-900">Activation is safely paused</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                  {!status.schema_ready
+                    ? 'The integration code is ready, but its new empty sync tables have not been added to the production database.'
+                    : `The Vercel environment still needs: ${status.missing_configuration.join(', ')}.`}
+                  {' '}Your existing goals, tasks, and schedule have not been changed.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : status?.connected ? (
+          <>
+            {!status.initial_sync_complete && preview ? (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+                <div className="flex items-start gap-2">
+                  <ShieldCheck size={17} className="mt-0.5 shrink-0 text-indigo-600" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-indigo-950">First-sync preview — nothing has been copied yet</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {[
+                        [`${preview.goals_as_task_lists}`, 'goal lists'],
+                        [`${preview.tasks}`, 'tasks'],
+                        [`${preview.timed_schedule_blocks}`, 'focus blocks'],
+                        [`${preview.meetings}`, 'meetings'],
+                        [`${preview.all_day_tasks}`, 'all-day tasks'],
+                        [`${preview.repeating_blocks_skipped}`, 'repeaters skipped'],
+                      ].map(([value, label]) => (
+                        <div key={label} className="rounded-lg bg-white px-3 py-2 text-center shadow-sm">
+                          <p className="text-lg font-black text-indigo-700">{value}</p>
+                          <p className="text-[10px] text-slate-500">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-[11px] leading-relaxed text-indigo-800">
+                      First sync creates dedicated Marina lists and one Marina Schedule calendar. It never deletes existing Google or Marina data.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => sync(true)}
+                      disabled={busy !== null}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-indigo-500 disabled:opacity-40"
+                    >
+                      <RefreshCw size={12} className={busy === 'sync' ? 'animate-spin' : ''} />
+                      Start first sync
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">{status.calendar_name || 'Marina Schedule'}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      {status.sync_running ? 'Syncing now…' : lastSync ? `Last synced ${lastSync}` : 'Ready for the first update'}
+                      {status.conflicts ? ` · ${status.conflicts} conflict${status.conflicts === 1 ? '' : 's'} need review` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => sync(false)}
+                    disabled={busy !== null || status.sync_running}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-40"
+                  >
+                    <RefreshCw size={12} className={busy === 'sync' || status.sync_running ? 'animate-spin' : ''} />
+                    Sync now
+                  </button>
+                </div>
+                {status.last_error ? <p className="mt-2 rounded-lg bg-red-50 px-2.5 py-2 text-[11px] text-red-700">{status.last_error}</p> : null}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={Boolean(status.auto_sync_enabled)}
+                  onChange={toggleAutoSync}
+                  disabled={busy !== null || !status.initial_sync_complete}
+                  className="h-4 w-4 accent-blue-600"
+                />
+                Live sync while Marina is open
+              </label>
+              <button type="button" onClick={disconnect} disabled={busy !== null} className="text-[11px] font-semibold text-slate-400 hover:text-red-600 disabled:opacity-40">
+                Disconnect Google
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3.5">
+            <div>
+              <p className="text-xs font-bold text-slate-800">Connect your Google account</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">You will approve Google Tasks and Marina’s own secondary calendar.</p>
+            </div>
+            <button
+              type="button"
+              onClick={connect}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-40"
+            >
+              {busy === 'connect' ? <RefreshCw size={12} className="animate-spin" /> : <Calendar size={12} />}
+              Connect Google
+            </button>
+          </div>
+        )}
+
+        <p className="text-[10px] leading-relaxed text-slate-400">
+          Google Calendar supports fast change notifications. Google Tasks currently requires polling, so Marina checks about every two minutes while open and immediately after your Marina edits. Google deletions never delete Marina data automatically.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -769,20 +1197,29 @@ export function SettingsView() {
   return (
     <div className="max-w-[700px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
       <div className="mb-8 border-b border-gray-100 pb-4">
-        <h2 className="font-headline text-2xl font-black text-black mb-1">Marina OS Preferences</h2>
+        <h2 className="font-headline text-2xl font-black text-black mb-1">Settings</h2>
         <p className="text-sm text-gray-500">
-          Configure personal co-pilot workspace triggers, prompt models, and storage.
+          Your schedule, connected accounts and workspace preferences.
         </p>
       </div>
 
       <div className="space-y-6">
-        {/* Work Schedule */}
+        <MobileDisplaySettings />
+        <MobileSettingsSection title="Your schedule" description="Working hours and day overrides">
+{/* Work Schedule */}
         <SchedulePrefsSection onSave={msg => triggerToast(msg, 'success')} />
 
         {/* Schedule Day Overrides */}
         <ScheduleOverridesSection onSave={(msg, type) => triggerToast(msg, type ?? 'success')} />
 
-        {/* Copilot Metadata */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Connected accounts" description="Google Calendar and Tasks" defaultOpen={false}>
+{/* Google Tasks + Calendar */}
+        <GoogleWorkspaceSection />
+
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Copilot" description="Model and workspace status" defaultOpen={false}>
+{/* Copilot Metadata */}
         <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
           <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-black mb-3">
             Copilot Metadata
@@ -835,21 +1272,26 @@ export function SettingsView() {
           </div>
         </div>
 
-        {/* Goal Umbrellas */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Organization" description="Goal categories and entity names" defaultOpen={false}>
+{/* Goal Umbrellas */}
         <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
           <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-black mb-3">Goal Umbrellas</h3>
 
           <form onSubmit={handleAddCategory} className="flex gap-2 mb-4">
+            <label htmlFor="settings-new-umbrella" className="sr-only">New goal umbrella</label>
             <input
+              id="settings-new-umbrella"
               value={categoryInput}
               onChange={(e) => setCategoryInput(e.target.value)}
               placeholder="New umbrella"
-              className="flex-1 text-xs font-sans rounded-lg border border-gray-200 p-2.5 focus:ring-1 focus:ring-black outline-none"
+              className="min-w-0 flex-1 text-xs font-sans rounded-lg border border-gray-200 p-2.5 focus:ring-1 focus:ring-black outline-none"
             />
             <button
               type="submit"
               className="bg-black text-white rounded-lg px-3 flex items-center justify-center hover:opacity-90 active:scale-95 transition-all"
               title="Add umbrella"
+              aria-label="Add goal umbrella"
             >
               <Plus size={15} />
             </button>
@@ -865,9 +1307,10 @@ export function SettingsView() {
                 <button
                   type="button"
                   onClick={() => handleRemoveCategory(category)}
-                  className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-30 disabled:hover:text-gray-300"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-300"
                   disabled={goalCategories.length <= 1}
                   title="Remove umbrella"
+                  aria-label={`Remove umbrella ${category}`}
                 >
                   <Trash2 size={11} />
                 </button>
@@ -879,13 +1322,18 @@ export function SettingsView() {
         {/* Entity Aliases */}
         <EntityAliasesSection />
 
-        {/* Data Readiness */}
+        </MobileSettingsSection>
+        <MobileSettingsSection title="Data and backups" description="Storage, backups and data health" defaultOpen={false}>
+{/* Data Readiness */}
         <DataReadinessSection />
 
         {/* DB Inventory */}
+        <CompleteBackupsSection />
         <BackupsSection />
         <DBInventorySection />
 
+        </MobileSettingsSection>
+        <MobileSettingsSection title="About Marina" description="Technical information" defaultOpen={false}>
         {/* Tech Stack */}
         <div className="bg-[#EEF2FF] border border-[#4648d4]/10 p-5 rounded-xl">
           <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-[#4648d4] mb-3">Tech Stack</h3>
@@ -906,6 +1354,7 @@ export function SettingsView() {
             ))}
           </div>
         </div>
+        </MobileSettingsSection>
       </div>
     </div>
   );

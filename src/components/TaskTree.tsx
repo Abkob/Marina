@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { CalendarCheck2, ChevronRight, GripVertical, Search } from 'lucide-react';
+import { CalendarCheck2, CalendarClock, ChevronRight, GripVertical, Search } from 'lucide-react';
 import type { DBGoal, DBTask } from '../db/schema';
 import { buildTaskForest, filterForest, type TaskTreeNode } from '../utils/taskTree';
+import { useAppStore } from '../store/useAppStore';
+import { getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
+import { getDescendantTaskDeadlineSummary, type DescendantTaskDeadlineSummary } from '../utils/taskDates';
+import { taskContextMap } from '../utils/taskContext';
 
 /**
  * The one way tasks are found: goals as collapsible sections, tasks nested
@@ -24,6 +28,8 @@ interface TaskTreeProps {
   searchPlaceholder?: string;
   /** render tasks directly without goal section headers (drawer scoped to one goal) */
   hideGoalHeaders?: boolean;
+  /** Work can opt in after pre-filtering to started critical-path items. */
+  includeCriticalPath?: boolean;
 }
 
 function fmtMins(mins: number): string {
@@ -33,8 +39,9 @@ function fmtMins(mins: number): string {
   return `${h}h${m ? ` ${m}m` : ''}`;
 }
 
-function RowBody({ task, depth, hasChildren, isOpen, onToggle, scheduledOn, muted, mutedReason }: {
+function RowBody({ task, context, depth, hasChildren, isOpen, onToggle, scheduledOn, muted, mutedReason, estimatedMinutes, loggedMinutes, childDeadlines }: {
   task: DBTask;
+  context?: string;
   depth: number;
   hasChildren: boolean;
   isOpen: boolean;
@@ -42,16 +49,21 @@ function RowBody({ task, depth, hasChildren, isOpen, onToggle, scheduledOn, mute
   scheduledOn?: string;
   muted: boolean;
   mutedReason?: string;
+  estimatedMinutes: number | null;
+  loggedMinutes: number;
+  childDeadlines: DescendantTaskDeadlineSummary | null;
 }) {
   return (
     <>
-      <span style={{ width: depth * 14 }} className="shrink-0" />
+      <span style={{ width: Math.min(depth, 3) * 10 }} className="shrink-0" />
       {hasChildren ? (
         <button
           onClick={e => { e.stopPropagation(); onToggle(); }}
           onPointerDown={e => e.stopPropagation()}
           className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
           title={isOpen ? 'Collapse subtasks' : 'Expand subtasks'}
+          aria-label={`${isOpen ? 'Collapse' : 'Expand'} subtasks of ${task.title}`}
+          aria-expanded={isOpen}
         >
           <ChevronRight size={11} className={`transition-transform ${isOpen ? 'rotate-90' : ''}`} />
         </button>
@@ -59,35 +71,62 @@ function RowBody({ task, depth, hasChildren, isOpen, onToggle, scheduledOn, mute
         <span className="w-[15px] shrink-0" />
       )}
       <span
-        className={`min-w-0 flex-1 truncate text-[11px] ${muted ? 'text-gray-400' : 'text-gray-700'}`}
+        className={`task-tree-title min-w-0 flex-1 text-[11px] ${muted ? 'text-gray-400' : 'text-gray-700'}`}
         title={mutedReason ?? task.title}
       >
-        {task.title}
+        <span className="block truncate">{task.title}</span>
+        {context && <span className="task-context block truncate text-[10px] font-normal text-slate-400" title={context}>{context}</span>}
       </span>
       {scheduledOn && (
         <span className="flex shrink-0 items-center gap-0.5 font-mono text-[8px] text-[#4648d4]" title={`On your calendar: ${scheduledOn}`}>
           <CalendarCheck2 size={9} />{scheduledOn.slice(5)}
         </span>
       )}
-      {task.estimated_minutes ? (
-        <span className="shrink-0 font-mono text-[9px] text-gray-400">{fmtMins(task.estimated_minutes)}</span>
+      {childDeadlines && !task.due_date && (
+        <span
+          className="flex shrink-0 items-center gap-0.5 font-mono text-[8px] text-red-500"
+          title={`Earliest unfinished child deadline: ${childDeadlines.earliest}. Last known child deadline: ${childDeadlines.latest}.`}
+        >
+          <CalendarClock size={9} />child {childDeadlines.earliest.slice(5, 10)}
+        </span>
+      )}
+      {estimatedMinutes ? (
+        <span className="shrink-0 font-mono text-[9px] text-gray-400" title="Estimated time, including child-task estimate rules">{fmtMins(estimatedMinutes)} est</span>
       ) : !muted ? (
         <span className="shrink-0 font-mono text-[9px] text-amber-500" title="No time estimate yet — add one in its goal">?</span>
       ) : null}
+      {loggedMinutes > 0 && (
+        <span className="shrink-0 font-mono text-[9px] text-emerald-600" title="Logged time, including child tasks">{fmtMins(loggedMinutes)} log</span>
+      )}
     </>
   );
 }
 
 function DraggableRow(props: Parameters<typeof RowBody>[0] & { draggable: boolean }) {
+  const { navigateToGoal, setTaskSpotlight, triggerToast } = useAppStore();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: props.task.id,
     disabled: !props.draggable,
   });
+
+  const openGoalFromAltClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!props.task.goal_id) {
+      triggerToast('This task is not attached to a goal yet.', 'info');
+      return;
+    }
+    setTaskSpotlight(props.task.id);
+    navigateToGoal(props.task.goal_id);
+  };
+
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      onClick={openGoalFromAltClick}
       className={`flex w-full items-center gap-1 rounded px-1.5 py-1 select-none
         ${props.draggable ? 'cursor-grab hover:bg-indigo-50/60 active:cursor-grabbing' : 'cursor-default'}
         ${isDragging ? 'opacity-30' : ''}`}
@@ -102,24 +141,36 @@ function DraggableRow(props: Parameters<typeof RowBody>[0] & { draggable: boolea
 
 function SelectableRow(props: Parameters<typeof RowBody>[0] & { selected: boolean; onSelect: () => void }) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={props.onSelect}
-      className={`flex w-full items-center gap-1 rounded px-1.5 py-1 text-left
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          props.onSelect();
+        }
+      }}
+      className={`task-tree-select flex w-full items-center gap-1 rounded px-1.5 py-1 text-left
         ${props.selected ? 'bg-[#EEF2FF] ring-1 ring-[#4648d4]/30' : 'hover:bg-gray-50'}`}
     >
       <RowBody {...props} />
-    </button>
+    </div>
   );
 }
 
-export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggableIds, scheduledDates, searchPlaceholder, hideGoalHeaders = false }: TaskTreeProps) {
+export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggableIds, scheduledDates, searchPlaceholder, hideGoalHeaders = false, includeCriticalPath = false }: TaskTreeProps) {
   const [q, setQ] = useState('');
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
   const [closedNodes, setClosedNodes] = useState<Set<string>>(new Set());
 
-  const forest = useMemo(() => buildTaskForest(tasks, goals), [tasks, goals]);
+  const forest = useMemo(
+    () => buildTaskForest(tasks, goals, { includeCriticalPath }),
+    [includeCriticalPath, tasks, goals],
+  );
   const shown = useMemo(() => filterForest(forest, q), [forest, q]);
   const searching = q.trim().length > 0;
+  const contexts = useMemo(() => taskContextMap(tasks, goals), [tasks, goals]);
 
   const toggleGoal = (key: string) =>
     setOpenGoals(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -134,6 +185,7 @@ export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggab
     const muted = mode === 'drag' && !draggable;
     const common = {
       task,
+      context: task.parent_task_id ? contexts.get(task.id) : undefined,
       depth,
       hasChildren,
       isOpen,
@@ -143,6 +195,9 @@ export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggab
       mutedReason: muted
         ? (hasChildren ? `${task.title} — plan its subtasks instead` : `${task.title} — kept out of scheduling`)
         : undefined,
+      estimatedMinutes: getRolledUpTime(task, tasks).minutes,
+      loggedMinutes: getRolledUpActualTime(task, tasks).minutes,
+      childDeadlines: hasChildren ? getDescendantTaskDeadlineSummary(task.id, tasks) : null,
     };
     return (
       <div key={task.id}>

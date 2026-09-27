@@ -2,6 +2,7 @@ import { query, transaction } from '../db.js';
 import { generateEntitySummary } from './summaryGenerator.js';
 import { queueEmbeddingUpsert, markEmbeddingStale } from './embeddingLifecycle.js';
 import { requireISODate } from '../utils/localDate.js';
+import { runInBackground } from '../utils/background.js';
 
 export interface CreateGoalInput {
   title: string;
@@ -62,8 +63,8 @@ export async function createGoal(input: CreateGoalInput): Promise<string> {
       now,
     ],
   );
-  generateEntitySummary('goal', id).catch(err => console.error('[summary] goal create:', err));
-  queueEmbeddingUpsert('goal', id).catch(err => console.error('[embedding] goal create:', err));
+  runInBackground(generateEntitySummary('goal', id), 'goal create summary');
+  await queueEmbeddingUpsert('goal', id);
   return id;
 }
 
@@ -88,9 +89,9 @@ export async function updateGoal(id: string, input: UpdateGoalInput): Promise<vo
     }
   }
   await query(`UPDATE goals SET ${sets.join(',')} WHERE id=$${vals.length + 1}`, [...vals, id]);
-  generateEntitySummary('goal', id).catch(err => console.error('[summary] goal update:', err));
-  markEmbeddingStale('goal', id).catch(() => {});
-  queueEmbeddingUpsert('goal', id).catch(err => console.error('[embedding] goal update:', err));
+  runInBackground(generateEntitySummary('goal', id), 'goal update summary');
+  await markEmbeddingStale('goal', id);
+  await queueEmbeddingUpsert('goal', id);
 }
 
 export async function deleteGoal(goalId: string): Promise<void> {
@@ -208,9 +209,9 @@ export async function deleteGoal(goalId: string): Promise<void> {
   });
 
   // Async cleanup of stored embeddings (non-critical, best-effort)
-  query(
+  await query(
     `DELETE FROM embeddings WHERE (entity_type='goal' AND entity_id=$1)
        OR (entity_type='task' AND entity_id = ANY($2::text[]))`,
     [goalId, taskIds.length > 0 ? taskIds : ['__none__']],
-  ).catch(err => console.error('[cleanup] goal+task embeddings:', err));
+  );
 }

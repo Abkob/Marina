@@ -15,7 +15,8 @@ export type EdgeRelationship =
   | 'attached_to'    // resource → goal or task
   | 'schedules'      // event → task or goal
   | 'references'     // note → note, or note → resource
-  | 'linked_to';     // generic bidirectional
+  | 'linked_to'      // generic bidirectional
+  | 'blocks';        // prerequisite task -> dependent task
 
 // ─── Goals ──────────────────────────────────────────────────────────────────
 export type PlanStatus = 'not_started' | 'planned' | 'in_progress' | 'paused' | 'blocked' | 'completed';
@@ -39,7 +40,7 @@ export interface DBGoal {
   hard_deadline?: string | null;       // when it MUST be done
   deadline_type?: 'soft' | 'hard' | 'estimated' | null;
   deadline_confidence?: 'low' | 'medium' | 'high' | null;
-  scheduling_enabled?: boolean;        // may Amina place this on the calendar
+  scheduling_enabled?: boolean;        // may Marina place this on the calendar
   estimated_minutes?: number | null;
   plan_status?: PlanStatus;
 }
@@ -69,6 +70,7 @@ export interface DBTask {
   time_rollup_mode?: TaskTimeRollupMode; // additive = extra in parent, inclusive = inside parent estimate
   actual_minutes?: number | null;      // logged after task is completed
   weight_percent?: number | null;      // optional explicit progress weight, 0-100
+  feel_score?: number | null;          // subjective sense of how much this task needs attention, 0-100
   completed: boolean;
   position: number;                    // ordering within sibling tasks
   last_activity_at?: string | null;
@@ -155,6 +157,7 @@ export interface DBEventTaskLink {
 export interface DBWorkSession {
   id: string;
   task_id: string | null;
+  routine_id?: string | null;          // routine focus is logged separately from one-off task estimates
   resource_id: string | null;
   goal_id: string | null;
   started_at: string;
@@ -186,7 +189,7 @@ export interface DBTaskNoteFile {
 }
 
 // ─── Notes / Journals / Capture ──────────────────────────────────────────────
-export type NoteType = 'journal' | 'capture' | 'session' | 'task_note';
+export type NoteType = 'thought' | 'journal' | 'capture' | 'session' | 'task_note';
 
 export interface DBNote {
   id: string;
@@ -200,6 +203,7 @@ export interface DBNote {
   // Embedded JSON arrays (seeded; will migrate to edge-based queries in graph view)
   extracted_tasks_json: string;        // JSON: { text: string; due: string }[]
   relevant_docs_json: string;          // JSON: { title: string; edited: string }[]
+  completed_at?: string | null;       // null/absent means the sticky carries forward
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,7 @@
 import {
   BookOpen, Target, FolderOpen, Settings as SettingsIcon, HelpCircle, Plus, Zap,
   Share2, Tags, CalendarDays, FlaskConical, Timer, PanelLeftClose, PanelLeftOpen,
+  Gauge,
 } from 'lucide-react';
 import { useAppStore, type Tab } from '../store/useAppStore';
 
@@ -15,6 +16,7 @@ const NAV: { id: Tab; label: string; Icon: React.ElementType; highlight?: boolea
   { id: 'Graph',      label: 'Graph',      Icon: Share2 },
   { id: 'Topics',     label: 'Topics',     Icon: Tags },
   { id: 'Schedule',   label: 'Schedule',   Icon: CalendarDays },
+  { id: 'Usage',      label: 'Usage',      Icon: Gauge },
   { id: 'Settings',   label: 'Settings',   Icon: SettingsIcon },
   { id: 'Testing',    label: 'Testing',    Icon: FlaskConical },
 ];
@@ -41,6 +43,7 @@ export function Sidebar() {
         <button
           onClick={handleNew}
           title={newLabel}
+          aria-label={newLabel}
           className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#111827] shadow-sm transition-all hover:bg-gray-100 active:scale-[0.96]"
         >
           <Plus size={16} />
@@ -52,6 +55,7 @@ export function Sidebar() {
               <button
                 key={id}
                 title={label}
+                aria-label={`Open ${label}`}
                 onClick={() => { if (id === 'Resources') setFocusedResourceId(null); setCurrentTab(id); }}
                 className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-150 ${
                   active
@@ -69,6 +73,7 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           title="Expand the navigation"
+          aria-label="Expand the navigation"
           className="mt-auto flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white"
         >
           <PanelLeftOpen size={16} />
@@ -88,6 +93,7 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           title="Collapse the navigation"
+          aria-label="Collapse the navigation"
           className="shrink-0 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-white"
         >
           <PanelLeftClose size={15} />

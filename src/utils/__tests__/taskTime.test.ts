@@ -7,6 +7,7 @@ import {
   normalizeTaskMinutes,
   getTaskEstimatedMinutes,
   getTaskLeafProgress,
+  getRolledUpActualTime,
   getRolledUpTime,
 } from '../taskTime';
 
@@ -54,6 +55,35 @@ describe('normalizeTaskMinutes', () => {
 
   it('rounds to integer', () => {
     expect(normalizeTaskMinutes(1.7)).toBe(2);
+  });
+});
+
+describe('getRolledUpActualTime', () => {
+  it('adds direct and nested child logs without double counting', () => {
+    const parent = makeTask({ id: 'P', actual_minutes: 15 });
+    const child = makeTask({ id: 'C', parent_task_id: 'P', actual_minutes: 30 });
+    const grandchild = makeTask({ id: 'GC', parent_task_id: 'C', actual_minutes: 45 });
+
+    const result = getRolledUpActualTime(parent, [parent, child, grandchild]);
+
+    expect(result).toEqual({
+      minutes: 90,
+      ownMinutes: 15,
+      childrenMinutes: 75,
+      contributingChildren: 2,
+    });
+  });
+
+  it('returns zero when no task in the subtree has logged time', () => {
+    const parent = makeTask({ id: 'P' });
+    const child = makeTask({ id: 'C', parent_task_id: 'P' });
+
+    expect(getRolledUpActualTime(parent, [parent, child])).toEqual({
+      minutes: 0,
+      ownMinutes: 0,
+      childrenMinutes: 0,
+      contributingChildren: 0,
+    });
   });
 });
 

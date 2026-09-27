@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { usePersistentDraft } from '../hooks/usePersistentDraft';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Circle, RefreshCw, Trash2, Link2, X, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Circle, PenLine, SlidersHorizontal, RefreshCw, Trash2, Link2, X, Check } from 'lucide-react';
 import { useJournalEntries, useJournalLinks, useInvalidate, useSearch, type DBJournalEntry, type DBJournalLink } from '../api/hooks';
 import { useAppStore } from '../store/useAppStore';
 import { apiFetch, apiPost, apiDelete } from '../utils/apiFetch';
+import { MobileSheet } from '../components/MobileSheet';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ProposalsPanel } from '../components/ProposalsPanel';
 import { EntityTopicChips } from '../components/EntityTopicChips';
 
@@ -56,6 +59,7 @@ function ManualLinkAdder({ entryId, onLinked }: { entryId: string; onLinked: () 
       <div className="flex items-center gap-2">
         <Link2 size={11} className="text-gray-500 shrink-0" />
         <input
+          aria-label="Search entities to link to this journal entry"
           value={q}
           onChange={e => setQ(e.target.value)}
           placeholder="Link manually: search goals, tasks, resources…"
@@ -68,6 +72,7 @@ function ManualLinkAdder({ entryId, onLinked }: { entryId: string; onLinked: () 
             <button
               key={`${r.entity_type}-${r.entity_id}`}
               onClick={() => link(r.entity_type, r.entity_id, r.title)}
+              aria-label={`Link ${r.title} to journal entry`}
               className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-gray-800 text-gray-300 flex items-center gap-2"
             >
               <span className="font-mono text-[9px] uppercase text-indigo-400">{r.entity_type}</span>
@@ -98,7 +103,7 @@ function EntryLinks({ entryId }: { entryId: string }) {
       {!links?.length
         ? <p className="text-xs text-gray-500 italic">No linked entities yet — AI extraction adds them, or link manually below.</p>
         : (
-          <table className="w-full text-[11px] font-mono border-collapse mt-1">
+          <div className="overflow-x-auto" role="region" aria-label="Journal linked records" tabIndex={0}><table className="w-full text-[11px] font-mono border-collapse mt-1">
             <thead>
               <tr className="text-gray-500 text-left">
                 <th className="pb-1 pr-3 font-normal">Type</th>
@@ -127,7 +132,8 @@ function EntryLinks({ entryId }: { entryId: string }) {
                     <button
                       onClick={() => removeLink(l.id)}
                       title="Remove link"
-                      className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-opacity"
+                      aria-label={`Remove link to ${l.target_title ?? l.target_id}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-gray-600 opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 focus:opacity-100"
                     >
                       <X size={11} />
                     </button>
@@ -135,7 +141,7 @@ function EntryLinks({ entryId }: { entryId: string }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       <ManualLinkAdder entryId={entryId} onLinked={() => refetch()} />
     </>
@@ -175,10 +181,10 @@ function EntryTaskCandidates({ entryId }: { entryId: string }) {
             <div key={p.id} className="flex items-center gap-2 bg-gray-900/60 border border-gray-800 rounded-lg px-2.5 py-1.5">
               <span className="text-[10px] font-mono text-indigo-400 shrink-0 uppercase">{p.action_type.replace('create_', '+')}</span>
               <span className="flex-1 text-[11px] text-gray-300 truncate">{title}</span>
-              <button onClick={() => decide(p.id, 'apply')} className="w-6 h-6 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center" title="Create it">
+              <button onClick={() => decide(p.id, 'apply')} className="w-6 h-6 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center" title="Create it" aria-label={`Create extracted action ${title}`}>
                 <Check size={11} />
               </button>
-              <button onClick={() => decide(p.id, 'reject')} className="w-6 h-6 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center justify-center" title="Dismiss (persists)">
+              <button onClick={() => decide(p.id, 'reject')} className="w-6 h-6 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center justify-center" title="Dismiss (persists)" aria-label={`Dismiss extracted action ${title}`}>
                 <X size={11} />
               </button>
             </div>
@@ -215,12 +221,13 @@ function TagChips({ entry }: { entry: DBJournalEntry }) {
 }
 
 function EntryCard({ entry }: { entry: DBJournalEntry }) {
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const invalidate = useInvalidate();
   const { triggerToast } = useAppStore();
 
-  const snippet = entry.summary ?? entry.raw_text.slice(0, 150);
+  const snippet = isMobile ? entry.raw_text.slice(0, 220) : entry.summary ?? entry.raw_text.slice(0, 150);
   const mood = entry.mood ? (MOOD_EMOJI[entry.mood] ?? entry.mood) : null;
   const isTerminalError = entry.ingestion_status === 'failed' || entry.ingestion_status === 'needs_review';
 
@@ -255,28 +262,39 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
   };
 
   return (
-    <div className="bg-surface rounded-xl border border-gray-800 overflow-hidden">
-      <button
+    <div className="phone-journal-entry bg-surface rounded-xl border border-gray-800 overflow-hidden">
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen(v => !v)}
-        className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-900/30 transition-colors"
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen(v => !v);
+          }
+        }}
+        aria-expanded={open}
+        aria-label={`${open ? 'Collapse' : 'Expand'} journal entry ${entry.entry_date}`}
+        className="w-full cursor-pointer text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-900/30 transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
       >
         <span className="mt-0.5 text-gray-600 shrink-0">
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="text-xs font-mono font-bold text-white">{entry.entry_date}</span>
+            <span className="text-xs font-mono font-bold text-white">{isMobile ? (entry.created_at && !Number.isNaN(Date.parse(entry.created_at)) ? new Date(entry.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'Entry') : entry.entry_date}</span>
             {mood && <span className="text-base leading-none">{mood}</span>}
-            <StatusDot status={entry.ingestion_status} />
+            {(!isMobile || open || entry.ingestion_status !== 'processed') && <StatusDot status={entry.ingestion_status} />}
           </div>
-          <p className="text-sm text-gray-400 leading-relaxed line-clamp-2">{snippet}</p>
+          <p className="journal-snippet text-sm text-gray-400 leading-relaxed line-clamp-3">{snippet}</p>
         </div>
-        <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+        {(open || !isMobile) && <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
           {isTerminalError && (
             <button
               onClick={handleRetry}
               disabled={busy}
               title="Retry AI ingestion"
+              aria-label="Retry AI ingestion"
               className="p-1.5 rounded-lg text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-40"
             >
               <RefreshCw size={12} className={busy ? 'animate-spin' : ''} />
@@ -286,12 +304,13 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
             onClick={handleDelete}
             disabled={busy}
             title="Delete entry"
+            aria-label={`Delete journal entry ${entry.entry_date}`}
             className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-40"
           >
             <Trash2 size={12} />
           </button>
-        </div>
-      </button>
+        </div>}
+      </div>
 
       {open && (
         <div className="px-4 pb-4 border-t border-gray-800 pt-3 space-y-4">
@@ -327,8 +346,12 @@ function EntryCard({ entry }: { entry: DBJournalEntry }) {
 }
 
 export function JournalView() {
-  const [text, setText] = useState('');
-  const [entryDate, setEntryDate] = useState(() => localToday());
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const [composing, setComposing] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const entryRef = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = usePersistentDraft('journal');
+  const [entryDate, setEntryDate] = usePersistentDraft('journal-date');
   const [submitting, setSubmitting] = useState(false);
   const [range, setRange] = useState<'7d' | '30d' | 'all'>('30d');
   const [jumpDate, setJumpDate] = useState('');
@@ -341,10 +364,11 @@ export function JournalView() {
     if (!text.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await apiPost('/api/journal', { raw_text: text.trim(), entry_date: entryDate });
+      await apiPost('/api/journal', { raw_text: text.trim(), entry_date: entryDate || localToday() });
       setText('');
+      setComposing(false);
       invalidate.journal();
-      triggerToast(entryDate === localToday()
+      triggerToast(!entryDate || entryDate === localToday()
         ? 'Logged — AI is extracting tasks, links, and time…'
         : `Logged for ${entryDate} — AI is extracting…`, 'success');
     } catch (err) {
@@ -358,8 +382,8 @@ export function JournalView() {
   const cutoff = range === 'all' ? '' : localDaysAgo(range === '7d' ? 7 : 30);
   const q = search.trim().toLowerCase();
   const filtered = (entries ?? []).filter(e => {
-    if (jumpDate) return e.entry_date === jumpDate;
-    if (cutoff && e.entry_date < cutoff) return false;
+    if (jumpDate && e.entry_date !== jumpDate) return false;
+    if (!jumpDate && cutoff && e.entry_date < cutoff) return false;
     if (q && !e.raw_text.toLowerCase().includes(q) && !(e.summary ?? '').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -371,21 +395,12 @@ export function JournalView() {
   const days = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
   const hiddenCount = (entries?.length ?? 0) - filtered.length;
 
-  return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="font-headline text-2xl font-bold text-white mb-1">Journal</h1>
-          <p className="text-sm text-gray-500">Every day is a book. The AI extracts tasks, links, and time from every entry.</p>
-        </div>
-      </div>
-
-      {/* Composer — supports backdating */}
-      <div className="bg-surface rounded-xl border border-gray-700 p-4 space-y-3">
-        <textarea
+  const composer = (<div className="bg-surface rounded-xl border border-gray-700 p-4 space-y-3">
+        <textarea ref={entryRef}
+          aria-label="Journal entry text"
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder="What did you work on? (e.g. 'Spent 45 minutes on the ECG paper draft…')"
+          placeholder="What is on your mind?"
           rows={3}
           className="w-full bg-transparent text-sm text-gray-200 placeholder-gray-600 resize-none outline-none leading-relaxed"
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit(); }}
@@ -393,34 +408,35 @@ export function JournalView() {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <input
+              aria-label="Journal entry date"
               type="date"
-              value={entryDate}
+              value={entryDate || localToday()}
               max={localToday()}
               onChange={e => setEntryDate(e.target.value || localToday())}
               className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-indigo-500"
               title="Log for a different day (backdate)"
             />
-            {entryDate !== localToday() && (
-              <button onClick={() => setEntryDate(localToday())} className="text-[10px] font-mono text-indigo-400 hover:underline">today</button>
+            {entryDate && entryDate !== localToday() && (
+              <button onClick={() => setEntryDate(localToday())} className="text-[10px] font-mono text-indigo-400 hover:underline" aria-label="Set journal date to today">today</button>
             )}
             <span className="text-[10px] font-mono text-gray-600 hidden sm:inline">Cmd+Enter to log</span>
           </div>
           <button
             onClick={handleSubmit}
             disabled={!text.trim() || submitting}
+            aria-label="Log journal entry"
             className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-colors"
           >
             {submitting ? 'Logging…' : 'Log entry'}
           </button>
         </div>
-      </div>
-
-      {/* Date navigation: range chips + jump-to-date + text search */}
-      <div className="flex items-center gap-2 flex-wrap">
+      </div>);
+  const filters = (<div className="flex items-center gap-2 flex-wrap">
         {(['7d', '30d', 'all'] as const).map(r => (
           <button
             key={r}
             onClick={() => { setRange(r); setJumpDate(''); }}
+            aria-pressed={range === r && !jumpDate}
             className={`px-2.5 py-1 rounded-full text-[10px] font-mono uppercase border transition-colors ${
               range === r && !jumpDate ? 'bg-indigo-600 text-white border-indigo-600' : 'text-gray-500 border-gray-700 hover:text-gray-300'
             }`}
@@ -429,6 +445,7 @@ export function JournalView() {
           </button>
         ))}
         <input
+          aria-label="Jump to journal date"
           type="date"
           value={jumpDate}
           onChange={e => setJumpDate(e.target.value)}
@@ -436,20 +453,36 @@ export function JournalView() {
           title="Jump to one specific day"
         />
         {jumpDate && (
-          <button onClick={() => setJumpDate('')} className="text-gray-500 hover:text-gray-300"><X size={12} /></button>
+          <button onClick={() => setJumpDate('')} className="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-900 hover:text-gray-300" aria-label="Clear journal date filter"><X size={12} /></button>
         )}
         <div className="relative flex-1 min-w-[160px]">
           <input
+            aria-label="Search journal entries"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search entries…"
             className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1 text-[11px] text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-indigo-500"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300"><X size={11} /></button>
+            <button onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-gray-600 hover:bg-gray-900 hover:text-gray-300" aria-label="Clear journal search"><X size={11} /></button>
           )}
         </div>
+      </div>);
+
+  return (
+    <div className="mobile-journal max-w-2xl mx-auto px-4 py-6 space-y-5">
+      <div className="hidden items-start justify-between gap-3 md:flex">
+        <div>
+          <h1 className="font-headline text-2xl font-bold text-white mb-1">Journal</h1>
+          <p className="text-sm text-gray-500">Keep a record of your day and what you worked on.</p>
+        </div>
       </div>
+
+      {/* Composer — supports backdating */}
+      {isMobile ? <button onClick={() => setComposing(true)} className="flex min-h-16 w-full items-center gap-3 rounded-2xl bg-indigo-50 px-4 py-4 text-left text-indigo-700" aria-label="Write a journal entry"><PenLine size={22} /><span><span className="block font-semibold">{text ? 'Continue writing' : 'Write about today'}</span><span className="block text-xs font-normal text-indigo-500">{text ? 'Your draft is saved on this device' : 'A thought, a small win, a moment to remember'}</span></span></button> : composer}
+      {isMobile && composing && <MobileSheet title="Write an entry" onClose={() => setComposing(false)} initialFocusRef={entryRef}><div className="phone-journal-composer">{composer}</div><p className="mt-3 text-xs text-slate-400">Closing keeps your draft.</p></MobileSheet>}
+      {isMobile ? <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-700">{jumpDate ? humanDay(jumpDate) : range === 'all' ? 'All entries' : range === '7d' ? 'This week' : 'Recent entries'}{q ? ' · Filtered' : ''}</p><button aria-label="Filter journal" aria-haspopup="dialog" onClick={() => setFiltersOpen(true)} className="mobile-icon-button text-slate-500"><SlidersHorizontal size={19} /></button></div> : filters}
+      {isMobile && filtersOpen && <MobileSheet title="Find an entry" onClose={() => setFiltersOpen(false)}><div className="phone-journal-filters">{filters}</div><button onClick={() => setFiltersOpen(false)} className="mt-5 min-h-12 w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white">Show entries</button></MobileSheet>}
 
       {/* AI Proposals */}
       <ProposalsPanel />
@@ -467,14 +500,14 @@ export function JournalView() {
           <p className="text-sm">
             {entries?.length
               ? 'Nothing in this range — widen the filter or clear the search.'
-              : 'No journal entries yet. Write your first one above.'}
+              : 'Your story starts here. Write a little about today.'}
           </p>
         </div>
       ) : (
         <div className="space-y-5">
           {days.map(day => (
             <section key={day}>
-              <div className="sticky top-16 z-10 bg-canvas-bg/95 backdrop-blur py-1.5 mb-2 flex items-baseline gap-2">
+              <div className="journal-day-heading py-1.5 mb-2 flex items-baseline gap-2">
                 <h2 className="text-[12px] font-bold text-gray-300">{humanDay(day)}</h2>
                 <span className="text-[10px] font-mono text-gray-600">{day}</span>
                 {byDay.get(day)!.length > 1 && (

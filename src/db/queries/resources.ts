@@ -1,5 +1,6 @@
 import type { DBResource, ResourceLog, ResourceReadState, ResourceStats, ResourceType } from '../schema';
 import { apiFetch, apiPost, apiPatch, apiDelete } from '../../utils/apiFetch';
+import { normalizedUploadType, uploadToPrivateBlob } from '../../utils/blobUpload';
 
 export type MentionSourceType = 'note' | 'task' | 'braindump' | 'goal';
 
@@ -30,6 +31,31 @@ export async function createResource(
     attach_to_type: taskId ? 'task' : 'goal',
   });
   return id;
+}
+
+export async function uploadResource(file: File, goalId: string, taskId?: string): Promise<string> {
+  const blob = await uploadToPrivateBlob(file, 'resource');
+  if (blob) {
+    const { id } = await apiPost<{ id: string }>(`${API}/resources/register-blob`, {
+      blob: { url: blob.url, pathname: blob.pathname },
+      original_name: file.name,
+      mime_type: normalizedUploadType(file),
+      size: file.size,
+      attach_to_id: taskId ?? goalId,
+      attach_to_type: taskId ? 'task' : 'goal',
+    });
+    return id;
+  }
+  const form = new FormData();
+  form.append('file', file);
+  form.append('attach_to_id', taskId ?? goalId);
+  form.append('attach_to_type', taskId ? 'task' : 'goal');
+  const { id } = await apiFetch<{ id: string }>(`${API}/resources/upload`, { method: 'POST', body: form });
+  return id;
+}
+
+export async function detachResource(resourceId: string, targetType: 'task' | 'goal', targetId: string): Promise<void> {
+  await apiDelete(`${API}/resources/${resourceId}/attachments/${targetType}/${targetId}`);
 }
 
 export async function getAllResourcesGrouped(
@@ -172,6 +198,16 @@ export async function getResourceGraph(resourceId: string): Promise<ResourceGrap
 // ── File upload ───────────────────────────────────────────────────────────────
 
 export async function uploadResourceFile(file: File): Promise<string> {
+  const blob = await uploadToPrivateBlob(file, 'resource');
+  if (blob) {
+    const { id } = await apiPost<{ id: string }>(`${API}/resources/register-blob`, {
+      blob: { url: blob.url, pathname: blob.pathname },
+      original_name: file.name,
+      mime_type: normalizedUploadType(file),
+      size: file.size,
+    });
+    return id;
+  }
   const fd = new FormData();
   fd.append('file', file);
   // multipart upload — must not set Content-Type manually (browser sets boundary)

@@ -7,7 +7,7 @@ import type { DBGoal, PlanStatus } from '../db/schema';
 /**
  * Real date-based planning for a goal (replaces the vague Q1/Q2-style single
  * deadline): start date, target date, hard deadline, plan status, and the
- * scheduling toggle that decides whether Amina may manage its time at all.
+ * scheduling toggle that decides whether Marina may manage its time at all.
  */
 
 const STATUS_OPTIONS: Array<{ value: PlanStatus; label: string; cls: string }> = [
@@ -57,11 +57,12 @@ export function GoalPlanningPanel({ goal, onChanged }: { goal: DBGoal; onChanged
   const statusOpt = STATUS_OPTIONS.find(s => s.value === status) ?? STATUS_OPTIONS[2];
 
   return (
-    <div className={`rounded-xl border border-gray-100 bg-white p-3 space-y-2.5 ${saving ? 'opacity-70' : ''}`}>
+    <div className={`mobile-goal-planning rounded-xl border border-gray-100 bg-white p-3 space-y-2.5 ${saving ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-2">
         <CalendarDays size={12} className="text-[#4648d4]" />
         <span className="text-[9px] font-mono uppercase tracking-widest text-gray-400 font-bold">Planning</span>
         <select
+          aria-label="Goal planning status"
           value={status}
           onChange={e => save({ plan_status: e.target.value as PlanStatus }, `Status: ${e.target.value.replace('_', ' ')}`)}
           className={`ml-auto text-[10px] font-mono font-bold bg-white border border-gray-200 rounded-lg px-1.5 py-0.5 cursor-pointer focus:outline-none ${statusOpt.cls}`}
@@ -83,14 +84,14 @@ export function GoalPlanningPanel({ goal, onChanged }: { goal: DBGoal; onChanged
       <button
         onClick={() => save(
           { scheduling_enabled: !schedulingOn },
-          schedulingOn ? 'Amina will NOT auto-plan this goal’s time.' : 'Amina may plan this goal’s time (needs dates + estimates).',
+          schedulingOn ? 'Marina will NOT auto-plan this goal’s time.' : 'Marina may plan this goal’s time (needs dates + estimates).',
         )}
         className={`w-full flex items-center gap-1.5 justify-center text-[10px] font-mono uppercase tracking-wider py-1.5 rounded-lg border transition-colors ${
           schedulingOn
             ? 'bg-[#EEF2FF] text-[#4648d4] border-[#c0c1ff]/60 hover:bg-[#c0c1ff]/20'
             : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
         }`}
-        title="When off, Amina still logs and classifies work here but never places it on your calendar"
+        title="When off, Marina still logs and classifies work here but never places it on your calendar"
       >
         {schedulingOn ? <Zap size={11} /> : <ZapOff size={11} />}
         {schedulingOn ? 'Scheduling: on' : 'Scheduling: off'}

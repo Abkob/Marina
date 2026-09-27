@@ -34,9 +34,66 @@ function makeValidContext() {
         ],
       },
     ],
-    meetings_next_7_days: [],
+    meetings_next_14_days: [],
     recent_journal: [{ date: '2026-06-28', summary: 'Worked on chapter 3.' }],
     schedule_overrides: [],
+    daily_workload: [
+      {
+        date: '2026-06-29',
+        capacity: {
+          raw_capacity_minutes: 480,
+          reserved_buffer_minutes: 72,
+          effective_capacity_minutes: 408,
+          fixed_commitment_minutes: 0,
+          available_after_fixed_minutes: 408,
+        },
+        due_leaf_minutes: 180,
+        over_capacity_minutes: 0,
+        origin_groups: [
+          {
+            origin_id: 't1',
+            origin_title: 'Write chapter 3',
+            kind: 'single_task',
+            total_minutes: 180,
+            tasks: [{ id: 't1', title: 'Write chapter 3', remaining_minutes: 180 }],
+          },
+        ],
+        rollup_context: [],
+      },
+    ],
+    current_schedule_days: [
+      {
+        date: '2026-06-29',
+        scheduled_minutes: 120,
+        free_after_scheduled_minutes: 288,
+        timeline_blocks: [
+          {
+            id: 'e1',
+            title: 'Write chapter 3',
+            type: 'linked_task_block',
+            indicator: 'SCHEDULED',
+            start_hour: 9,
+            end_hour: 11,
+            duration_minutes: 120,
+            time_label: '9:00 AM - 11:00 AM',
+          },
+        ],
+        day_level_tasks: [],
+        due_work: {
+          due_leaf_minutes: 180,
+          over_capacity_minutes: 0,
+          origin_groups: [],
+        },
+      },
+    ],
+    planning_buckets: {
+      must_finish_by_date: [],
+      large_tasks_needing_slices: [],
+      parent_rollups: [],
+      background_fillers: [],
+      unestimated_due_soon: [],
+      rules_summary: [],
+    },
   };
 }
 
@@ -137,8 +194,8 @@ describe('context shape includes all SYSTEM_PROMPT-referenced fields', () => {
     expect(str).toContain('"remaining_minutes"');
   });
 
-  it('has meetings_next_7_days', () => {
-    expect(str).toContain('"meetings_next_7_days"');
+  it('has meetings_next_14_days', () => {
+    expect(str).toContain('"meetings_next_14_days"');
   });
 
   it('has recent_journal with no raw_text', () => {
@@ -148,6 +205,24 @@ describe('context shape includes all SYSTEM_PROMPT-referenced fields', () => {
 
   it('has schedule_overrides', () => {
     expect(str).toContain('"schedule_overrides"');
+  });
+
+  it('has daily_workload for schedule breakdown answers', () => {
+    expect(str).toContain('"daily_workload"');
+    expect(str).toContain('"origin_groups"');
+    expect(str).toContain('"available_after_fixed_minutes"');
+  });
+
+  it('has current_schedule_days for placed schedule answers', () => {
+    expect(str).toContain('"current_schedule_days"');
+    expect(str).toContain('"timeline_blocks"');
+    expect(str).toContain('"free_after_scheduled_minutes"');
+  });
+
+  it('has planning_buckets', () => {
+    expect(str).toContain('"planning_buckets"');
+    expect(str).toContain('"must_finish_by_date"');
+    expect(str).toContain('"large_tasks_needing_slices"');
   });
 });
 

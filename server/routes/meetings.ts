@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeMeetingSql } from '../utils/archiveVisibility.js';
 import { query, transaction } from '../db.js';
 
 const router = Router();
@@ -8,7 +9,7 @@ router.get('/', async (req, res) => {
   const { goal_id } = req.query;
   const { rows } = goal_id
     ? await query('SELECT * FROM meetings WHERE goal_id=$1 ORDER BY scheduled_at ASC', [goal_id])
-    : await query('SELECT * FROM meetings ORDER BY scheduled_at ASC LIMIT 500');
+    : await query(`SELECT * FROM meetings WHERE ${activeMeetingSql()} ORDER BY scheduled_at ASC LIMIT 500`);
   res.json(rows);
 });
 
@@ -56,9 +57,8 @@ router.delete('/:id', async (req, res) => {
     await client.query("DELETE FROM ai_action_proposals WHERE source_type='meeting' AND source_id=$1 AND status='pending'", [meetingId]);
     await client.query('DELETE FROM meetings WHERE id=$1', [meetingId]);
   });
+  await query("DELETE FROM embeddings WHERE entity_type='meeting' AND entity_id=$1", [meetingId]);
   res.json({ ok: true });
-  query("DELETE FROM embeddings WHERE entity_type='meeting' AND entity_id=$1", [meetingId])
-    .catch(err => console.error('[cleanup] meeting embeddings:', err));
 });
 
 export { router as meetingsRouter };

@@ -12,9 +12,16 @@ coverage/
 *.db-shm
 *.db-wal
 
+# Local PostgreSQL exports and safety snapshots
+backups/
+*.dump
+
 # Uploaded files
 server/uploads/
 .env
+
+# Generated Obsidian mirror
+obsidian-vault/
 
 # Playwright
 test-results/
@@ -25,3 +32,9 @@ backups/
 CC-Session-Logs/
 DATABASE_AUDIT_REPORT.md
 SESSION_CONTEXT.md
+
+# Local scratch and generated inspection files
+tmp/
+
+# Local Vercel project metadata and pulled environment values
+.vercel/

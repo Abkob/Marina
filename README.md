@@ -48,19 +48,25 @@ capture / goals / resources / schedule
  retrieval -> bounded context -> proposed action
 ```
 
+## Current application
+
+The current interface uses the Marina name and includes phone planning, routines, Google Tasks and Calendar sync, and persistent thought notes. Unfinished notes carry forward until **Finish** is selected; completed notes remain crossed out on their completion day.
+
+See [application and deployment guidance](docs/application-guide.md) for the current setup, migrations, mobile workflows, backups, and private Vercel hosting. Apply the additive `server/migrations/025-note-completion.sql` migration before using the new note completion API.
+
 ## Local setup
 
 ### Prerequisites
 
-- Node.js 20 or newer
+- Node.js 24
 - PostgreSQL with the `vector` extension
 - Optional: Ollama or another compatible model endpoint
 
 ### Run
 
 ```bash
-git clone https://github.com/Abkob/Amina.git
-cd Amina
+git clone https://github.com/Abkob/Marina.git
+cd Marina
 npm install
 cp .env.example .env
 ```

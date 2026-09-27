@@ -17,6 +17,14 @@ function isDone(task: DBTask) {
   return task.completed || task.status === 'done';
 }
 
+/** Mirrors the milestone card: a milestone is complete when all direct child tasks are done. */
+export function isEffectivelyDone(task: DBTask, tasks: DBTask[]) {
+  if (isDone(task)) return true;
+  if (task.kind !== 'critical_path') return false;
+  const children = tasks.filter(candidate => candidate.parent_task_id === task.id);
+  return children.length > 0 && children.every(isDone);
+}
+
 function parseTime(value: string | null | undefined) {
   if (!value) return 0;
   const time = new Date(value).getTime();
@@ -47,7 +55,7 @@ export function getClosestDueTask(tasks: DBTask[], now = new Date()): ClosestDue
   today.setHours(0, 0, 0, 0);
 
   const candidates = tasks
-    .filter(t => !isDone(t) && t.due_date)
+    .filter(t => !isEffectivelyDone(t, tasks) && t.due_date)
     .map(t => {
       const due = parseDueDate(t.due_date!);
       const daysUntil = Math.round((due.getTime() - today.getTime()) / 86_400_000);
@@ -123,6 +131,13 @@ export function calculateGoalTaskMetrics(tasks: DBTask[], now = new Date()): Goa
     }
   }
 
+  // A goal may only be 100% when every task is complete. Milestone cards derive
+  // completion from their direct children, so use that same rule here instead
+  // of leaving an otherwise-finished goal stuck at 99%.
+  if (tasks.some(task => !isEffectivelyDone(task, tasks))) {
+    progress = Math.min(progress, 99);
+  }
+
   const recentCutoff = now.getTime() - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const recentlyTouched = tasks.filter(task => parseTime(task.updated_at) >= recentCutoff).length;
   const recentlyCompleted = tasks.filter(task => isDone(task) && parseTime(task.updated_at) >= recentCutoff).length;
@@ -165,13 +180,27 @@ export function computeGoalStatus(
 
   // Remaining estimated minutes across incomplete tasks
   const remainingMinutes = tasks
-    .filter(t => !t.completed && t.status !== 'done')
+    .filter(t => !isEffectivelyDone(t, tasks))
     .reduce((sum, t) => sum + (t.estimated_minutes ?? 0), 0);
 
   // Parse deadline — handle ISO date strings; ignore quarter strings like "Q3 2024"
   const deadlineDate = goal.deadline
     ? (() => { const d = new Date(goal.deadline.slice(0, 10) + 'T23:59:59'); return isNaN(d.getTime()) ? null : d; })()
     : null;
+
+  const taskDeadlineDays = tasks
+    .filter(task => !isEffectivelyDone(task, tasks))
+    .flatMap(task => [task.hard_deadline, task.due_date, task.target_date])
+    .filter((value): value is string => Boolean(value))
+    .map(value => new Date(value.slice(0, 10) + 'T23:59:59'))
+    .filter(date => !Number.isNaN(date.getTime()))
+    .map(date => (date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  // An unfinished task with any overdue deadline makes the goal risky. Any
+  // deadline due within the next week puts it on Watch, even if the goal itself
+  // has no deadline or would otherwise look Safe.
+  if (taskDeadlineDays.some(days => days < 0)) return 'Risky';
+  if (taskDeadlineDays.some(days => days <= 7)) return 'Watch';
 
   if (!deadlineDate) {
     // No parseable deadline — base purely on progress

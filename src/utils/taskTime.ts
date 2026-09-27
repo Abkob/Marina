@@ -73,6 +73,30 @@ export interface RolledUpTime {
   extraChildrenSum?: number | null;
 }
 
+export interface RolledUpActualTime {
+  minutes: number;
+  ownMinutes: number;
+  childrenMinutes: number;
+  contributingChildren: number;
+}
+
+/** Actual time is additive: every session belongs to one task and rolls up to its ancestors. */
+export function getRolledUpActualTime(task: DBTask, allTasks: DBTask[]): RolledUpActualTime {
+  const ownMinutes = normalizeTaskMinutes(task.actual_minutes) ?? 0;
+  const directChildren = allTasks.filter(t => t.parent_task_id === task.id);
+  let childrenMinutes = 0;
+  let contributingChildren = 0;
+
+  for (const child of directChildren) {
+    const childActual = getRolledUpActualTime(child, allTasks);
+    childrenMinutes += childActual.minutes;
+    contributingChildren += childActual.contributingChildren;
+    if ((normalizeTaskMinutes(child.actual_minutes) ?? 0) > 0) contributingChildren += 1;
+  }
+
+  return { minutes: ownMinutes + childrenMinutes, ownMinutes, childrenMinutes, contributingChildren };
+}
+
 function getLeafDescendants(taskId: string, allTasks: DBTask[]): DBTask[] {
   const direct = allTasks.filter(t => t.parent_task_id === taskId);
   if (direct.length === 0) return [];

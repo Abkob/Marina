@@ -1,12 +1,37 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Tab = 'Copilot' | 'Brain Dump' | 'Goals' | 'Work' | 'Resources' | 'Gantt' | 'Journal' | 'Graph' | 'Topics' | 'Schedule' | 'Settings' | 'Testing';
+export type Tab = 'Copilot' | 'Brain Dump' | 'Goals' | 'Work' | 'Resources' | 'Gantt' | 'Journal' | 'Graph' | 'Topics' | 'Schedule' | 'Usage' | 'Settings' | 'Testing';
 
 export interface ToastMsg {
   id: number;
   text: string;
   type: 'success' | 'info' | 'error';
+}
+
+type StoreUpdater<T> = T | ((current: T) => T);
+
+export interface CopilotAttachmentState {
+  id: string;
+  title: string;
+  indexing: boolean;
+}
+
+export interface CopilotStoredMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  actions?: unknown[];
+  feasibility?: unknown;
+  citations?: unknown[];
+  plan?: unknown;
+  planOptions?: unknown;
+  scheduleDayView?: unknown;
+  overdueTasksView?: unknown;
+  runtime?: unknown;
+  serverMsgId?: string;
+  timestamp: string;
+  error?: string;
 }
 
 const DEFAULT_GOAL_CATEGORIES = [
@@ -43,6 +68,14 @@ interface AppStore {
   isOptimizing:    boolean;
   toast:           ToastMsg | null;
   isNotificationOpen: boolean;
+  spotlightTaskId: string | null;
+  spotlightDeadlineId: string | null;
+
+  // ─── Copilot live state (persisted) ───────────────────────────────────────
+  copilotActiveSessionId: string | null;
+  copilotDraft: string;
+  copilotMessages: CopilotStoredMessage[];
+  copilotAttachment: CopilotAttachmentState | null;
 
   // ─── Modals ───────────────────────────────────────────────────────────────
   newGoalModalOpen:     boolean;
@@ -76,6 +109,14 @@ interface AppStore {
   toggleSidebar:        () => void;
   setIsOptimizing:      (v: boolean) => void;
   setIsNotificationOpen:(open: boolean) => void;
+  setTaskSpotlight:     (taskId: string | null) => void;
+  setDeadlineSpotlight: (deadlineId: string | null) => void;
+  clearSpotlight:       () => void;
+  setCopilotActiveSessionId: (id: string | null) => void;
+  setCopilotDraft:           (draft: string) => void;
+  setCopilotMessages:        (messages: StoreUpdater<CopilotStoredMessage[]>) => void;
+  setCopilotAttachment:      (attachment: StoreUpdater<CopilotAttachmentState | null>) => void;
+  clearCopilotConversation:  () => void;
 
   // ─── Toast ────────────────────────────────────────────────────────────────
   triggerToast: (text: string, type?: ToastMsg['type']) => void;
@@ -130,6 +171,12 @@ export const useAppStore = create<AppStore>()(
       isOptimizing:       false,
       toast:              null,
       isNotificationOpen: false,
+      spotlightTaskId:    null,
+      spotlightDeadlineId:null,
+      copilotActiveSessionId: null,
+      copilotDraft: '',
+      copilotMessages: [],
+      copilotAttachment: null,
 
       newGoalModalOpen:     false,
       newNoteModalOpen:     false,
@@ -174,6 +221,23 @@ export const useAppStore = create<AppStore>()(
       toggleSidebar:         () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setIsOptimizing:       (v)    => set({ isOptimizing: v }),
       setIsNotificationOpen: (open) => set({ isNotificationOpen: open }),
+      setTaskSpotlight:      (taskId) => set({ spotlightTaskId: taskId, spotlightDeadlineId: null }),
+      setDeadlineSpotlight:  (deadlineId) => set({ spotlightDeadlineId: deadlineId, spotlightTaskId: null }),
+      clearSpotlight:        () => set({ spotlightTaskId: null, spotlightDeadlineId: null }),
+      setCopilotActiveSessionId: (id) => set({ copilotActiveSessionId: id }),
+      setCopilotDraft:           (draft) => set({ copilotDraft: draft }),
+      setCopilotMessages:        (messages) => set((s) => ({
+        copilotMessages: typeof messages === 'function' ? messages(s.copilotMessages) : messages,
+      })),
+      setCopilotAttachment:      (attachment) => set((s) => ({
+        copilotAttachment: typeof attachment === 'function' ? attachment(s.copilotAttachment) : attachment,
+      })),
+      clearCopilotConversation:  () => set({
+        copilotActiveSessionId: null,
+        copilotDraft: '',
+        copilotMessages: [],
+        copilotAttachment: null,
+      }),
 
       // ─── Toast ────────────────────────────────────────────────────────────
       triggerToast: (text, type = 'success') => {
@@ -210,7 +274,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'marina-os-ui-v1',
-      // Only persist navigation + schedule drawer state
+      // Persist navigation, schedule drawer, and Copilot live-session state.
       partialize: (state) => ({
         currentTab:        state.currentTab,
         activeNoteId:      state.activeNoteId,
@@ -223,6 +287,9 @@ export const useAppStore = create<AppStore>()(
         sidebarCollapsed:  state.sidebarCollapsed,
         goalsFilter:       state.goalsFilter,
         goalCategories:    state.goalCategories,
+        copilotActiveSessionId: state.copilotActiveSessionId,
+        copilotDraft:           state.copilotDraft,
+        copilotAttachment:      state.copilotAttachment,
       }),
     }
   )

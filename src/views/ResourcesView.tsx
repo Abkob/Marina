@@ -61,6 +61,7 @@ function ReadStateBadge({ state, onClick }: { state: ResourceReadState; onClick:
   return (
     <button
       onClick={onClick}
+      aria-label={`Read state: ${cfg.label}. Click to cycle`}
       title="Click to cycle: Unread → Reading → Done → Shelved"
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wide transition-all hover:opacity-75 shrink-0 ${cfg.bg} ${cfg.text}`}
     >
@@ -87,9 +88,9 @@ function StatsStrip({ resources }: { resources: DBResource[] }) {
   if (total === 0) return null;
 
   return (
-    <div className="mb-6 space-y-3">
+    <div className="mobile-resource-stats mb-6 space-y-3">
       {/* Read state row */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { icon: BookOpen,      label: 'Unread',  value: unread,  color: 'text-gray-500',    bg: 'bg-gray-50' },
           { icon: Clock,         label: 'Reading', value: reading, color: 'text-[#4648d4]',   bg: 'bg-[#EEF2FF]' },
@@ -142,7 +143,16 @@ function ResourceCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 4 }}
       onClick={() => onOpen(resource)}
-      className="group/card relative flex cursor-pointer flex-col rounded-xl border border-gray-150 bg-white shadow-sm hover:border-[#4648d4]/30 hover:shadow-md transition-all overflow-hidden"
+      role="button"
+      tabIndex={0}
+      aria-label={`Open resource ${resource.title}`}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(resource);
+        }
+      }}
+      className="group/card relative flex cursor-pointer flex-col rounded-xl border border-gray-150 bg-white shadow-sm hover:border-[#4648d4]/30 hover:shadow-md transition-all overflow-hidden focus:outline-none focus:ring-2 focus:ring-[#4648d4]/30"
     >
       {/* Accent bar */}
       <div className="h-[3px] w-full shrink-0" style={{ background: accent }} />
@@ -194,6 +204,7 @@ function ResourceCard({
       >
         {canView && resource.url && (
           <button onClick={() => onView(resource)}
+            aria-label={`Preview ${resource.title}`}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
             <Eye size={11} /> Preview
           </button>
@@ -206,6 +217,7 @@ function ResourceCard({
           </a>
         )}
         <button onClick={() => onDelete(resource)}
+          aria-label={`Delete resource ${resource.title}`}
           className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors">
           <Trash2 size={11} /> Delete
         </button>
@@ -262,6 +274,7 @@ function AddPanel({ onAdded }: { onAdded: () => void }) {
           { key: 'upload' as const, icon: Upload,  label: 'Upload File' },
         ].map(({ key, icon: Icon, label }) => (
           <button key={key} onClick={() => setTab(key)}
+            aria-pressed={tab === key}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-mono text-[10px] font-bold uppercase tracking-wide transition-all ${
               tab === key ? 'bg-[#4648d4] text-white shadow-sm' : 'text-gray-400 hover:text-gray-700'
             }`}>
@@ -274,27 +287,31 @@ function AddPanel({ onAdded }: { onAdded: () => void }) {
         <form onSubmit={handleSubmit}>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <input ref={titleRef} value={title} onChange={e => setTitle(e.target.value)}
+              <label htmlFor="resource-title-input" className="sr-only">Resource name</label>
+              <input id="resource-title-input" ref={titleRef} value={title} onChange={e => setTitle(e.target.value)}
                 placeholder="Name *"
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#4648d4] transition-colors" />
             </div>
             <div>
-              <select value={type} onChange={e => setType(e.target.value as ResourceType)}
+              <label htmlFor="resource-type-input" className="sr-only">Resource type</label>
+              <select id="resource-type-input" value={type} onChange={e => setType(e.target.value as ResourceType)}
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#4648d4] transition-colors">
                 {RESOURCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <input value={url} onChange={e => setUrl(e.target.value)} placeholder="URL (optional)"
+              <label htmlFor="resource-url-input" className="sr-only">Resource URL</label>
+              <input id="resource-url-input" value={url} onChange={e => setUrl(e.target.value)} placeholder="URL (optional)"
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#4648d4] transition-colors" />
             </div>
             <div className="sm:col-span-2">
-              <input value={info} onChange={e => setInfo(e.target.value)} placeholder="Notes — author, DOI, year… (optional)"
+              <input aria-label="Resource notes" value={info} onChange={e => setInfo(e.target.value)} placeholder="Notes — author, DOI, year… (optional)"
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#4648d4] transition-colors" />
             </div>
           </div>
           <div className="mt-4 flex justify-end">
             <button type="submit" disabled={!title.trim() || busy}
+              aria-label="Add resource"
               className="inline-flex items-center gap-2 rounded-lg bg-[#4648d4] px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity">
               <Plus size={13} /> {busy ? 'Saving…' : 'Add Resource'}
             </button>
@@ -304,13 +321,22 @@ function AddPanel({ onAdded }: { onAdded: () => void }) {
 
       {tab === 'upload' && (
         <div>
-          <input ref={fileRef} type="file" multiple className="hidden"
+          <input ref={fileRef} type="file" multiple className="hidden" aria-label="Upload resource files"
             onChange={e => handleUpload(e.currentTarget.files)} />
           <div
             onDragOver={e => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={e => { e.preventDefault(); setDragging(false); handleUpload(e.dataTransfer.files); }}
             onClick={() => fileRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            aria-label="Upload resource files"
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
             className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-12 cursor-pointer transition-all ${
               dragging
                 ? 'border-[#4648d4] bg-[#EEF2FF]/60'
@@ -388,17 +414,19 @@ export function ResourcesView() {
 
   return (
     <>
-      <div className="max-w-[960px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
+      <div className="mobile-resources max-w-[960px] mx-auto px-4 md:px-10 py-6 animate-fade-in">
         {/* Header */}
-        <div className="flex items-end justify-between gap-4 mb-6">
+        <div className="mobile-toolbar flex items-end justify-between gap-4 mb-6">
           <div>
             <h2 className="font-headline text-2xl font-bold text-black mb-1">Resource Library</h2>
             <p className="text-sm text-gray-500">
-              Files, papers, links and people — all searchable and <span className="font-mono bg-gray-100 px-1 rounded text-xs">@mentionable</span> across the app.
+              Your files, links and reading, in one place.
             </p>
           </div>
           <button
             onClick={() => setShowAdd(v => !v)}
+            aria-expanded={showAdd}
+            aria-label={showAdd ? 'Close add resource panel' : 'Open add resource panel'}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-widest transition-all shadow-sm ${
               showAdd
                 ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -435,11 +463,11 @@ export function ResourcesView() {
               {/* Search */}
               <div className="relative flex-1 min-w-0">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
-                <input value={search} onChange={e => setSearch(e.target.value)}
+                <input aria-label="Search resources" value={search} onChange={e => setSearch(e.target.value)}
                   placeholder="Search by name or notes…"
                   className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-3 text-sm text-gray-800 outline-none focus:border-[#4648d4] transition-colors" />
                 {search && (
-                  <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                  <button onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-gray-300 hover:bg-gray-50 hover:text-gray-500" aria-label="Clear resource search">
                     <X size={12} />
                   </button>
                 )}
@@ -447,7 +475,7 @@ export function ResourcesView() {
               {/* Sort */}
               <div className="relative shrink-0">
                 <ArrowUpDown size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
-                <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
+                <select aria-label="Sort resources" value={sort} onChange={e => setSort(e.target.value as SortKey)}
                   className="appearance-none rounded-lg border border-gray-200 bg-white pl-7 pr-6 py-2 text-[11px] font-mono text-gray-600 outline-none focus:border-[#4648d4] transition-colors cursor-pointer">
                   <option value="newest">Newest</option>
                   <option value="oldest">Oldest</option>
@@ -459,8 +487,9 @@ export function ResourcesView() {
             </div>
 
             {/* Type filter pills */}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="mobile-filter-strip flex flex-wrap gap-1.5">
               <button onClick={() => setTypeFilter('all')}
+                aria-pressed={typeFilter === 'all'}
                 className={`rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide transition-colors ${
                   typeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}>
@@ -468,6 +497,7 @@ export function ResourcesView() {
               </button>
               {usedTypes.map(t => (
                 <button key={t} onClick={() => setTypeFilter(t === typeFilter ? 'all' : t)}
+                  aria-pressed={typeFilter === t}
                   className={`rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide transition-colors flex items-center gap-1 ${
                     typeFilter === t ? 'text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
@@ -484,6 +514,7 @@ export function ResourcesView() {
                   const active = readFilter === rs;
                   return (
                     <button key={rs} onClick={() => setReadFilter(active ? 'all' : rs)}
+                      aria-pressed={active}
                       className={`rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide transition-all flex items-center gap-1 ${
                         active ? `${cfg.bg} ${cfg.text} font-bold` : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
                       }`}>
@@ -508,6 +539,7 @@ export function ResourcesView() {
             </p>
             {resources.length === 0 && (
               <button onClick={() => setShowAdd(true)}
+                aria-label="Add first resource"
                 className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#4648d4] px-4 py-2 text-xs font-mono font-bold uppercase tracking-widest text-white hover:opacity-90 transition-opacity">
                 <Plus size={12} /> Add first resource
               </button>

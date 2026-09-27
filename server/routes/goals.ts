@@ -48,7 +48,7 @@ router.get('/health', async (_req, res) => {
       goal_id,
       COUNT(*)::int                                          AS total,
       SUM(CASE WHEN completed THEN 1 ELSE 0 END)::int       AS completed,
-      SUM(CASE WHEN NOT completed AND due_date < CURRENT_DATE::text THEN 1 ELSE 0 END)::int AS overdue,
+      SUM(CASE WHEN NOT completed AND status <> 'done' AND due_date < CURRENT_DATE::text THEN 1 ELSE 0 END)::int AS overdue,
       SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END)::int AS in_progress,
       COALESCE(SUM(CASE WHEN NOT completed THEN estimated_minutes ELSE 0 END), 0)::int AS estimated_minutes_total,
       COALESCE(SUM(actual_minutes), 0)::int                 AS actual_minutes_total,

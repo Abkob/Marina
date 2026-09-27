@@ -1,5 +1,5 @@
 {
-  "name": "Amina OS",
+  "name": "Marina OS",
   "description": "Personal Copilot for mental clarity, goals, and weekly schedule tracking.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

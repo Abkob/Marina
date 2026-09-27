@@ -1,7 +1,7 @@
-# Amina OS — Feature Spec & Unit Test Plan
+# Marina OS — Feature Spec & Unit Test Plan
 
-> Derived from: `amina_prd_feature_guide.md`, `DESIGN.md`, and all four example screen HTMLs.  
-> Every bullet under **Tests** maps to one concrete assertion or manual interaction check.  
+> Derived from: `marina_prd_feature_guide.md`, `DESIGN.md`, and all four example screen HTMLs.
+> Every bullet under **Tests** maps to one concrete assertion or manual interaction check.
 > **Legend:** [x] = verified implemented in source | [ ] = not yet done | [~] = partial / behaviour changed
 
 ---
@@ -9,7 +9,7 @@
 ## Global / Layout
 
 ### G1 — Persistent Sidebar (Desktop)
-- Displays brand mark: "A" logo + "Amina OS" + "Personal Copilot" label
+- Displays brand mark: "A" logo + "Marina OS" + "Personal Copilot" label
 - Navigation links: Brain Dump, Goals, Schedule, Resources, Settings
 - Active link has left-4px border accent (`border-[#6063ee]`) + bg-gray-800
 - "New …" CTA button label changes based on active tab: "New Goal" / "New Block" / "New Thought"
@@ -30,7 +30,7 @@
 
 ### G2 — Top Header Bar (Desktop)
 - Fixed, `md:left-[260px]`, `h-16`, backdrop-blur, border-b
-- "Amina" brand text + "OS 2.0" badge chip (ai-highlight-soft bg)
+- "Marina" brand text + "OS 2.0" badge chip (ai-highlight-soft bg)
 - Inline nav: Focus (→ Brain Dump tab), Reflect (→ Goals tab) — underline on active
 - Search box: pill input, placeholder "Filter mental map…", expands on focus (w-40 → w-56)
 - "Sync AI" button (fires toast on click)
@@ -312,7 +312,7 @@ Vertical timeline (left border-l-2 gray):
 ### F2 — TipTap Document Editor (Center Canvas)
 - Header: "Neural Log Entry" badge (ai-highlight-soft bg) + note title + date + delete button
 - Blank TipTap editor (StarterKit + Placeholder)
-- Placeholder text: "Tap here to document trace lines. Amina OS parses tasks..."
+- Placeholder text: "Tap here to document trace lines. Marina OS parses tasks..."
 - Borderless, resize-none, min-height 250px, `font-sans text-sm leading-relaxed`
 - Content updates saved to DB on every keystroke (`updateNoteContent`)
 - Delete button: confirm → removes note, switches to first remaining note
@@ -376,7 +376,7 @@ Two sections:
 1. **Parsed Tasks** — `extracted_tasks_json` from active note, each card: CheckCircle2 icon + task text + DUE date chip (red bg)
 2. **Associated Assets** — `relevant_docs_json`, each card: FileText icon + title + edited date
 - Empty state text for each section when arrays are empty
-- "Amina Mind-Link Helper" info box (ai-highlight-soft bg)
+- "Marina Mind-Link Helper" info box (ai-highlight-soft bg)
 
 **Tests**
 - [x] T-F5-01 Renders extractedTasks from parseExtractedTasks(note.extracted_tasks_json)
@@ -483,7 +483,7 @@ Selected event: `ring-2 ring-black bg-white`
 - Connected Resource sub-section (if exists): file icon + title + source
 - "Accept Slot" button: success toast + closes drawer
 - "Reschedule" button: shifts event start_hour +1, info toast
-- Empty state (drawer closed): hint text + "Amina Analytics" button (opens first event)
+- Empty state (drawer closed): hint text + "Marina Analytics" button (opens first event)
 
 **Tests**
 - [x] T-S3-01 Drawer visible when isDrawerOpen=true and selectedEventId is set
@@ -494,7 +494,7 @@ Selected event: `ring-2 ring-black bg-white`
 - [x] T-S3-06 rescheduleEvent updates time_str to match new start_hour (in DB query)
 - [x] T-S3-07 Connected resource card shown only when event.connected_resource_json is non-null
 - [x] T-S3-08 Empty state renders when isDrawerOpen=false
-- [x] T-S3-09 "Amina Analytics" button in empty state opens first event in DB
+- [x] T-S3-09 "Marina Analytics" button in empty state opens first event in DB
 
 ---
 
@@ -544,7 +544,7 @@ On submit:
 
 ### T1 — Copilot Metadata Card
 - AI avatar image
-- "Amina DeepMind AI Engine" name
+- "Marina DeepMind AI Engine" name
 - Status + latency display
 - "Diagnose Engine" button → success toast
 
@@ -573,7 +573,7 @@ All data removed from Zustand. Store is pure UI navigation + modal state.
 - [x] T-Z1-01 ~~Store initializes with INITIAL_GOALS~~ → **REPLACED:** DB seeded via seedIfEmpty() before React render; store has no data arrays
 - [x] T-Z1-02 ~~Store persists goals, events, notes~~ → **REPLACED:** Only nav state persisted; data lives in IndexedDB (survives reloads without localStorage limits)
 - [x] T-Z1-03 UI state (toast, modal flags, searchQuery, isOptimizing) is NOT persisted
-- [x] T-Z1-04 Store rehydrates nav state from localStorage key `amina-os-ui-v3` on reload
+- [x] T-Z1-04 Store rehydrates nav state from localStorage key `marina-os-ui-v3` on reload
 
 ---
 
@@ -679,9 +679,9 @@ Using `motion/react` AnimatePresence + motion.div:
 
 ---
 
-*Total UI test cases: **102***  
-*UI tests passing: **~96/102** (6 marked [ ] or [~])*  
-*Critical bug fixes: **5/5 done, 1 remaining (BUG-04 custom confirm dialog)***  
+*Total UI test cases: **102***
+*UI tests passing: **~96/102** (6 marked [ ] or [~])*
+*Critical bug fixes: **5/5 done, 1 remaining (BUG-04 custom confirm dialog)***
 
 ---
 
@@ -689,7 +689,7 @@ Using `motion/react` AnimatePresence + motion.div:
 
 # Backend / Database System
 
-> **Engine:** Dexie.js v4 (IndexedDB wrapper) + `dexie-react-hooks` for reactive queries  
+> **Engine:** Dexie.js v4 (IndexedDB wrapper) + `dexie-react-hooks` for reactive queries
 > **Design principle:** Every entity is graph-addressable from day one. The `edges` table makes a future Obsidian-style graph view a query, not a refactor.
 
 ---
@@ -713,11 +713,11 @@ Using `motion/react` AnimatePresence + motion.div:
 
 ### Key type discriminators
 
-**`DBTask.kind`** — `'next_action' | 'critical_path' | 'ai_generated' | 'manual'`  
-**`DBTask.critical_path_status`** — `'Completed' | 'In Progress' | 'Future' | null`  
-**`DBNote.type`** — `'capture' | 'journal' | 'reflection'`  
-**`DBResource.type`** — `'figma' | 'document' | 'link' | 'other'`  
-**`DBEvent.type`** — `'Focus' | 'Buffer' | 'Review' | 'Admin'`  
+**`DBTask.kind`** — `'next_action' | 'critical_path' | 'ai_generated' | 'manual'`
+**`DBTask.critical_path_status`** — `'Completed' | 'In Progress' | 'Future' | null`
+**`DBNote.type`** — `'capture' | 'journal' | 'reflection'`
+**`DBResource.type`** — `'figma' | 'document' | 'link' | 'other'`
+**`DBEvent.type`** — `'Focus' | 'Buffer' | 'Review' | 'Admin'`
 
 ### JSON blob fields (avoid extra tables for display-only arrays)
 
@@ -739,7 +739,7 @@ Using `motion/react` AnimatePresence + motion.div:
 
 ## DB2 — Database Instance (`src/db/db.ts`)
 
-- `AminaDB extends Dexie` with `EntityTable<T, 'id'>` typed properties for all 10 tables
+- `MarinaDB extends Dexie` with `EntityTable<T, 'id'>` typed properties for all 10 tables
 - Singleton export `db` — one instance for the entire app lifetime
 - Version `1` schema string declares all indexed columns; non-indexed JSON blob fields stored automatically
 - No version migrations needed (version 1 is current)
@@ -1017,7 +1017,7 @@ All views use `useLiveQuery(() => <dexie-query>)` — automatically re-renders w
 
 After the DB migration, the Zustand store holds **no data arrays**. It is pure UI state.
 
-### Persisted keys (localStorage key: `amina-os-ui-v3`)
+### Persisted keys (localStorage key: `marina-os-ui-v3`)
 `currentTab`, `activeNoteId`, `selectedGoalId`, `selectedEventId`, `isDrawerOpen`, `goalsFilter`
 
 ### Non-persisted (in-memory only)
@@ -1028,7 +1028,7 @@ All previous arrays (`goals`, `events`, `notes`) and all data mutation actions (
 
 **Tests**
 - [x] T-DB13-01 `useAppStore.getState()` has no `goals`, `events`, or `notes` properties
-- [x] T-DB13-02 `setCurrentTab('Schedule')` persists to localStorage under key `amina-os-ui-v3`
+- [x] T-DB13-02 `setCurrentTab('Schedule')` persists to localStorage under key `marina-os-ui-v3`
 - [x] T-DB13-03 `triggerToast('msg', 'success')` sets `toast.message = 'msg'` and `toast.type = 'success'`
 - [x] T-DB13-04 Non-persisted state (e.g. `isOptimizing`) is not present in localStorage
 - [x] T-DB13-05 Reloading the page restores `currentTab` and `activeNoteId` from localStorage
@@ -1042,7 +1042,7 @@ All previous arrays (`goals`, `events`, `notes`) and all data mutation actions (
 | File | Description |
 |---|---|
 | `src/db/schema.ts` | All 10 TypeScript interfaces, JSON helper parse functions, GraphNode/GraphEdge/GraphData types |
-| `src/db/db.ts` | AminaDB Dexie class, all table definitions with compound indexes, singleton export |
+| `src/db/db.ts` | MarinaDB Dexie class, all table definitions with compound indexes, singleton export |
 | `src/db/seed.ts` | `seedIfEmpty()`, `resetAndSeed()`, `runSeed()` with 4 goals + tasks + events + notes + edges |
 | `src/db/queries/edges.ts` | All 7 edge query functions |
 | `src/db/queries/goals.ts` | CRUD + cascade delete + progress update |
@@ -1053,7 +1053,7 @@ All previous arrays (`goals`, `events`, `notes`) and all data mutation actions (
 | `src/db/queries/dailyScores.ts` | `upsertDailyScore`, `getTodayScore`, `getScoreHistory`, `recordTasksCompleted` |
 | `src/db/queries/graph.ts` | `getFullGraphData()` + `getNodeNeighborhood(id, type, depth)` BFS |
 | `src/db/index.ts` | Barrel export for all db + schema + query functions |
-| `src/store/useAppStore.ts` | Stripped to UI-only state; `persist` key `amina-os-ui-v3` |
+| `src/store/useAppStore.ts` | Stripped to UI-only state; `persist` key `marina-os-ui-v3` |
 | `src/main.tsx` | `await seedIfEmpty()` before React render |
 | `src/views/GoalsDashboard.tsx` | `useLiveQuery` for goals + next_action tasks |
 | `src/views/GoalDetail.tsx` | 4× `useLiveQuery` for goal, criticalPath, aiTasks, resources |
@@ -1114,6 +1114,6 @@ All previous arrays (`goals`, `events`, `notes`) and all data mutation actions (
 | TypeScript | ✅ | — | `npx tsc --noEmit` → 0 errors |
 | Bug fixes | **6/6** | 6 | BUG-01→06 all resolved |
 
-*Backend tables: **10***  
-*Query files: **7** (edges, goals, tasks, notes, resources, events, dailyScores)*  
+*Backend tables: **10***
+*Query files: **7** (edges, goals, tasks, notes, resources, events, dailyScores)*
 *Graph-ready: **Yes** — `getFullGraphData()` + `getNodeNeighborhood()` already implemented*

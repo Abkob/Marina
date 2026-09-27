@@ -2,6 +2,8 @@ import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { attachDatabasePool } from '@vercel/functions';
+import { isProduction, isVercelRuntime } from './runtime.js';
 
 const { Pool } = pg;
 
@@ -32,7 +34,11 @@ function resolveConnectionString(): string {
     }
     return testUrl;
   }
-  return process.env.DATABASE_URL ?? 'postgresql://postgres:pgadmin@localhost:5433/marina';
+  const configured = process.env.DATABASE_URL;
+  if (!configured && (isProduction || isVercelRuntime)) {
+    throw new Error('[db] DATABASE_URL is required outside local development');
+  }
+  return configured ?? 'postgresql://postgres:pgadmin@localhost:5433/marina';
 }
 
 // Lazy pool: only created on first use so unit tests that import server modules
@@ -43,10 +49,13 @@ export function getPool(): pg.Pool {
   if (!_pool) {
     _pool = new Pool({
       connectionString: resolveConnectionString(),
-      max: 20,
+      // A serverless instance must not reserve 20 connections. Fluid Compute
+      // may run many concurrent requests and many warm instances at once.
+      max: Number(process.env.DATABASE_POOL_MAX ?? (isVercelRuntime ? 3 : 20)),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
     });
+    if (isVercelRuntime) attachDatabasePool(_pool);
     _pool.on('error', (err) => {
       console.error('[db] Unexpected pool error:', err);
     });

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'motion/react';
 import { AlignLeft, Check, Clock, Link2, Search, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { apiDelete, apiPatch, apiPost } from '../../utils/apiFetch';
@@ -7,6 +6,7 @@ import type { DBEvent, DBGoal, DBTask, EventType } from '../../db/schema';
 import { dateToWeekPos, fmtTimeRange, parseLocalDate } from '../../utils/calendar';
 import { autofillFromTask, remainingMinutes } from '../../utils/eventAutofill';
 import { GRID_END_HOUR, GRID_START_HOUR } from './WeekTimeGrid';
+import { ModalFrame } from '../../components/ModalFrame';
 
 /**
  * Google-Calendar-style quick create/edit card for calendar blocks.
@@ -203,6 +203,8 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
   };
 
   const save = async () => {
+    if (!date) { triggerToast('Choose a date for this block.', 'error'); return; }
+    if (startHour + duration > 24) { triggerToast('This block must end by midnight. Shorten it or choose an earlier start.', 'error'); return; }
     const finalTitle = title.trim() || linked?.title || 'Untitled block';
     const { week_start, day_index } = dateToWeekPos(date);
     setBusy(true);
@@ -273,40 +275,51 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
   const linkedRemaining = linked ? remainingMinutes(linked.estimated_minutes, linked.actual_minutes ?? 0) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: 6 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-        onClick={e => e.stopPropagation()}
-        className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
-      >
+    <ModalFrame
+      onClose={onClose}
+      titleId="event-composer-title"
+      overlayClassName="bg-black/40"
+      className="mobile-sheet w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
+    >
+        <h2 id="event-composer-title" className="sr-only">
+          {isEdit ? 'Edit calendar block' : 'Add calendar block'}
+        </h2>
         <div className="mb-3 flex items-start justify-between gap-3">
+          <label htmlFor="event-composer-title-input" className="sr-only">Block title</label>
           <input
+            id="event-composer-title-input"
             autoFocus
             value={title}
             onChange={e => { setTitle(e.target.value); setTitleTouched(true); }}
             placeholder="Add a title"
             className="w-full border-b-2 border-gray-200 pb-1 font-headline text-lg font-bold text-gray-900 outline-none placeholder:font-normal placeholder:text-gray-300 focus:border-[#4648d4]"
           />
-          <button onClick={onClose} className="mt-1 shrink-0 text-gray-400 hover:text-black"><X size={16} /></button>
+          <button
+            onClick={onClose}
+            aria-label="Close calendar block editor"
+            className="mt-1 flex h-11 w-11 md:h-8 md:w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-black"
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <div className="space-y-3">
           {/* When */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Clock size={14} className="shrink-0 text-gray-400" />
-            <select value={date} onChange={e => setDate(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-[#4648d4]">
+            <input aria-label="Block date" type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="min-w-0 max-w-full rounded-lg border border-gray-200 bg-white p-1.5 outline-none focus:ring-1 focus:ring-[#4648d4] md:hidden" />
+            <select aria-label="Block day" value={date} onChange={e => setDate(e.target.value)}
+              className="hidden rounded-lg border border-gray-200 bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-[#4648d4] md:block">
               {(days.includes(date) ? days : [date, ...days]).map(d => <option key={d} value={d}>{fmtDayOption(d)}</option>)}
             </select>
-            <select value={startHour} onChange={e => setStartHour(Number(e.target.value))}
+            <select aria-label="Block start time" value={startHour} onChange={e => setStartHour(Number(e.target.value))}
               className="rounded-lg border border-gray-200 bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-[#4648d4]">
               {(START_OPTIONS.includes(startHour) ? START_OPTIONS : [startHour, ...START_OPTIONS]).map(h => (
                 <option key={h} value={h}>{fmtStartOption(h)}</option>
               ))}
             </select>
-            <select value={duration} onChange={e => setDuration(Number(e.target.value))}
+            <select aria-label="Block duration" value={duration} onChange={e => setDuration(Number(e.target.value))}
               className="rounded-lg border border-gray-200 bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-[#4648d4]">
               {(DURATIONS.includes(duration) ? DURATIONS : [duration, ...DURATIONS]).map(d => (
                 <option key={d} value={d}>{d < 1 ? `${d * 60} min` : `${d} hr`}</option>
@@ -318,12 +331,13 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
           )}
 
           {/* Type */}
-          <div className="flex items-center gap-1.5 pl-6">
+          <div className="flex flex-wrap items-center gap-1.5 pl-6">
             {TYPES.map(t => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setType(t)}
+                aria-pressed={type === t}
                 className={`rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors
                   ${type.toLowerCase() === t.toLowerCase() ? TYPE_PILL[t.toLowerCase()] : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'}`}
               >
@@ -346,7 +360,7 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
                         : linkedRemaining != null ? `${fmtMins(linkedRemaining)} left on this task` : 'No time estimate on this task'}
                     </p>
                   </div>
-                  <button type="button" onClick={unlink} className="shrink-0 text-gray-300 hover:text-red-400" title="Unlink task">
+                  <button type="button" onClick={unlink} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-300 hover:bg-red-50 hover:text-red-400" title="Unlink task" aria-label="Unlink task from block">
                     <X size={12} />
                   </button>
                 </div>
@@ -369,6 +383,7 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
             <AlignLeft size={14} className="mt-1.5 shrink-0 text-gray-400" />
             {showDesc ? (
               <textarea
+                aria-label="Block description"
                 value={desc}
                 onChange={e => setDesc(e.target.value)}
                 placeholder="Add details…"
@@ -407,7 +422,6 @@ export function EventComposer({ seed, days, tasks, goals, onClose }: {
             </button>
           </div>
         </div>
-      </motion.div>
-    </div>
+    </ModalFrame>
   );
 }

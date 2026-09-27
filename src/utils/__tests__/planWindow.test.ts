@@ -24,9 +24,9 @@ describe('resolvePlanWindow', () => {
     expect(w).toEqual({ from: '2026-07-10', to: '2026-07-10' });
   });
 
-  it('caps the span at 35 days', () => {
+  it('caps the span at 90 days', () => {
     const w = resolvePlanWindow({ from_date: '2026-07-06', to_date: '2026-12-01' }, TODAY, 10);
-    expect(w.to).toBe('2026-08-09');
+    expect(w.to).toBe('2026-10-03');
   });
 
   it('resolves "next 3 hours" against the clock, snapped to the next quarter hour', () => {

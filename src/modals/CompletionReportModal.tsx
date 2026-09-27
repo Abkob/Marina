@@ -1,5 +1,6 @@
+import { ModalFrame } from '../components/ModalFrame';
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import { CheckCircle, X } from 'lucide-react';
 import { completeTask } from '../db/queries/tasks';
 import { useAppStore } from '../store/useAppStore';
@@ -37,35 +38,17 @@ export function CompletionReportModal() {
   return (
     <AnimatePresence>
       {completionReportTaskId && (
-        <>
-          <motion.div
-            key="cr-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm"
-            onClick={closeCompletionReport}
-          />
-          <motion.div
-            key="cr-modal"
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1,    y: 0 }}
-            exit={{   opacity: 0, scale: 0.96, y: 8 }}
-            transition={{ duration: 0.15 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2
-              rounded-2xl bg-white shadow-2xl border border-gray-100 p-6"
-            onKeyDown={handleKey}
-          >
+<ModalFrame titleId="completion-report-title" onClose={closeCompletionReport} initialFocusRef={textareaRef} className="mobile-sheet w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div onKeyDown={handleKey}>
             {/* Header */}
             <div className="flex items-start gap-3 mb-4">
               <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
                 <CheckCircle size={18} className="text-emerald-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="font-bold text-gray-900 text-sm leading-tight">Task complete — how'd it go?</h2>
+                <h2 id="completion-report-title" className="font-bold text-gray-900 text-sm leading-tight">Task complete — how'd it go?</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Optional. Captured as a micro-retrospective on the task.</p>
               </div>
-              <button onClick={closeCompletionReport} className="text-gray-300 hover:text-gray-500 transition-colors mt-0.5">
+              <button aria-label="Close completion report" onClick={closeCompletionReport} className="text-gray-300 hover:text-gray-500 transition-colors mt-0.5">
                 <X size={16} />
               </button>
             </div>
@@ -103,8 +86,7 @@ export function CompletionReportModal() {
                 {busy ? 'Saving…' : 'Mark Complete'}
               </button>
             </div>
-          </motion.div>
-        </>
+          </div></ModalFrame>
       )}
     </AnimatePresence>
   );

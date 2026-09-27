@@ -26,6 +26,34 @@ export function isOpenTask(t: DBTask): boolean {
 }
 
 /**
+ * Work normally hides critical-path scaffolding, but once a critical-path item
+ * is explicitly started it becomes actionable work and must be selectable.
+ */
+export function isWorkSelectableTask(t: DBTask): boolean {
+  return t.kind !== 'critical_path' || (t.status === 'in_progress' && !t.completed);
+}
+
+/** Hide archived goal branches before scaffolding is removed or children are promoted. */
+export function getWorkTasks(tasks: DBTask[], goals: DBGoal[]): DBTask[] {
+  const archivedGoals = new Set(goals.filter(goal => goal.archived_at).map(goal => goal.id));
+  const hidden = new Set<string>();
+  const children = new Map<string, string[]>();
+  for (const task of tasks) {
+    if (task.goal_id && archivedGoals.has(task.goal_id)) hidden.add(task.id);
+    if (task.parent_task_id) {
+      children.set(task.parent_task_id, [...(children.get(task.parent_task_id) ?? []), task.id]);
+    }
+  }
+  const queue = [...hidden];
+  for (let index = 0; index < queue.length; index++) {
+    for (const id of children.get(queue[index]) ?? []) {
+      if (!hidden.has(id)) { hidden.add(id); queue.push(id); }
+    }
+  }
+  return tasks.filter(task => !hidden.has(task.id) && isWorkSelectableTask(task));
+}
+
+/**
  * Group tasks by goal and nest children under their parents. Children whose
  * parent is absent (completed, filtered, or missing) are promoted to the top
  * level of their goal group so nothing silently disappears.
@@ -33,9 +61,15 @@ export function isOpenTask(t: DBTask): boolean {
 export function buildTaskForest(
   tasks: DBTask[],
   goals: DBGoal[],
-  { includeCompleted = false }: { includeCompleted?: boolean } = {},
+  {
+    includeCompleted = false,
+    includeCriticalPath = false,
+  }: { includeCompleted?: boolean; includeCriticalPath?: boolean } = {},
 ): GoalGroup[] {
-  const visible = tasks.filter(t => t.kind !== 'critical_path' && (includeCompleted || isOpenTask(t)));
+  const visible = tasks.filter(t =>
+    (includeCriticalPath || t.kind !== 'critical_path') &&
+    (includeCompleted || isOpenTask(t)),
+  );
   const visibleIds = new Set(visible.map(t => t.id));
 
   const childrenOf = new Map<string, DBTask[]>();

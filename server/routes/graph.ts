@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { activeTaskSql, activeMilestoneSql, activeMeetingSql, activeResourceSql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
 
 const router = Router();
@@ -21,10 +22,10 @@ router.get('/', async (req, res) => {
     { rows: journalLinks },
   ] = await Promise.all([
     query('SELECT id, title, status, deadline FROM goals WHERE archived_at IS NULL'),
-    query('SELECT id, goal_id, title, due_date, completed FROM goal_milestones'),
-    query('SELECT id, goal_id, milestone_id, title, status, completed FROM tasks WHERE completed=false'),
-    query('SELECT id, title, type FROM resources'),
-    query('SELECT id, goal_id, title, scheduled_at FROM meetings'),
+    query(`SELECT id, goal_id, title, due_date, completed FROM goal_milestones WHERE ${activeMilestoneSql()}`),
+    query(`SELECT id, goal_id, milestone_id, title, status, completed FROM tasks WHERE completed=false AND ${activeTaskSql()}`),
+    query(`SELECT id, title, type FROM resources WHERE ${activeResourceSql()}`),
+    query(`SELECT id, goal_id, title, scheduled_at FROM meetings WHERE ${activeMeetingSql()}`),
     query(`SELECT id, entry_date, summary FROM journal_entries WHERE entry_date >= $1`, [since30Str]),
     query('SELECT id, source_id, source_type, target_id, target_type, relationship FROM edges'),
     query('SELECT id, journal_entry_id, target_id, target_type, relationship, confidence FROM journal_links WHERE confidence >= 0.4'),

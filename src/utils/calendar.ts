@@ -16,6 +16,14 @@ export function fmtYMD(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Use the schedule's timezone for absolute timestamps, including across midnight. */
+export function calendarDateTime(date: Date, timezone?: string): { date: string; hour: number } {
+  if (!timezone) return { date: fmtYMD(date), hour: date.getHours() + date.getMinutes() / 60 };
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  const part = (name: string) => parts.find(p => p.type === name)!.value;
+  return { date: `${part('year')}-${part('month')}-${part('day')}`, hour: Number(part('hour')) + Number(part('minute')) / 60 };
+}
+
 export function addDays(dateStr: string, n: number): string {
   const d = parseLocalDate(dateStr);
   d.setDate(d.getDate() + n);
