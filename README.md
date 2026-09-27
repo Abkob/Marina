@@ -59,6 +59,13 @@ PNG Home Screen icons are in `public/icons/`; regenerate them on Windows with
 
 ## Local development
 
+In **Capture → Thoughts**, unfinished sticky notes carry forward each day. **Finish**
+moves a note into the crossed-out list on the day it was completed; use the day
+arrows to revisit it, or **Reopen** to put it back on today's wall. Logging a note
+as a journal entry does not finish it. Deploy `server/migrations/025-note-completion.sql`
+before the updated notes API (or apply the full schema through `npm run db:deploy`);
+existing notes start unfinished.
+
 Requirements: Node.js 24, PostgreSQL with `pgcrypto` and `pgvector`, and a copied `.env` based on `.env.example`.
 
 ```powershell

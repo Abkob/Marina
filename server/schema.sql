@@ -185,6 +185,9 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at               TEXT NOT NULL
 );
 
+-- Existing notes remain unfinished and carry forward until explicitly finished.
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS completed_at TEXT;
+
 -- ─── Resources ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS resources (
   id                TEXT PRIMARY KEY,
@@ -980,3 +983,5 @@ CREATE INDEX IF NOT EXISTS idx_routines_goal ON routines(goal_id);
 ALTER TABLE work_sessions ADD COLUMN IF NOT EXISTS routine_id TEXT REFERENCES routines(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_work_sessions_routine ON work_sessions(routine_id) WHERE routine_id IS NOT NULL;
 INSERT INTO schema_migrations (name) VALUES ('M-024-routines') ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO schema_migrations (name) VALUES ('M-025-note-completion') ON CONFLICT (name) DO NOTHING;

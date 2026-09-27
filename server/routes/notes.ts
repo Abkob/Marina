@@ -11,7 +11,8 @@ const NOTE_UPDATE_FIELDS = new Set([
 ]);
 
 router.get('/', async (_req, res) => {
-  const { rows } = await query('SELECT * FROM notes ORDER BY created_at DESC LIMIT 500');
+  // Older unfinished stickies and completion-day history must remain accessible.
+  const { rows } = await query('SELECT * FROM notes ORDER BY created_at DESC');
   res.json(rows);
 });
 
@@ -47,6 +48,9 @@ router.post('/', async (req, res) => {
 });
 
 router.patch('/:id', async (req, res) => {
+  if ('completed' in req.body && typeof req.body.completed !== 'boolean') {
+    return res.status(400).json({ error: 'completed must be a boolean' });
+  }
   const { rows: existing } = await query('SELECT id FROM notes WHERE id=$1', [req.params.id]);
   if (!existing.length) return res.status(404).json({ error: 'Not found' });
   const now = new Date().toISOString();
@@ -56,7 +60,17 @@ router.patch('/:id', async (req, res) => {
   }
   const contentChanged = 'title' in req.body || 'content' in req.body;
   const { sets, vals } = buildUpdate(updates);
-  await query(`UPDATE notes SET ${sets} WHERE id=$${vals.length + 1}`, [...vals, req.params.id]);
+  // Keep the original finish time on retries; reopening clears it explicitly.
+  let completionSet = '';
+  if ('completed' in req.body) {
+    if (req.body.completed) {
+      vals.push(now);
+      completionSet = `, completed_at = COALESCE(completed_at, $${vals.length})`;
+    } else {
+      completionSet = ', completed_at = NULL';
+    }
+  }
+  await query(`UPDATE notes SET ${sets}${completionSet} WHERE id=$${vals.length + 1}`, [...vals, req.params.id]);
   if (contentChanged) await markEmbeddingStale('note', req.params.id);
   res.json({ ok: true });
 });

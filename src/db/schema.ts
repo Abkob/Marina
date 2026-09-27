@@ -189,7 +189,7 @@ export interface DBTaskNoteFile {
 }
 
 // ─── Notes / Journals / Capture ──────────────────────────────────────────────
-export type NoteType = 'journal' | 'capture' | 'session' | 'task_note';
+export type NoteType = 'thought' | 'journal' | 'capture' | 'session' | 'task_note';
 
 export interface DBNote {
   id: string;
@@ -203,6 +203,7 @@ export interface DBNote {
   // Embedded JSON arrays (seeded; will migrate to edge-based queries in graph view)
   extracted_tasks_json: string;        // JSON: { text: string; due: string }[]
   relevant_docs_json: string;          // JSON: { title: string; edited: string }[]
+  completed_at?: string | null;       // null/absent means the sticky carries forward
   created_at: string;
   updated_at: string;
 }

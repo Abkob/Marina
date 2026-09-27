@@ -3,19 +3,18 @@ import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ModalFrame } from '../components/ModalFrame';
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, X, Trash2, ScrollText, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react';
+import { Plus, X, Trash2, ScrollText, ChevronLeft, ChevronRight, StickyNote, Check, RotateCcw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useNotes, useInvalidate, type DBJournalEntry } from '../api/hooks';
-import { createNote, updateNoteContent, deleteNote } from '../db/queries/notes';
+import { createNote, updateNoteContent, setNoteCompleted, deleteNote } from '../db/queries/notes';
 import { apiFetch, apiPost } from '../utils/apiFetch';
 import { useAppStore } from '../store/useAppStore';
 import type { DBNote } from '../db/schema';
+import { useNow } from '../utils/useNow';
 
 /**
- * The capture wall: today is a wall of sticky notes. Type a thought, it lands
- * on the wall; click a note and it zooms into a focused editor; at the end of
- * the day the server binds the wall into a journal entry automatically (and
- * you can bind any note yourself at any time with "Log as journal").
+ * Unfinished stickies carry forward. Finished notes stay crossed out on their
+ * completion day, independently of whether they've been logged as a journal.
  */
 
 const NOTE_TINTS = [
@@ -31,15 +30,16 @@ const tiltOf = (id: string) => ((([...id].reduce((s, c) => s + c.charCodeAt(0), 
 
 const stripHtml = (html: string) => html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '').trim();
 
-function localDay(offset = 0): string {
-  const d = new Date();
+function localDay(date: Date, offset = 0): string {
+  const d = new Date(date);
   d.setDate(d.getDate() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-const dayOfIso = (iso: string) => iso.slice(0, 10);
+const dayOfIso = (iso: string) => localDay(new Date(iso));
 
 export function CaptureWallView() {
   const mobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
+  const now = useNow();
   const { triggerToast, showConfirm } = useAppStore();
   const invalidate = useInvalidate();
   const { data: notes = [] } = useNotes();
@@ -51,7 +51,7 @@ export function CaptureWallView() {
   const [saveError, setSaveError] = useState('');
   const saving = useRef(false);
 
-  const day = localDay(dayOffset);
+  const day = localDay(now, dayOffset);
   const isToday = dayOffset === 0;
 
   // Journal linkage badges: which notes are already bound into a journal entry
@@ -66,12 +66,18 @@ export function CaptureWallView() {
 
   const wallNotes = useMemo(
     () => notes
-      .filter(n => dayOfIso(n.created_at) === day)
+      .filter(n => !n.completed_at && dayOfIso(n.created_at) <= day)
       .sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [notes, day],
   );
+  const finishedNotes = useMemo(
+    () => notes
+      .filter(n => n.completed_at && dayOfIso(n.completed_at) === day)
+      .sort((a, b) => a.completed_at!.localeCompare(b.completed_at!)),
+    [notes, day],
+  );
 
-  const openNote = wallNotes.find(n => n.id === openId) ?? null;
+  const openNote = notes.find(n => n.id === openId) ?? null;
 
   const addQuick = async () => {
     const text = quick.trim();
@@ -81,7 +87,7 @@ export function CaptureWallView() {
       await createNote({
         title: text.split('\n')[0].slice(0, 48),
         content: text,
-        type: 'thought' as DBNote['type'],
+        type: 'thought',
         date_str: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
         suggested_action_text: null,
         suggested_action_applied: false,
@@ -105,7 +111,7 @@ export function CaptureWallView() {
   };
 
   const saveEditor = async () => {
-    if (!openNote) return;
+    if (!openNote || openNote.completed_at || editText === stripHtml(openNote.content)) return;
     await updateNoteContent(openNote.id, editText);
     invalidate.notes();
   };
@@ -150,6 +156,27 @@ export function CaptureWallView() {
     });
   };
 
+  const toggleFinished = async (n: DBNote, fromEditor = false) => {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setSaveError('');
+    try {
+      const changedText = fromEditor && !n.completed_at && editText !== stripHtml(n.content) ? editText : undefined;
+      await setNoteCompleted(n.id, !n.completed_at, changedText);
+      await invalidate.notes();
+      if (fromEditor) setOpenId(null);
+      triggerToast(n.completed_at ? 'Note reopened on today’s wall.' : 'Finished — kept on today’s wall.', 'success');
+    } catch {
+      const message = 'Could not update this note. Please try again.';
+      if (fromEditor) setSaveError(message);
+      else triggerToast(message, 'error');
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="mobile-capture-wall max-w-[1000px] mx-auto px-4 md:px-8 py-5">
       {/* Day header */}
@@ -160,7 +187,7 @@ export function CaptureWallView() {
             {isToday ? 'Today’s wall' : new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </h2>
           <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mt-1">
-            {wallNotes.length} note{wallNotes.length !== 1 ? 's' : ''} · thoughts to come back to
+            {wallNotes.length} open · {finishedNotes.length} finished · open notes carry forward
           </p>
         </div>
         <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-[#f8f9fa]">
@@ -205,7 +232,7 @@ export function CaptureWallView() {
       {wallNotes.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <StickyNote size={36} className="mx-auto mb-3 opacity-25" />
-          <p className="text-sm">{isToday ? 'Blank wall. Stick your first thought up there ↑' : 'Nothing was captured this day.'}</p>
+          <p className="text-sm">{finishedNotes.length ? 'All clear. Your finished thoughts are saved below.' : isToday ? 'Blank wall. Stick your first thought up there ↑' : 'No open thoughts for this day.'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -213,26 +240,31 @@ export function CaptureWallView() {
             {wallNotes.map(n => {
               const journaled = journaledNoteIds.has(n.id);
               return (
-                <motion.button
+                <motion.div
                   key={n.id}
                   layoutId={`sticky-${n.id}`}
                   initial={{ opacity: 0, scale: 0.7, y: 14 }}
                   animate={{ opacity: 1, scale: 1, y: 0, rotate: tiltOf(n.id) }}
                   exit={{ opacity: 0, scale: 0.7 }}
                   whileHover={{ scale: 1.045, rotate: 0, zIndex: 5 }}
-                  onClick={() => openEditor(n)}
-                  aria-label={`Open note ${stripHtml(n.content) || n.title}`}
-                  className={`relative text-left rounded-sm border p-3.5 pt-4 shadow-[2px_4px_10px_rgba(0,0,0,0.10)] min-h-[128px] flex flex-col ${tintOf(n.id)}`}
+                  className={`relative text-left rounded-sm border shadow-[2px_4px_10px_rgba(0,0,0,0.10)] min-h-[128px] flex flex-col ${tintOf(n.id)}`}
                   style={{ transformOrigin: 'center' }}
                 >
                   {/* “tape” */}
                   <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-10 h-3 bg-white/60 border border-black/5 rotate-[-2deg]" />
+                  <button
+                    onClick={() => openEditor(n)}
+                    aria-label={`Open note ${stripHtml(n.content) || n.title}`}
+                    className="flex flex-1 flex-col p-3.5 pt-4 text-left rounded-sm focus-visible:outline-2 focus-visible:outline-indigo-500"
+                  >
                   <p className="text-[12px] text-gray-800 leading-snug line-clamp-4 flex-1 whitespace-pre-wrap">
                     {stripHtml(n.content) || n.title}
                   </p>
                   <div className="flex items-center gap-1.5 mt-2">
                     <span className="text-[9px] font-mono text-gray-500">
-                      {new Date(n.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      {new Date(n.created_at).toLocaleString('en-US', dayOfIso(n.created_at) === day
+                        ? { hour: 'numeric', minute: '2-digit' }
+                        : { month: 'short', day: 'numeric' })}
                     </span>
                     {journaled && (
                       <span className="text-[8px] font-mono uppercase bg-indigo-500/15 text-indigo-700 px-1 py-0.5 rounded" title="Already bound into a journal entry">
@@ -245,17 +277,56 @@ export function CaptureWallView() {
                       </span>
                     )}
                   </div>
-                </motion.button>
+                  </button>
+                  <button
+                    onClick={() => { void toggleFinished(n); }}
+                    disabled={busy}
+                    aria-label={`Mark note ${stripHtml(n.content) || n.title} as finished`}
+                    className="mx-3.5 mb-2 flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-black/10 text-[11px] font-medium text-gray-600 hover:bg-white/50 hover:text-emerald-800 disabled:opacity-40"
+                  >
+                    <Check size={13} /> Finish
+                  </button>
+                </motion.div>
               );
             })}
           </AnimatePresence>
         </div>
       )}
 
+      {finishedNotes.length > 0 && (
+        <section aria-labelledby="finished-notes-title" className="mt-8 border-t border-gray-200 pt-5">
+          <h3 id="finished-notes-title" className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-500">
+            <Check size={15} className="text-emerald-600" />
+            {isToday ? 'Finished today' : 'Finished this day'}
+            <span className="text-xs text-gray-400">{finishedNotes.length}</span>
+          </h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {finishedNotes.map(n => (
+              <div key={n.id} className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-3 py-2">
+                <Check size={14} className="shrink-0 text-emerald-600" />
+                <button onClick={() => openEditor(n)} aria-label={`Open finished note ${stripHtml(n.content) || n.title}`} className="min-w-0 flex-1 py-1 text-left">
+                  <s className="block line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-gray-500 decoration-gray-400 decoration-1">{stripHtml(n.content) || n.title}</s>
+                  <span className="mt-1 block text-[10px] text-gray-400">Finished {new Date(n.completed_at!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                </button>
+                <button
+                  onClick={() => { void toggleFinished(n); }}
+                  disabled={busy}
+                  aria-label={`Reopen note ${stripHtml(n.content) || n.title}`}
+                  title="Reopen on today’s wall"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Zoomed editor */}
       <AnimatePresence>
         {openNote && (
-<ModalFrame titleId="capture-note-title" onClose={() => { void saveAndClose(); }} className={`mobile-sheet w-full max-w-xl rounded-2xl border p-5 shadow-2xl ${tintOf(openNote.id)}`}><h2 id="capture-note-title" className="sr-only">Edit capture note</h2>
+<ModalFrame titleId="capture-note-title" onClose={() => { void saveAndClose(); }} className={`mobile-sheet w-full max-w-xl rounded-2xl border p-5 shadow-2xl ${tintOf(openNote.id)}`}><h2 id="capture-note-title" className="sr-only">{openNote.completed_at ? 'Finished capture note' : 'Edit capture note'}</h2>
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-[10px] font-mono text-gray-500">
                   {new Date(openNote.created_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -284,16 +355,24 @@ export function CaptureWallView() {
               </div>
               <textarea
                 aria-label="Capture note content"
-                readOnly={busy}
+                readOnly={busy || !!openNote.completed_at}
                 value={editText}
                 onChange={e => setEditText(e.target.value)}
                 rows={8}
                 autoFocus
-                className="w-full bg-transparent text-[14px] text-gray-800 leading-relaxed resize-none focus:outline-none"
+                className={`w-full bg-transparent text-[14px] leading-relaxed resize-none focus:outline-none ${openNote.completed_at ? 'text-gray-500 line-through decoration-gray-400 decoration-1' : 'text-gray-800'}`}
               />
               {saveError && <p role="alert" className="mt-3 rounded-xl bg-white/80 p-3 text-sm text-red-700">{saveError}</p>}
               <div className="flex flex-wrap gap-3 items-center justify-between mt-3 pt-3 border-t border-black/10">
-                <p role="status" className="text-xs text-gray-500">{busy ? 'Saving…' : 'Tap close to save your changes.'}</p>
+                <p role="status" className="w-full text-xs text-gray-500">{busy ? 'Saving…' : openNote.completed_at ? 'Finished. Reopen to keep working on this thought.' : 'Open notes stay on your wall until you finish them.'}</p>
+                <button
+                  onClick={() => { void toggleFinished(openNote, true); }}
+                  disabled={busy}
+                  className="flex min-h-10 items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-40"
+                >
+                  {openNote.completed_at ? <RotateCcw size={13} /> : <Check size={13} />}
+                  {openNote.completed_at ? 'Reopen note' : 'Mark as finished'}
+                </button>
                 <button
                   onClick={logAsJournal}
                   disabled={busy || !editText.trim()}

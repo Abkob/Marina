@@ -27,6 +27,10 @@ export async function updateNoteContent(noteId: string, content: string): Promis
   await apiPatch(`${API}/notes/${noteId}`, { content });
 }
 
+export async function setNoteCompleted(noteId: string, completed: boolean, content?: string): Promise<void> {
+  await apiPatch(`${API}/notes/${noteId}`, { completed, ...(content !== undefined ? { content } : {}) });
+}
+
 export async function updateNote(
   noteId: string,
   updates: Partial<Omit<DBNote, 'id' | 'created_at'>>
