@@ -18,6 +18,20 @@
 .time-readout strong { font-size: 20px; font-weight: 500; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
 .time-readout > span:last-child { font-size: 10px; color: #9a929f; }
 .time-live-dot { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #9379ba; vertical-align: middle; }
+.time-day-details { margin: -18px 0 20px; font-size: 11px; color: #817887; }
+.time-day-details summary { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-height: 44px; width: fit-content; margin-left: auto; padding: 0 5px; cursor: pointer; list-style: none; font-size: 10px; }
+.time-day-details summary::-webkit-details-marker { display: none; }
+.time-day-details summary:hover { color: #422b64; }
+.time-day-details summary:focus-visible { outline: 2px solid #8b74b6; outline-offset: 2px; border-radius: 4px; }
+.time-day-details[open] summary svg { transform: rotate(180deg); }
+.time-day-details ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 36px; border-top: 1px solid #e8e6eb; }
+.time-day-details li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #eeecf0; }
+.time-detail-name { min-width: 0; }
+.time-detail-name strong { display: block; font-weight: 500; color: #514759; overflow-wrap: anywhere; }
+.time-detail-name span, .time-detail-value span { display: block; font-size: 10px; margin-top: 3px; }
+.time-detail-value { flex-shrink: 0; text-align: right; }
+.time-detail-value strong { font-weight: 500; color: #514759; font-variant-numeric: tabular-nums; }
+.time-day-details > p { margin: 10px 0 22px; font-size: 10px; line-height: 1.6; }
 .time-months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 38px; row-gap: 38px; }
 .time-month { min-width: 0; }
 .time-month-heading { display: flex; align-items: center; justify-content: space-between; max-width: 188px; min-height: 20px; margin-bottom: 11px; padding-left: 20px; }
@@ -66,6 +80,9 @@
   .time-readout strong { font-size: 15px; }
   .time-readout-date, .time-readout > span:last-child { font-size: 9px; }
   .time-readout-hint { display: none; }
+  .time-day-details { margin-top: -16px; margin-bottom: 12px; }
+  .time-day-details ul { grid-template-columns: minmax(0, 1fr); }
+  .time-day-details summary { font-size: 9px; }
   .time-months { grid-template-columns: repeat(auto-fit, minmax(144px, 1fr)); column-gap: 20px; row-gap: 26px; }
   .time-weekdays { display: none; }
   .time-month-heading { padding-left: 3px; margin-bottom: 8px; }

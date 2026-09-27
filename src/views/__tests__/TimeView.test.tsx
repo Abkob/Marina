@@ -43,8 +43,23 @@ it('includes the actual running timer without starting or stopping it', () => {
 it('offers a visible retry instead of treating a failed read as zero work', () => {
   state.data = undefined; state.isError = true; render(<TimeView />);
   expect(screen.getByText('Your time could not be loaded.')).toBeInTheDocument();
-  expect(screen.queryByText('No time logged this year yet.')).not.toBeInTheDocument();
+  expect(screen.queryByText('No time recorded this year yet.')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(state.refetch).toHaveBeenCalledOnce();
+});
+it('offers a discreet day breakdown with linked calendar and miscellaneous time', () => {
+  state.data!.days = [{ date: '2026-09-26', minutes: 90, sessions: 0, calendarMinutes: 90, details: [
+    { key: 'linked', title: 'Study block', taskId: 'quiz', taskTitle: 'Quiz 1', goalTitle: 'Biology', source: 'calendar', minutes: 60 },
+    { key: 'misc', title: 'Errands', source: 'calendar', minutes: 30 },
+  ] }];
+  render(<TimeView />);
+  fireEvent.click(screen.getByRole('button', { name: 'Saturday, September 26, 2026: 1h 30m' }));
+  const details = screen.getByText('Day breakdown').closest('details')!;
+  expect(details).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByText('Day breakdown'));
+  expect(details).toHaveAttribute('open');
+  expect(screen.getByText('Quiz 1 · Biology')).toBeVisible();
+  expect(screen.getByText('Miscellaneous')).toBeVisible();
+  expect(screen.getByText('1h 30m from calendar')).toBeInTheDocument();
 });
 it('supports previous years and returning to the current year', () => {
   render(<TimeView />); expect(screen.getByRole('button', { name: 'Next year' })).toBeDisabled();

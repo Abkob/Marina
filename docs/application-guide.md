@@ -52,13 +52,25 @@ backup before deploying the shared timer UI.
 
 **Time** is a year of twelve monthly focus matrices, available in the sidebar
 and under **More** on phones (`?view=time`). Each square is a day; darker violet
-means more recorded work, with fixed levels at 1, 2, 4 and 6 hours. Pale squares
-mean no logged time and outlined squares are future dates. Missing logs are not
+means more accounted time, with fixed levels at 1, 2, 4 and 6 hours. Pale squares
+mean no recorded time and outlined squares are future dates. Missing logs are not
 assumed to be confirmed rest. Tap, hover or use arrow keys to inspect a day;
 the year arrows reveal earlier history. The running cloud timer contributes a
 live preview without saving a second session. The read-only heatmap endpoint
 includes task, routine and manual logs, allocates overnight sessions using the
 workspace timezone, preserves corrected minute totals and has no 90-day cap.
+
+Dated calendar blocks and meetings contribute as they happen; future portions
+stay planned. The quiet **Day breakdown** shows each event, its linked task and
+inherited goal, or **Miscellaneous** when unlinked. Multiple task links divide
+one block according to planned minutes (unspecified links share the remainder).
+Overlapping calendar blocks share elapsed minutes. Logged and live work take
+priority over calendar credit at the same time, preserving corrected log totals.
+Manual logs without an end time offset the same task/goal's calendar credit on
+the same local day; unlinked manual logs have no guessed event match. Legacy
+undated demo blocks and day-level task estimates do not contribute. Historical
+time still includes archived goals. Calendar edits and deletions recalculate the
+derived credit without creating synthetic work logs or changing task status.
 
 The Time design uses the contribution-calendar pattern documented by
 [GitHub](https://docs.github.com/en/account-and-profile/concepts/contributions-on-your-profile)

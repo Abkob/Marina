@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useSchedulePrefs } from '../api/hooks';
 import { useCloudWorkTimer } from '../hooks/useCloudWorkTimer';
 import { apiFetch } from '../utils/apiFetch';
 import { addRoutineDays } from '../utils/routines';
-import { mergeLiveTime, timeDate, timeLabel, timeLevel, timeMonth, type TimeHeatmap, type TimeDay } from '../utils/timeHeatmap';
+import { mergeLiveTime, timeDate, timeLabel, timeLevel, timeMonth, type TimeHeatmap, type TimeLiveDay } from '../utils/timeHeatmap';
 import './TimeView.css';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -31,7 +31,10 @@ export function TimeView() {
     staleTime: 10_000,
   });
   const today = query.data ? timeDate(cloud.nowMs, query.data.timezone) : fallbackToday;
-  const days = useMemo(() => query.data ? mergeLiveTime(query.data, cloud.timer, cloud.nowMs) : new Map<string, TimeDay & { liveMinutes: number }>(), [query.data, cloud.timer, cloud.nowMs]);
+  // Displayed durations have minute precision. Avoid rebuilding a year's
+  // calendar on every second of a running timer.
+  const nowMinute = Math.floor(cloud.nowMs / 60_000) * 60_000;
+  const days = useMemo(() => query.data ? mergeLiveTime(query.data, cloud.timer, nowMinute) : new Map<string, TimeLiveDay>(), [query.data, cloud.timer, nowMinute]);
   const months = useMemo(() => MONTHS.map((name, month) => ({ name, cells: timeMonth(year, month) })), [year]);
   const total = [...days.values()].reduce((sum, day) => sum + day.minutes, 0);
   const activeDate = hovered ?? selected ?? (year === currentYear ? today : null);
@@ -56,7 +59,7 @@ export function TimeView() {
       <span className="time-eyebrow">A year in focus</span>
     </header>
 
-    <figure className="time-atlas" aria-label={`Work time in ${year}`} aria-busy={query.isPending}>
+    <figure className="time-atlas" aria-label={`Accounted time in ${year}`} aria-busy={query.isPending}>
       <div className="time-toolbar">
         <div className="time-year-block">
           <div className="time-year-controls">
@@ -67,16 +70,29 @@ export function TimeView() {
               {year !== currentYear && <button onClick={() => changeYear(currentYear)} aria-label="Return to this year" title="This year"><RotateCcw size={13} /></button>}
             </div>
           </div>
-          <p className="time-year-total">{unavailable ? (query.isError ? 'Time unavailable' : 'Reading your time…') : total > 0 ? `${timeLabel(total)} of recorded focus${[...days.values()].some(day => day.liveMinutes > 0) ? ' · including live' : ''}` : 'No time logged this year yet.'}</p>
+          <p className="time-year-total">{unavailable ? (query.isError ? 'Time unavailable' : 'Reading your time…') : total > 0 ? `${timeLabel(total)} accounted for${[...days.values()].some(day => day.liveMinutes > 0) ? ' · including live' : ''}` : 'No time recorded this year yet.'}</p>
         </div>
         <div className="time-readout" aria-live="polite" aria-atomic="true">
           {activeDate && !unavailable ? <>
             <span className="time-readout-date">{new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${activeDate}T12:00:00Z`))}{activeDate === today ? ' · Today' : ''}</span>
             <strong>{activeDate > today ? 'Ahead of you' : timeLabel(activeDay?.minutes ?? 0)}</strong>
-            <span>{activeDay?.liveMinutes > 0 ? <><i className="time-live-dot" />Timer running</> : activeDay?.sessions ? `${activeDay.sessions} ${activeDay.sessions === 1 ? 'session' : 'sessions'}` : activeDate > today ? 'An open day' : 'Quiet, or simply off the clock'}</span>
+            <span>{activeDay?.liveMinutes > 0 ? <><i className="time-live-dot" />Timer running</> : activeDay?.calendarMinutes ? `${timeLabel(activeDay.calendarMinutes)} from calendar` : activeDay?.sessions ? `${activeDay.sessions} ${activeDay.sessions === 1 ? 'session' : 'sessions'}` : activeDate > today ? 'An open day' : 'Quiet, or simply off the clock'}</span>
           </> : <span className="time-readout-hint">Select a day to look closer.</span>}
         </div>
       </div>
+
+      {!!activeDay?.details?.length && <details className="time-day-details">
+        <summary><span>Day breakdown</span><ChevronDown size={12} aria-hidden="true" /></summary>
+        <ul aria-label={activeDate ? `Time breakdown for ${fullDate(activeDate)}` : 'Time breakdown'}>
+          {activeDay.details.map(row => <li key={row.key}>
+            <div className="time-detail-name"><strong>{row.title}</strong><span>{row.source === 'calendar'
+              ? [row.taskTitle, row.goalTitle].filter(Boolean).join(' · ') || 'Miscellaneous'
+              : row.goalTitle || (row.taskId ? 'Task' : 'Miscellaneous')}</span></div>
+            <div className="time-detail-value"><strong>{timeLabel(row.minutes)}</strong><span>{row.source === 'calendar' ? 'Calendar' : 'Work'}</span></div>
+          </li>)}
+        </ul>
+        <p>Calendar fills elapsed time not already logged. Overlapping blocks share the same time.</p>
+      </details>}
 
       {(query.isError || cloud.error) && <div className="time-error" role="status">
         <span>{query.isError ? (query.data ? 'Showing the last saved view. New time could not be loaded.' : 'Your time could not be loaded.') : 'Live timer sync is reconnecting.'}</span>
@@ -116,8 +132,8 @@ export function TimeView() {
       </div>
 
       <figcaption className="time-caption">
-        <p>One square, one day.<span> Pale squares mean no logged time.</span></p>
-        <div className="time-legend" aria-label="Focus intensity: no time, under 1 hour, 1–2 hours, 2–4 hours, 4–6 hours, 6 hours or more">
+        <p>Work + elapsed calendar time.<span> Future hours stay planned.</span></p>
+        <div className="time-legend" aria-label="Time intensity: no time, under 1 hour, 1–2 hours, 2–4 hours, 4–6 hours, 6 hours or more">
           <span>Less</span>{[0, 1, 2, 3, 4, 5].map(level => <i key={level} data-level={level} title={['No time logged', 'Under 1h', '1–2h', '2–4h', '4–6h', '6h+'][level]} />)}<span>6h+</span>
         </div>
       </figcaption>
