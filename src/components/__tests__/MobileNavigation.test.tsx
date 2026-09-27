@@ -12,6 +12,14 @@ beforeEach(() => useAppStore.setState({ currentTab: 'Schedule', selectedGoalId: 
 afterEach(cleanup);
 
 describe('mobile navigation', () => {
+  it('opens Time from More while keeping the primary navigation compact', () => {
+    render(<MobileNav />);
+    expect(screen.getByRole('button', { name: 'Open Capture' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open all pages' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Time' }));
+    expect(useAppStore.getState().currentTab).toBe('Time');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
   it('keeps Capture selected in Journal and Schedule selected in Gantt', () => {
     useAppStore.setState({ currentTab: 'Journal' });
     const { unmount } = render(<MobileNav />);

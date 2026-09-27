@@ -22,6 +22,7 @@ import { GoalsDashboard }   from './views/GoalsDashboard';
 import { GoalDetail }       from './views/GoalDetail';
 import { TaskFocusView }    from './views/TaskFocusView';
 import { WorkView }         from './views/WorkView';
+import { TimeView }         from './views/TimeView';
 import { ResourcesView }    from './views/ResourcesView';
 import { SettingsView }     from './views/SettingsView';
 import { CopilotView }      from './views/CopilotView';
@@ -169,6 +170,7 @@ function AppInner() {
     if (currentTab === 'Graph')     return <GraphView />;
     if (currentTab === 'Topics')    return <TopicsView />;
     if (currentTab === 'Work')      return <WorkView />;
+    if (currentTab === 'Time')      return <TimeView />;
     if (currentTab === 'Schedule')  return <ScheduleView />;
     if (currentTab === 'Gantt')     return isMobile ? <MobileTimeline /> : <ScheduleView initialPage="timeline" />;
     if (currentTab === 'Testing')   return <TestingView />;

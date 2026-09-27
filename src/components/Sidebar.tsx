@@ -1,7 +1,7 @@
 import {
   BookOpen, Target, FolderOpen, Settings as SettingsIcon, HelpCircle, Plus, Zap,
   Share2, Tags, CalendarDays, FlaskConical, Timer, PanelLeftClose, PanelLeftOpen,
-  Gauge,
+  Gauge, Grid2X2,
 } from 'lucide-react';
 import { useAppStore, type Tab } from '../store/useAppStore';
 
@@ -12,6 +12,7 @@ const NAV: { id: Tab; label: string; Icon: React.ElementType; highlight?: boolea
   { id: 'Brain Dump', label: 'Capture',    Icon: BookOpen },
   { id: 'Goals',      label: 'Goals',      Icon: Target },
   { id: 'Work',       label: 'Work',       Icon: Timer },
+  { id: 'Time',       label: 'Time',       Icon: Grid2X2 },
   { id: 'Resources',  label: 'Resources',  Icon: FolderOpen },
   { id: 'Graph',      label: 'Graph',      Icon: Share2 },
   { id: 'Topics',     label: 'Topics',     Icon: Tags },

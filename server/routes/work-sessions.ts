@@ -1,8 +1,18 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { query } from '../db.js';
+import { getTimeHeatmap } from '../services/timeHeatmap.js';
 
 const router = Router();
+
+router.get('/heatmap', async (req, res) => {
+  const year = Number(req.query.year);
+  if (!/^\d{4}$/.test(String(req.query.year)) || !Number.isInteger(year) || year < 2000 || year > 2100) {
+    return res.status(400).json({ error: 'Choose a year between 2000 and 2100.' });
+  }
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.json(await getTimeHeatmap(year));
+});
 
 async function recalcActualMinutes(taskId: string) {
   const { rows } = await query(

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Tab = 'Copilot' | 'Brain Dump' | 'Goals' | 'Work' | 'Resources' | 'Gantt' | 'Journal' | 'Graph' | 'Topics' | 'Schedule' | 'Usage' | 'Settings' | 'Testing';
+export type Tab = 'Copilot' | 'Brain Dump' | 'Goals' | 'Work' | 'Time' | 'Resources' | 'Gantt' | 'Journal' | 'Graph' | 'Topics' | 'Schedule' | 'Usage' | 'Settings' | 'Testing';
 
 export interface ToastMsg {
   id: number;

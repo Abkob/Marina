@@ -7,7 +7,7 @@ export interface AppLocation {
   focusedResourceId: string | null;
 }
 const views: Record<Tab, string> = {
-  Schedule: 'schedule', Goals: 'goals', Work: 'work', 'Brain Dump': 'capture', Journal: 'journal',
+  Schedule: 'schedule', Goals: 'goals', Work: 'work', Time: 'time', 'Brain Dump': 'capture', Journal: 'journal',
   Copilot: 'copilot', Resources: 'resources', Topics: 'topics', Graph: 'connections', Gantt: 'timeline',
   Settings: 'settings', Usage: 'usage', Testing: 'diagnostics',
 };

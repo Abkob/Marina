@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, FlaskConical, FolderOpen, Gauge, GanttChart, Settings, Share2, Tags, Target, Timer, Zap } from 'lucide-react';
+import { BookOpen, CalendarDays, FlaskConical, FolderOpen, Gauge, GanttChart, Grid2X2, Settings, Share2, Tags, Target, Timer, Zap } from 'lucide-react';
 import type { Tab } from '../store/useAppStore';
 
 export const MOBILE_PAGES = [
@@ -6,6 +6,7 @@ export const MOBILE_PAGES = [
   { id: 'Goals', label: 'Goals', description: 'Projects and next steps', Icon: Target, group: 'Your day' },
   { id: 'Work', label: 'Work', description: 'Focus and track time', Icon: Timer, group: 'Your day' },
   { id: 'Brain Dump', label: 'Capture', description: 'Thoughts and journal', Icon: BookOpen, group: 'Your day' },
+  { id: 'Time', label: 'Time', description: 'Your year in focus', Icon: Grid2X2, group: 'Your day' },
   { id: 'Copilot', label: 'Copilot', description: 'Talk through your plans', Icon: Zap, group: 'Your workspace' },
   { id: 'Resources', label: 'Resources', description: 'Files, links and reading', Icon: FolderOpen, group: 'Your workspace' },
   { id: 'Topics', label: 'Topics', description: 'Organize your interests', Icon: Tags, group: 'Your workspace' },
