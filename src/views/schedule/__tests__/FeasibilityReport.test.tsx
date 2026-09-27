@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SchedulerResult, ScheduleTaskInfo } from '../../../api/hooks';
 import type { DBGoal, DBTask } from '../../../db/schema';
 import { FeasibilityReport } from '../FeasibilityReport';
+vi.mock('../../../hooks/useCloudWorkTimer', () => ({ useCloudWorkTimer: () => ({ timer: null, nowMs: Date.now() }) }));
 
 const scheduler: SchedulerResult = {
   status: 'impossible',

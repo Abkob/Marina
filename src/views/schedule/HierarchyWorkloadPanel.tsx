@@ -7,7 +7,7 @@ import {
 import type { DBTask } from '../../db/schema';
 import type { SchedulerResult, ScheduleTaskInfo } from '../../api/hooks';
 import { parseLocalDate } from '../../utils/calendar';
-import { readActiveWorkTimer } from '../../utils/workTimer';
+import { useCloudWorkTimer } from '../../hooks/useCloudWorkTimer';
 
 type Diagnostic = SchedulerResult['task_diagnostics'][number];
 type CapacityDay = SchedulerResult['capacity_days'][number];
@@ -71,24 +71,8 @@ export function HierarchyWorkloadPanel({
   const [effortShare, setEffortShare] = useState(60);
   const [selectedDay, setSelectedDay] = useState(0);
   const [todayOverrideMinutes, setTodayOverrideMinutes] = useState<number | null>(null);
-  const [liveTimerState, setLiveTimerState] = useState(() => ({ timer: readActiveWorkTimer(), now: Date.now() }));
-
-  useEffect(() => {
-    const tick = () => {
-      const timer = readActiveWorkTimer();
-      setLiveTimerState(previous => {
-        if (!timer && !previous.timer) return previous;
-        return { timer, now: Date.now() };
-      });
-    };
-    tick();
-    const interval = window.setInterval(tick, 1000);
-    window.addEventListener('storage', tick);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('storage', tick);
-    };
-  }, []);
+  const cloudTimer = useCloudWorkTimer();
+  const liveTimerState = { timer: cloudTimer.timer, now: cloudTimer.nowMs };
 
   const model = useMemo(() => {
     const taskById = new Map(allTasks.map(task => [task.id, task]));

@@ -5,6 +5,7 @@ import { mobilePageLabel } from './mobileNavigation';
 import { GlobalSearch } from './Header';
 import { ModalFrame } from './ModalFrame';
 import { appLocationKey } from '../utils/appNavigation';
+import { WorkTimerIndicator } from './WorkTimerIndicator';
 
 export function MobileHeader() {
   const { currentTab, selectedGoalId, focusedTaskId, focusedResourceId } = useAppStore();
@@ -24,7 +25,7 @@ export function MobileHeader() {
         {back ? <button onClick={back} aria-label={backLabel} className="mobile-icon-button -ml-2 text-indigo-600"><ArrowLeft size={21} /></button> : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-base font-bold text-white" aria-hidden="true">M</span>}
         <div className="min-w-0"><p className="truncate text-base font-semibold text-slate-900">{inGoal ? focusedTaskId ? 'Task' : 'Goal' : inResource ? 'Resource' : mobilePageLabel(currentTab)}</p></div>
       </div>
-      <button onClick={() => setSearchOpen(true)} aria-label="Search workspace" aria-haspopup="dialog" className="mobile-icon-button text-slate-500"><Search size={21} /></button>
+      <div className="flex shrink-0 items-center"><WorkTimerIndicator compact /><button onClick={() => setSearchOpen(true)} aria-label="Search workspace" aria-haspopup="dialog" className="mobile-icon-button text-slate-500"><Search size={21} /></button></div>
     </header>
     {searchOpen && <ModalFrame titleId="mobile-search-title" onClose={() => setSearchOpen(false)} className="mobile-sheet w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl">
       <div className="mb-4 flex items-center justify-between"><h2 id="mobile-search-title" className="text-xl font-bold text-slate-900">Search your workspace</h2><button onClick={() => setSearchOpen(false)} aria-label="Close workspace search" className="mobile-icon-button text-slate-500"><X size={20} /></button></div>

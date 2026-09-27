@@ -23,6 +23,24 @@ vi.mock('../../store/useAppStore', () => ({
   useAppStore: () => ({ workTaskId: mocks.selected, setWorkTaskId: mocks.select, triggerToast: mocks.toast, showConfirm: mocks.confirm, setCurrentTab: mocks.navigate }),
 }));
 vi.mock('../../utils/apiFetch', () => ({ apiPost: mocks.post }));
+vi.mock('../../hooks/useCloudWorkTimer', async () => {
+  const { useState } = await import('react');
+  return { useCloudWorkTimer: () => {
+    const [timer, setTimer] = useState(readActiveWorkTimer);
+    return {
+      timer: timer ? { ...timer, sessionId: timer.sessionId ?? 'task-focus-session' } : null,
+      nowMs: Date.now(), ready: true, busy: false, error: null,
+      stop: async (id: string, input: object) => {
+        const result = await mocks.post(`/api/work-timer/${id}/stop`, input);
+        writeActiveWorkTimer(null); setTimer(null);
+        for (const key of ['routines', 'routine-entries', 'schedule-preview', 'work-sessions', 'work-session-stats']) mocks.invalidate({ queryKey: [key] });
+        return result;
+      },
+      discard: async () => { writeActiveWorkTimer(null); setTimer(null); },
+      updateNotes: async (_id: string, notes: string) => { const next = timer ? { ...timer, notes } : null; writeActiveWorkTimer(next); setTimer(next); },
+    };
+  } };
+});
 vi.mock('../../components/TaskTree', () => ({ TaskTree: ({ tasks }: { tasks: DBTask[] }) => <div aria-label="Task choices">{tasks.map(task => <span key={task.id}>{task.title}</span>)}</div> }));
 vi.mock('../../components/EntityTopicChips', () => ({ EntityTopicChips: () => null }));
 vi.mock('../../components/FileViewerModal', () => ({ FileViewerModal: () => null }));
@@ -93,7 +111,7 @@ describe('routine focus in Work', () => {
     expect(screen.getByText('Saved task')).toBeInTheDocument();
   });
 
-  it('restores a routine with no task and explains that logging time is not always completion', () => {
+  it('restores a routine with no task and explains that logging time is not always completion', async () => {
     writeActiveWorkTimer(routineTimer());
     render(<WorkView />);
     expect(screen.getByRole('heading', { name: 'Physics revision' })).toBeInTheDocument();
@@ -101,7 +119,8 @@ describe('routine focus in Work', () => {
     expect(screen.getByText(/For problems, pages or sessions/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start timer for selected task' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('What are you reviewing or practising?'), { target: { value: 'Chapter 4' } });
-    expect(readActiveWorkTimer()?.notes).toBe('Chapter 4');
+    fireEvent.click(screen.getByRole('button', { name: 'Save timer note' }));
+    await waitFor(() => expect(readActiveWorkTimer()?.notes).toBe('Chapter 4'));
     fireEvent.click(screen.getByRole('button', { name: "Back to today's routines" }));
     expect(mocks.navigate).toHaveBeenCalledWith('Schedule');
     expect(readActiveWorkTimer()?.routineId).toBe('revision');
@@ -116,9 +135,7 @@ describe('routine focus in Work', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop routine timer and log time' }));
     fireEvent.click(screen.getByRole('button', { name: 'Stop active timer and log time' }));
     expect(mocks.post).toHaveBeenCalledTimes(1);
-    expect(mocks.post).toHaveBeenCalledWith('/api/routines/revision/sessions', expect.objectContaining({
-      id: timer.sessionId, date: timer.routineDate, started_at: timer.startedAt, minutes: 20, notes: 'Chapter 3',
-    }));
+    expect(mocks.post).toHaveBeenCalledWith(`/api/work-timer/${timer.sessionId}/stop`, {});
     expect(mocks.create).not.toHaveBeenCalled();
     await act(async () => { finish({ minutes: 20 }); });
     expect(readActiveWorkTimer()).toBeNull();
@@ -139,17 +156,17 @@ describe('routine focus in Work', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop routine timer and log time' }));
     await waitFor(() => expect(readActiveWorkTimer()).toBeNull());
     expect(mocks.post).toHaveBeenCalledTimes(2);
-    expect(mocks.post.mock.calls[0][1].id).toBe(mocks.post.mock.calls[1][1].id);
+    expect(mocks.post.mock.calls[0][0]).toBe(mocks.post.mock.calls[1][0]);
     expect(mocks.toast).toHaveBeenLastCalledWith('Logged 17m to your routine.', 'success');
   });
 
-  it('keeps legacy task timers on the task session endpoint', async () => {
+  it('stops an adopted task timer through the shared endpoint', async () => {
     writeActiveWorkTimer({ taskId: 'task-1', startedAt: routineTimer().startedAt, notes: 'Existing task work' });
     render(<WorkView />);
     fireEvent.click(screen.getByRole('button', { name: 'Stop active timer and log time' }));
     await waitFor(() => expect(readActiveWorkTimer()).toBeNull());
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ task_id: 'task-1', source: 'timer', notes: 'Existing task work' }));
-    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.post).toHaveBeenCalledWith('/api/work-timer/task-focus-session/stop', {});
   });
 
   it('requires an explicit focused-time correction for a forgotten timer over 24 hours', async () => {
@@ -165,7 +182,7 @@ describe('routine focus in Work', () => {
     fireEvent.change(screen.getByLabelText('Minutes to save'), { target: { value: '35' } });
     fireEvent.click(screen.getByRole('button', { name: 'Stop routine timer and log time' }));
     await waitFor(() => expect(readActiveWorkTimer()).toBeNull());
-    expect(mocks.post).toHaveBeenCalledWith('/api/routines/revision/sessions', expect.objectContaining({ id: timer.sessionId, minutes: 35, started_at: timer.startedAt }));
+    expect(mocks.post).toHaveBeenCalledWith(`/api/work-timer/${timer.sessionId}/stop`, { minutes: 35 });
     expect(mocks.toast).toHaveBeenLastCalledWith('Logged 35m to your routine.', 'success');
   });
 

@@ -35,6 +35,17 @@ to open the full date picker in either mode.
 Work excludes archived goals and every task below them. Restoring a goal makes
 its tasks available again; an existing unsaved timer can still be stopped and saved.
 
+Focus timers are saved in the cloud and shared by every signed-in device. The
+small header timer opens Work. Online sessions refresh the shared state every
+three seconds and on reconnect; elapsed time follows the server clock and keeps
+running while a page is closed. Start, Stop, notes and Discard use the same timer
+ID. Concurrent stops log one work session, including routine progress, in a
+single database transaction. Failed saves leave the timer running for a retry.
+The first visit imports an old device-only timer when no cloud timer is running;
+a local recovery copy is kept, and an existing cloud timer takes priority.
+Apply `server/migrations/026-cloud-work-timer.sql` after a verified production
+backup before deploying the shared timer UI.
+
 In **Day**, hold an event briefly, then drag it to move it. Hold the top or bottom
 handle and drag to change its start or end. Hold empty time and drag to select a
 new block's length. The preview snaps to 15 minutes, scrolls near the timeline's

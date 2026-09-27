@@ -10,6 +10,7 @@ import { DayScheduleWidget, type ChatScheduleDayView } from './copilot/DaySchedu
 import { OverdueTasksWidget, type OverdueTasksView } from './copilot/OverdueTasksWidget';
 import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ModalFrame } from '../components/ModalFrame';
+import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
 import './copilot/copilot.css';
 
@@ -1219,6 +1220,7 @@ export function CopilotView() {
           <span className="font-headline text-lg font-bold text-slate-900">Copilot</span>
           <span className="flex items-center gap-1 text-xs text-slate-500">{modelLabel(selectedModel || modelConfig.primary)}<ChevronDown size={12} /></span>
         </button>
+        {isMobile && <WorkTimerIndicator compact />}
         <button className="copilot-icon-button" onClick={startNewConversation} disabled={isLoading} aria-label="Start a new conversation" title="New chat"><SquarePen size={21} /></button>
       </header>
 

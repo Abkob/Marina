@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { CloudWorkTimerProvider } from './hooks/useCloudWorkTimer';
 import { AnimatePresence, motion } from 'motion/react';
 import { Suspense, useEffect } from 'react';
 import { useAppStore } from './store/useAppStore';
@@ -69,6 +70,7 @@ const URL_INVALIDATION: Array<[RegExp, string[]]> = [
   [/^\/api\/ai\/schedule/,      ['proposals', 'ai-proposals', 'tasks', 'goal-tasks', 'goals', 'goals-health', 'schedule-preview', 'events', 'event-task-links']],
   [/^\/api\/ai\/sessions/,      ['chat-sessions', 'proposals', 'ai-proposals']],
   [/^\/api\/work-sessions/,     ['work-sessions', 'work-session-stats', 'tasks', 'goals', 'goals-health', 'schedule-preview']],
+  [/^\/api\/work-timer/,        ['cloud-work-timer', 'work-sessions', 'work-session-stats', 'tasks', 'routines', 'routine-entries', 'schedule-preview']],
   [/^\/api\/schedule-prefs/,    ['schedule-prefs', 'schedule-overrides', 'schedule-preview']],
   [/^\/api\/task-note-files/,   ['note-files']],
   [/^\/api\/event-task-links/,  ['event-task-links', 'events', 'schedule-preview']],
@@ -228,7 +230,7 @@ function AppInner() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppInner />
+      <CloudWorkTimerProvider><AppInner /></CloudWorkTimerProvider>
     </QueryClientProvider>
   );
 }

@@ -10,6 +10,7 @@ export type ActiveWorkTimer = {
   routineDate?: string;
   /** Stable across reloads and failed saves so retries cannot double-log time. */
   sessionId?: string;
+  title?: string;
 };
 
 function validDate(value: unknown): value is string {
@@ -42,7 +43,7 @@ function parseTimer(value: unknown): ActiveWorkTimer | null {
       sessionId: parsed.sessionId,
     };
   }
-  return parsed.taskId.trim() ? base : null;
+  return parsed.taskId.trim() ? { ...base, ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}), ...(parsed.title ? { title: parsed.title } : {}) } : null;
 }
 
 export function readActiveWorkTimer(): ActiveWorkTimer | null {

@@ -101,8 +101,8 @@ export async function checkInRoutine(id: string, input: z.infer<typeof routineCh
   return existingClient ? apply(existingClient) : transaction(apply);
 }
 
-export async function logRoutineSession(id: string, input: z.infer<typeof routineSessionSchema>) {
-  const timezone = await routineTimezone();
+export async function logRoutineSession(id: string, input: z.infer<typeof routineSessionSchema>, existingClient?: PoolClient) {
+  const timezone = await routineTimezone(existingClient);
   if (input.date > localDateStr(timezone)) throw new RoutineError(400, 'Future routine days cannot have logged sessions');
   const startedAt = Date.parse(input.started_at);
   const endedAt = Date.parse(input.ended_at);
@@ -111,7 +111,7 @@ export async function logRoutineSession(id: string, input: z.infer<typeof routin
   }
   const startedDate = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(startedAt));
   if (input.date !== startedDate) throw new RoutineError(400, 'The routine date must match the focus start date in your schedule timezone');
-  return transaction(async client => {
+  const apply = async (client: PoolClient) => {
     const { rows: routines } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
     const routine = routines[0] as DBRoutine | undefined;
     if (!routine) throw new RoutineError(404, 'Routine not found');
@@ -136,5 +136,6 @@ export async function logRoutineSession(id: string, input: z.infer<typeof routin
       ON CONFLICT (routine_id,date) DO UPDATE SET status=EXCLUDED.status,minutes=EXCLUDED.minutes,completed_count=EXCLUDED.completed_count,updated_at=EXCLUDED.updated_at RETURNING *`,
     [existing?.id ?? crypto.randomUUID(), id, input.date, completed ? 'completed' : 'partial', minutes, count, existing?.notes ?? input.notes ?? '', now]);
     return { id: input.id, entry: rows[0] as DBRoutineEntry, duplicate: false, minutes: input.minutes };
-  });
+  };
+  return existingClient ? apply(existingClient) : transaction(apply);
 }

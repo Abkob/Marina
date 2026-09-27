@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore';
 import { useSearch, useOrgInbox, useAllTasks, useGoals } from '../api/hooks';
 import { apiFetch } from '../utils/apiFetch';
 import { taskContextMap } from '../utils/taskContext';
+import { WorkTimerIndicator } from './WorkTimerIndicator';
 
 interface ReadyResponse {
   status: 'ready' | 'degraded' | 'not_ready';
@@ -194,6 +195,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-4">
+          <WorkTimerIndicator />
           <GlobalSearch />
           <SystemStatusButton />
 

@@ -4,7 +4,6 @@ import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { taskContextMap } from '../utils/taskContext';
 import { MobileDisclosure } from '../components/MobileDisclosure';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Circle, Clock, FileText, Paperclip, Play, Plus, Search,
   Square, Timer, Trash2, Upload, X,
@@ -23,8 +22,7 @@ import { addNoteFile, deleteNoteFile } from '../db/queries/noteFiles';
 import { formatTaskTime, getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
 import { getEffectiveTaskDueDate, getInheritedTaskDueDate } from '../utils/taskDates';
 import { getWorkTasks } from '../utils/taskTree';
-import { readActiveWorkTimer, writeActiveWorkTimer, WORK_TIMER_STORAGE_KEY, type ActiveWorkTimer } from '../utils/workTimer';
-import { apiPost } from '../utils/apiFetch';
+import { useCloudWorkTimer } from '../hooks/useCloudWorkTimer';
 
 function formatStopwatch(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -122,7 +120,7 @@ export function WorkView() {
     setCurrentTab,
   } = useAppStore();
   const invalidate = useInvalidate();
-  const queryClient = useQueryClient();
+  const cloudTimer = useCloudWorkTimer();
   const { data: taskData, isPlaceholderData: tasksPlaceholder } = useAllTasks();
   const { data: goalData, isPlaceholderData: goalsPlaceholder } = useAllGoals();
   const allTasks = taskData ?? [];
@@ -134,8 +132,15 @@ export function WorkView() {
   const createSession = useCreateWorkSession();
   const deleteSession = useDeleteWorkSession();
 
-  const [activeTimer, setActiveTimer] = useState<ActiveWorkTimer | null>(readActiveWorkTimer);
-  const [nowMs, setNowMs] = useState(Date.now());
+  const activeTimer = cloudTimer.timer;
+  const nowMs = cloudTimer.nowMs;
+  const [savedRoutineDraft, setSavedRoutineDraft] = usePersistentDraft(`work-timer-note:${activeTimer?.sessionId ?? 'none'}`);
+  let routineNoteDraft: string | null = null;
+  try { routineNoteDraft = savedRoutineDraft ? JSON.parse(savedRoutineDraft) : null; } catch { /* Ignore malformed draft data. */ }
+  const setRoutineNoteDraft = (update: string | null | ((current: string | null) => string | null)) => {
+    const value = typeof update === 'function' ? update(routineNoteDraft) : update;
+    setSavedRoutineDraft(value === null ? '' : JSON.stringify(value));
+  };
   const [timerNotes, setTimerNotes] = useState(activeTimer?.notes ?? '');
   const [savingTimer, setSavingTimer] = useState(false);
   const stoppingTimerRef = useRef(false);
@@ -152,28 +157,10 @@ export function WorkView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    writeActiveWorkTimer(activeTimer);
-  }, [activeTimer]);
-
-  useEffect(() => {
     setAdjustRoutineTime(false);
     setRoutineMinutesToSave('');
     setRoutineTimeError('');
   }, [activeTimer?.sessionId, activeTimer?.taskId]);
-
-  useEffect(() => {
-    const syncTimer = (event: StorageEvent) => {
-      if (event.key === WORK_TIMER_STORAGE_KEY) setActiveTimer(readActiveWorkTimer());
-    };
-    window.addEventListener('storage', syncTimer);
-    return () => window.removeEventListener('storage', syncTimer);
-  }, []);
-
-  useEffect(() => {
-    if (!activeTimer) return;
-    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [activeTimer]);
 
   const goalById = useMemo(() => new Map(goals.map(g => [g.id, g])), [goals]);
   const workTasks = useMemo(() => tasksReady ? getWorkTasks(allTasks, goals) : [], [allTasks, goals, tasksReady]);
@@ -197,9 +184,8 @@ export function WorkView() {
 
   const eligibleTask = taskOptions.find(t => t.id === workTaskId);
   const currentTask = eligibleTask ? (selectedTask?.id === workTaskId ? selectedTask : eligibleTask) : null;
-  const timerTask = activeTimer ? allTasks.find(t => t.id === activeTimer.taskId) ?? null : null;
   const activeRoutine = activeTimer?.routineId ? activeTimer : null;
-  const timerTitle = activeRoutine?.routineTitle ?? workTasks.find(task => task.id === activeTimer?.taskId)?.title ?? 'your task';
+  const timerTitle = activeRoutine?.routineTitle ?? activeTimer?.title ?? workTasks.find(task => task.id === activeTimer?.taskId)?.title ?? 'your task';
   const currentGoal = currentTask?.goal_id ? goalById.get(currentTask.goal_id) ?? null : null;
   const effectiveDueDate = currentTask ? getEffectiveTaskDueDate(currentTask, allTasks) : null;
   const inheritedDueDate = currentTask ? getInheritedTaskDueDate(currentTask, allTasks) : null;
@@ -210,25 +196,21 @@ export function WorkView() {
   const progress = estimated ? Math.round((totalLogged / estimated) * 100) : null;
 
   const startTimer = async () => {
-    if (!currentTask || activeTimer) return;
-    const existingTimer = readActiveWorkTimer();
-    if (existingTimer) {
-      setActiveTimer(existingTimer);
-      triggerToast('A focus timer is already running. Stop it before starting another.', 'info');
-      return;
+    if (!currentTask || activeTimer || !cloudTimer.ready || cloudTimer.busy) return;
+    try {
+      const result = await cloudTimer.start({ taskId: currentTask.id, notes: timerNotes.trim() });
+      setTimerNotes('');
+      triggerToast(result.started ? 'Timer started on all your devices.' : 'A focus timer is already running.', result.started ? 'success' : 'info');
+      if (result.started) await touchTask(currentTask.id).catch(() => {});
+    } catch (error) {
+      triggerToast(`Timer not started. ${error instanceof Error ? error.message : 'Please retry.'}`, 'error');
     }
-    const next = { taskId: currentTask.id, startedAt: new Date().toISOString(), notes: timerNotes.trim() };
-    writeActiveWorkTimer(next);
-    setActiveTimer(next);
-    setTimerNotes('');
-    triggerToast('Timer started.', 'success');
-    await touchTask(currentTask.id).catch(() => {});
   };
 
   const stopTimer = async () => {
     if (!activeTimer || stoppingTimerRef.current) return;
     const started = new Date(activeTimer.startedAt);
-    const ended = new Date();
+    const ended = new Date(nowMs);
     const elapsedMinutes = Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60_000));
     let minutes = elapsedMinutes;
     if (activeTimer.routineId && (adjustRoutineTime || elapsedMinutes > 1440)) {
@@ -245,34 +227,12 @@ export function WorkView() {
     stoppingTimerRef.current = true;
     setSavingTimer(true);
     try {
-      let savedMinutes = minutes;
-      if (activeTimer.routineId) {
-        const saved = await apiPost<{ minutes: number }>(`/api/routines/${encodeURIComponent(activeTimer.routineId)}/sessions`, {
-          id: activeTimer.sessionId,
-          date: activeTimer.routineDate,
-          started_at: started.toISOString(),
-          ended_at: ended.toISOString(),
-          minutes,
-          notes: activeTimer.notes || undefined,
-        });
-        savedMinutes = saved.minutes;
-        for (const key of ['routines', 'routine-entries', 'schedule-preview', 'work-sessions', 'work-session-stats']) {
-          void queryClient.invalidateQueries({ queryKey: [key] });
-        }
-      } else {
-        await createSession.mutateAsync({
-          task_id: activeTimer.taskId,
-          goal_id: timerTask?.goal_id ?? null,
-          started_at: started.toISOString(),
-          ended_at: ended.toISOString(),
-          minutes,
-          notes: activeTimer.notes || undefined,
-          source: 'timer',
-        });
-      }
-      writeActiveWorkTimer(null);
-      setActiveTimer(null);
-      triggerToast(`Logged ${formatTaskTime(savedMinutes)}${activeTimer.routineId ? ' to your routine' : ''}.`, 'success');
+      const saved = await cloudTimer.stop(activeTimer.sessionId, {
+        ...(activeTimer.routineId && (adjustRoutineTime || elapsedMinutes > 1440) ? { minutes } : {}),
+        ...(routineNoteDraft !== null ? { notes: routineNoteDraft } : {}),
+      });
+      setRoutineNoteDraft(null);
+      triggerToast(`${saved.duplicate ? 'Already logged' : 'Logged'} ${formatTaskTime(saved.minutes ?? minutes)}${activeTimer.routineId ? ' to your routine' : ''}.`, 'success');
     } catch (error) {
       triggerToast(`Time not saved. Your timer is still available; try Stop again. ${error instanceof Error ? error.message : ''}`.trim(), 'error');
     } finally {
@@ -282,12 +242,13 @@ export function WorkView() {
   };
 
   const discardRoutineTimer = () => {
-    if (!activeTimer?.routineId || stoppingTimerRef.current) return;
-    showConfirm('Discard this unsaved routine timer? No time from this timer will be logged. Previously saved sessions and routine history will stay unchanged.', () => {
+    if (!activeTimer || stoppingTimerRef.current) return;
+    showConfirm('Discard this unsaved focus timer on all devices? No time from this timer will be logged. Previously saved sessions and routine history will stay unchanged.', async () => {
       if (stoppingTimerRef.current) return;
-      writeActiveWorkTimer(null);
-      setActiveTimer(null);
-      triggerToast('Unsaved timer discarded. Previously saved time is unchanged.', 'info');
+      try {
+        await cloudTimer.discard(activeTimer.sessionId);
+        triggerToast('Unsaved timer discarded. Previously saved time is unchanged.', 'info');
+      } catch { triggerToast('Could not discard the timer. Please retry.', 'error'); }
     });
   };
 
@@ -382,9 +343,13 @@ export function WorkView() {
             >
               <Square size={12} /> {savingTimer ? 'Saving…' : 'Stop'}
             </button>
+            {!activeRoutine && <button onClick={discardRoutineTimer} disabled={savingTimer || cloudTimer.busy} aria-label="Discard timer" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700"><X size={12} /></button>}
           </div>
         )}
       </header>
+
+      {cloudTimer.error && <p role="status" className="text-xs text-amber-700">{cloudTimer.error}</p>}
+      {!cloudTimer.ready && <p className="text-xs text-gray-400">Connecting to your cloud timer…</p>}
 
       <button onClick={() => setTaskPickerOpen(open => !open)} aria-haspopup={isMobile ? 'dialog' : undefined} aria-expanded={taskPickerOpen} className="flex w-full items-center justify-between gap-3 py-1 text-left text-sm font-medium text-slate-500 lg:hidden"><span>{currentTask ? 'Switch task' : 'Choose a task'}</span><Search size={18} /></button>
       {isMobile && taskPickerOpen && <MobileSheet title="Choose a task" onClose={() => setTaskPickerOpen(false)}><TaskTree tasks={workTasks} goals={goals} mode="select" includeCriticalPath selectedTaskId={currentTask?.id} onSelect={task => { setWorkTaskId(task.id); setTaskPickerOpen(false); }} searchPlaceholder="Find a task or goal…" /></MobileSheet>}
@@ -407,12 +372,17 @@ export function WorkView() {
               <label className="block text-sm font-semibold text-gray-800" htmlFor="routine-focus-notes">What are you reviewing or practising?</label>
               <textarea
                 id="routine-focus-notes"
-                value={activeRoutine.notes}
+                value={routineNoteDraft ?? activeRoutine.notes}
                 disabled={savingTimer}
-                onChange={event => setActiveTimer(timer => timer ? { ...timer, notes: event.target.value } : timer)}
+                onChange={event => setRoutineNoteDraft(event.target.value)}
                 placeholder="Optional notes for this session"
                 className="mt-2 min-h-24 w-full resize-y rounded-xl border border-indigo-100 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
               />
+              {routineNoteDraft !== null && <button disabled={cloudTimer.busy || savingTimer} className="min-h-11 text-xs text-gray-500 hover:text-gray-800" onClick={async () => {
+                const draft = routineNoteDraft;
+                try { await cloudTimer.updateNotes(activeRoutine.sessionId, draft); setRoutineNoteDraft(current => current === draft ? null : current); }
+                catch { triggerToast('Your note was not saved. Your text is still here.', 'error'); }
+              }}>Save timer note</button>}
               <p className="mt-3 text-xs leading-relaxed text-gray-600">Stopping saves time toward this day's routine. A minutes target is complete only when enough time is logged. For problems, pages or sessions, use “Done today” in Schedule when you finish your target.</p>
               <div className="mt-4 rounded-xl border border-indigo-100 bg-white p-3">
                 {routineTimerTooLong && <p className="mb-3 text-sm text-amber-800">This timer has run for over 24 hours. If you forgot it running, enter the time you actually focused before saving. Nothing will be trimmed automatically.</p>}
@@ -488,7 +458,7 @@ export function WorkView() {
                         /></details>
                         <button
                           onClick={startTimer}
-                          disabled={currentTask.completed}
+                          disabled={currentTask.completed || !cloudTimer.ready || cloudTimer.busy}
                           aria-label="Start timer for selected task"
                           className="work-start-focus inline-flex items-center justify-center gap-2 rounded-lg bg-[#4648d4] px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-[#3436b0] disabled:cursor-not-allowed disabled:opacity-40"
                         >

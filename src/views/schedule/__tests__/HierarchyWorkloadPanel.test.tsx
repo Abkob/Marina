@@ -3,8 +3,17 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DBTask } from '../../../db/schema';
 import type { SchedulerResult, ScheduleTaskInfo } from '../../../api/hooks';
-import { WORK_TIMER_STORAGE_KEY } from '../../../utils/workTimer';
+import { readActiveWorkTimer, WORK_TIMER_STORAGE_KEY } from '../../../utils/workTimer';
 import { HierarchyWorkloadPanel } from '../HierarchyWorkloadPanel';
+
+vi.mock('../../../hooks/useCloudWorkTimer', async () => {
+  const { useEffect, useState } = await import('react');
+  return { useCloudWorkTimer: () => {
+    const [nowMs, setNowMs] = useState(Date.now());
+    useEffect(() => { const timer = setInterval(() => setNowMs(Date.now()), 1000); return () => clearInterval(timer); }, []);
+    return { timer: readActiveWorkTimer(), nowMs };
+  } };
+});
 
 const root = {
   id: 'courses', title: 'Incomplete Courses', parent_task_id: null, goal_id: 'goal',

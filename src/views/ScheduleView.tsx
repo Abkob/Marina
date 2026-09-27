@@ -34,7 +34,7 @@ import { GanttView } from './GanttView';
 import { FeasibilityReport } from './schedule/FeasibilityReport';
 import { WorkloadHorizon } from './schedule/WorkloadHorizon';
 import { ModalFrame } from '../components/ModalFrame';
-import { readActiveWorkTimer, writeActiveWorkTimer } from '../utils/workTimer';
+import { useCloudWorkTimer } from '../hooks/useCloudWorkTimer';
 import { RoutinesPanel } from './routines/RoutinesPanel';
 import { RoutineComposer } from './routines/RoutineComposer';
 import type { DBRoutine } from '../types/routines';
@@ -1198,6 +1198,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const isPhone = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const { triggerToast, setCurrentTab, setWorkTaskId } = useAppStore();
   const qc = useQueryClient();
+  const cloudTimer = useCloudWorkTimer();
   const invalidate = useInvalidate();
   const { data: prefs } = useSchedulePrefs();
   const [clockDate, setClockDate] = useState(() => new Date());
@@ -1628,8 +1629,8 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     triggerToast(`${destination[0].toUpperCase()}${destination.slice(1)} "${title}" created${startDate ? ' in the all-day row' : ''}.`, 'success');
   };
 
-  const startFocusTimer = (task: FocusTaskRef) => {
-    const active = readActiveWorkTimer();
+  const startFocusTimer = async (task: FocusTaskRef) => {
+    const active = cloudTimer.timer;
     if (active) {
       const activeTask = allTasks.find(item => item.id === active.taskId);
       setWorkTaskId(active.taskId);
@@ -1637,19 +1638,19 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       triggerToast(`A timer is already running${activeTask ? ` for "${activeTask.title}"` : ''}.`, 'info');
       return;
     }
-    writeActiveWorkTimer({ taskId: task.id, startedAt: new Date().toISOString(), notes: '' });
-    setWorkTaskId(task.id);
-    setCurrentTab('Work');
-    triggerToast(`Focus started for "${task.title}".`, 'success');
-    apiPatch(`/api/tasks/${task.id}`, { status: 'in_progress' })
-      .then(() => qc.invalidateQueries({ queryKey: ['tasks'] }))
-      .catch(() => {
-        // The timer still records work if promoting task status fails.
-      });
+    try {
+      const result = await cloudTimer.start({ taskId: task.id, notes: '' });
+      setWorkTaskId(result.timer?.taskId || task.id);
+      setCurrentTab('Work');
+      triggerToast(result.started ? `Focus started for "${task.title}".` : 'A focus timer is already running.', result.started ? 'success' : 'info');
+      if (result.started) apiPatch(`/api/tasks/${task.id}`, { status: 'in_progress' })
+        .then(() => qc.invalidateQueries({ queryKey: ['tasks'] }))
+        .catch(() => { /* The timer still records work if promoting task status fails. */ });
+    } catch (error) { triggerToast(error instanceof Error ? error.message : 'Could not start the cloud timer.', 'error'); }
   };
 
-  const startRoutineFocus = (routine: DBRoutine, date: string) => {
-    const active = readActiveWorkTimer();
+  const startRoutineFocus = async (routine: DBRoutine, date: string) => {
+    const active = cloudTimer.timer;
     if (active) {
       setCurrentTab('Work');
       triggerToast('A focus timer is already running. Stop it before starting another.', 'info');
@@ -1659,9 +1660,11 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       triggerToast('Start focus on today’s routine; you can correct past check-ins separately.', 'info');
       return;
     }
-    writeActiveWorkTimer({ taskId: '', routineId: routine.id, routineTitle: routine.title, goalId: routine.goal_id, routineDate: date, sessionId: crypto.randomUUID(), startedAt: new Date().toISOString(), notes: routine.note });
-    setCurrentTab('Work');
-    triggerToast(`Focus started for "${routine.title}".`, 'success');
+    try {
+      const result = await cloudTimer.start({ taskId: '', routineId: routine.id, notes: routine.note });
+      setCurrentTab('Work');
+      triggerToast(result.started ? `Focus started for "${routine.title}".` : 'A focus timer is already running.', result.started ? 'success' : 'info');
+    } catch (error) { triggerToast(error instanceof Error ? error.message : 'Could not start the cloud timer.', 'error'); }
   };
 
   /** Apply every Plan-assist suggestion in one go. */

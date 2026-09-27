@@ -6,6 +6,7 @@ import { MobileHeader } from '../MobileHeader';
 import { useAppStore } from '../../store/useAppStore';
 
 vi.mock('../Header', () => ({ GlobalSearch: () => <input aria-label="Search everything" /> }));
+vi.mock('../../hooks/useCloudWorkTimer', () => ({ useCloudWorkTimer: () => ({ timer: null, nowMs: Date.now(), error: null }) }));
 vi.mock('zustand/middleware', () => ({ persist: (creator: unknown) => creator }));
 beforeEach(() => useAppStore.setState({ currentTab: 'Schedule', selectedGoalId: null, focusedTaskId: null, focusedResourceId: null }));
 afterEach(cleanup);

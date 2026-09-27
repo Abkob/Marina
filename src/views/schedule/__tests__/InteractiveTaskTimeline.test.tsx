@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SchedulerResult, ScheduleTaskInfo } from '../../../api/hooks';
 import { InteractiveTaskTimeline } from '../InteractiveTaskTimeline';
+vi.mock('../../../hooks/useCloudWorkTimer', () => ({ useCloudWorkTimer: () => ({ timer: null, nowMs: Date.now() }) }));
 
 const diagnostics: SchedulerResult['task_diagnostics'] = [
   {
