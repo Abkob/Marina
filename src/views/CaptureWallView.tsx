@@ -247,7 +247,7 @@ export function CaptureWallView() {
                   animate={{ opacity: 1, scale: 1, y: 0, rotate: tiltOf(n.id) }}
                   exit={{ opacity: 0, scale: 0.7 }}
                   whileHover={{ scale: 1.045, rotate: 0, zIndex: 5 }}
-                  className={`relative text-left rounded-sm border shadow-[2px_4px_10px_rgba(0,0,0,0.10)] min-h-[128px] flex flex-col ${tintOf(n.id)}`}
+                  className={`group relative text-left rounded-sm border shadow-[2px_4px_10px_rgba(0,0,0,0.10)] min-h-[128px] flex flex-col ${tintOf(n.id)}`}
                   style={{ transformOrigin: 'center' }}
                 >
                   {/* “tape” */}
@@ -260,7 +260,7 @@ export function CaptureWallView() {
                   <p className="text-[12px] text-gray-800 leading-snug line-clamp-4 flex-1 whitespace-pre-wrap">
                     {stripHtml(n.content) || n.title}
                   </p>
-                  <div className="flex items-center gap-1.5 mt-2">
+                  <div className="flex items-center gap-1.5 mt-2 pr-7">
                     <span className="text-[9px] font-mono text-gray-500">
                       {new Date(n.created_at).toLocaleString('en-US', dayOfIso(n.created_at) === day
                         ? { hour: 'numeric', minute: '2-digit' }
@@ -282,9 +282,10 @@ export function CaptureWallView() {
                     onClick={() => { void toggleFinished(n); }}
                     disabled={busy}
                     aria-label={`Mark note ${stripHtml(n.content) || n.title} as finished`}
-                    className="mx-3.5 mb-3 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50"
+                    title="Finish note"
+                    className={`absolute bottom-0.5 right-0.5 flex items-center justify-center rounded-full text-gray-500 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gray-500 disabled:opacity-10 ${mobile ? 'h-11 w-11 opacity-25 active:opacity-100' : 'h-8 w-8 opacity-35 group-hover:opacity-75'}`}
                   >
-                    <Check size={16} strokeWidth={2.5} /> Finish
+                    <Check size={mobile ? 12 : 14} strokeWidth={1.5} />
                   </button>
                 </motion.div>
               );
@@ -368,10 +369,11 @@ export function CaptureWallView() {
                 <button
                   onClick={() => { void toggleFinished(openNote, true); }}
                   disabled={busy}
-                  className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50"
+                  aria-label={openNote.completed_at ? 'Reopen note' : 'Mark as finished'}
+                  className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-medium text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gray-500 disabled:opacity-30"
                 >
-                  {openNote.completed_at ? <RotateCcw size={16} /> : <Check size={16} strokeWidth={2.5} />}
-                  {openNote.completed_at ? 'Reopen note' : 'Mark as finished'}
+                  {openNote.completed_at ? <RotateCcw size={13} /> : <Check size={13} strokeWidth={1.5} />}
+                  {openNote.completed_at ? 'Reopen note' : mobile ? 'Finish' : 'Mark as finished'}
                 </button>
                 <button
                   onClick={logAsJournal}
