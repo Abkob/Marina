@@ -226,12 +226,13 @@ export function OneOffTaskComposer({
  * Left drawer of the Schedule, goal-first: pick a goal, get that goal's task
  * tree, drag tasks onto the calendar, or create a task with optional context.
  */
-export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onCollapse, onCreateTask }: {
+export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onCollapse, onCreateTask, onScheduleTask }: {
   tasks: DBTask[];
   goals: DBGoal[];
   draggableIds: Set<string>;
   scheduledDates: Map<string, string>;
   onCollapse: () => void;
+  onScheduleTask?: (task: DBTask) => void;
   onCreateTask: (draft: CalendarTaskDraft) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: 'backlog' });
@@ -306,8 +307,8 @@ export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onC
             </motion.div>
           ) : (
             <motion.div key={`goal-${goalId}`} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}>
-              <p className="mb-2 text-[10px] leading-snug text-gray-400">Drag a task into the all-day row, or onto an hour to make a Focus block.</p>
-              <TaskTree tasks={scopedTasks} goals={goals} mode="drag" draggableIds={draggableIds} scheduledDates={scheduledDates} searchPlaceholder="Find a task..." hideGoalHeaders />
+              <p className="mb-2 text-[10px] leading-snug text-gray-400">Drop a task onto a time to schedule it, or use its clock button. You can add more than one session.</p>
+              <TaskTree tasks={scopedTasks} goals={goals} mode="drag" onSchedule={onScheduleTask} draggableIds={draggableIds} scheduledDates={scheduledDates} searchPlaceholder="Find a task..." hideGoalHeaders />
             </motion.div>
           )}
         </AnimatePresence>

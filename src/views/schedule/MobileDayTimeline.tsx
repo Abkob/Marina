@@ -14,6 +14,7 @@ interface Gesture {
   active: boolean; cancelled: boolean; moved: boolean; last: CalendarPlacement;
 }
 interface Props {
+  editorPreview?: (CalendarPlacement & { title: string }) | null;
   compact?: boolean;
   date: string; today: string; nowHour: number; items: MobileScheduleItem[]; online: boolean;
   onOpen: (item: MobileScheduleItem) => void;
@@ -251,6 +252,9 @@ export function MobileDayTimeline(props: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    if (props.editorPreview?.date === date && scroller.current) scroller.current.scrollTop = Math.max(0, (props.editorPreview.startHour - 1) * HOUR_HEIGHT);
+  }, [props.editorPreview?.startHour, props.editorPreview?.date]);
   const timed = items.filter(item => item.start !== null);
   const positions = packOverlaps(timed.map(item => ({ id: item.id, start: item.start!, end: item.start! + Math.max(item.minutes / 60, 48 / HOUR_HEIGHT) })));
   const placementLabel = draft ? fmtTimeRange(draft.placement.startHour, draft.placement.durationHours) : '';
@@ -281,7 +285,7 @@ export function MobileDayTimeline(props: Props) {
               className={`pointer-events-auto absolute rounded-xl border-l-[3px] ${TONES[item.kind]} ${active ? 'z-20 shadow-xl ring-2 ring-indigo-500' : ''}`}
               style={{ top: start * HOUR_HEIGHT, height, left: `${pos.col / pos.cols * 100}%`, width: `calc(${100 / pos.cols}% - 3px)` }}>
               <button onClick={() => onOpen(item)} aria-label={`${item.title}, ${fmtTimeRange(start, duration)}`}
-                className="h-full w-full overflow-hidden rounded-xl px-2 py-1 text-left active:brightness-95">
+                className="flex h-full w-full flex-col items-start overflow-hidden rounded-xl px-2 py-2 text-left active:brightness-95">
                 <span className="block truncate text-xs font-semibold">{item.event?.locked && <Lock size={10} className="mr-1 inline" />}{item.title}</span>
                 <span className="block truncate text-[10px] opacity-70">{fmtTimeRange(start, duration)}</span>
                 {duration >= 1 && <span className="mt-1 block truncate text-[10px] opacity-60" title={item.context}>{item.context || item.detail}</span>}
@@ -295,6 +299,7 @@ export function MobileDayTimeline(props: Props) {
             </div>;
           })}
           {draft?.mode === 'create' && <div className="absolute inset-x-0 z-20 rounded-xl border-2 border-indigo-500 bg-indigo-100/90 px-2 py-1 text-xs font-semibold text-indigo-900 shadow-lg" style={{ top: draft.placement.startHour * HOUR_HEIGHT, height: Math.max(44, draft.placement.durationHours * HOUR_HEIGHT - 3) }}>New block<span className="block text-[10px]">{placementLabel}</span></div>}
+          {props.editorPreview?.date === date && <div aria-label="Calendar draft preview" className="pointer-events-none absolute inset-x-0 z-20 overflow-hidden rounded-xl border-2 border-dashed border-indigo-400 bg-indigo-50/90 p-2 text-xs text-indigo-900" style={{ top: props.editorPreview.startHour * HOUR_HEIGHT, height: Math.max(44, props.editorPreview.durationHours * HOUR_HEIGHT - 3) }}><span className="block truncate font-medium">{props.editorPreview.title}</span><span className="text-[10px]">{fmtTimeRange(props.editorPreview.startHour, props.editorPreview.durationHours)} · Draft</span></div>}
           {date === today && <div aria-label="Current time" className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-rose-400" style={{ top: nowHour * HOUR_HEIGHT }}><span className="absolute -left-1 -top-1.5 h-2.5 w-2.5 rounded-full bg-rose-400" /></div>}
         </div>
       </div>

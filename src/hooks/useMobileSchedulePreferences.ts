@@ -4,7 +4,7 @@ export const MOBILE_SCHEDULE_PREFERENCES = 'marina-mobile-schedule-v1';
 type Preferences = { compact: boolean; view: 'agenda' | 'day' };
 
 function readPreferences(): Preferences {
-  const fallback: Preferences = { compact: window.matchMedia('(max-width: 389px)').matches, view: 'agenda' };
+  const fallback: Preferences = { compact: window.matchMedia('(max-width: 389px)').matches, view: 'day' };
   try {
     const saved = JSON.parse(window.localStorage.getItem(MOBILE_SCHEDULE_PREFERENCES) ?? 'null');
     return {

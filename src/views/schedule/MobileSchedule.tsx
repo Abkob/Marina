@@ -8,6 +8,7 @@ import { MobileSheet } from '../../components/MobileSheet';
 import { ModalFrame } from '../../components/ModalFrame';
 import { useAppStore } from '../../store/useAppStore';
 import type { CalendarMeeting, PlacedEvent } from './WeekTimeGrid';
+import { TaskPicker } from './CalendarTaskPicker';
 import { MobileDayTimeline } from './MobileDayTimeline';
 import { useCalendarSwipe } from '../../hooks/useCalendarSwipe';
 import type { CalendarPlacement } from '../../utils/calendarGestures';
@@ -25,6 +26,7 @@ const dateLabel = (date: string) => parseLocalDate(date).toLocaleDateString('en-
 const durationLabel = (minutes: number) => minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${Math.round(minutes % 60)}m` : ''}` : `${Math.round(minutes)} min`;
 
 interface Props {
+  editorPreview?: (CalendarPlacement & { title: string }) | null;
   date: string;
   today: string;
   now: Date;
@@ -47,7 +49,7 @@ interface Props {
   onChangeEvent: (event: DBEvent, placement: CalendarPlacement) => Promise<void>;
   onEdit: (event: DBEvent) => void;
   onAddTask: (date: string) => void;
-  onScheduleTask: (task: DBTask, date: string, hour: number) => void;
+  onScheduleTask: (task: DBTask, date: string, hour: number, duration?: number) => void | Promise<void>;
   onStartFocus: (task: DBTask) => void;
   onMoveTask: (taskId: string, date: string) => Promise<void>;
   renderRoutines: (date: string, closeDetails: () => void) => React.ReactNode;
@@ -76,6 +78,9 @@ export function MobileSchedule(props: Props) {
   const [routinesOpen, setRoutinesOpen] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [placingTask, setPlacingTask] = useState<DBTask | null>(null);
+  const [placingBusy, setPlacingBusy] = useState(false);
   const [moveDate, setMoveDate] = useState(date);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -117,6 +122,7 @@ export function MobileSchedule(props: Props) {
         </button>
         <button aria-label="Previous day" className="mobile-icon-button text-slate-500" onClick={() => changeDate(addDays(date, -1))}><ChevronLeft size={19} /></button>
         <button aria-label="Next day" className="mobile-icon-button text-slate-500" onClick={() => changeDate(addDays(date, 1))}><ChevronRight size={19} /></button>
+        <button aria-label="Schedule a task" className="mobile-icon-button text-slate-400" onClick={() => setTasksOpen(true)}><List size={19} /></button>
         <button aria-label="Schedule options" aria-haspopup="dialog" onClick={() => setOptionsOpen(true)} className="mobile-icon-button text-slate-600"><SlidersHorizontal size={20} /></button>
       </div>
       {!compact && <div ref={weekSwipe} className="mobile-gesture-surface mt-2 grid grid-cols-7 gap-1" aria-label="Week dates">
@@ -149,14 +155,22 @@ export function MobileSchedule(props: Props) {
     </MobileSheet>}
     {routinesOpen && <MobileSheet title="Your routines" onClose={() => setRoutinesOpen(false)}>{props.renderRoutines(date, () => setRoutinesOpen(false))}</MobileSheet>}
 
+    {tasksOpen && <MobileSheet title="Schedule a task" onClose={() => setTasksOpen(false)}><TaskPicker tasks={props.tasks} goals={props.goals ?? []} onPick={task => { setPlacingTask(task); setTasksOpen(false); setSaveError(''); setView('day'); }} /></MobileSheet>}
+    {placingTask && <div role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-1 text-xs text-indigo-700"><span className="min-w-0 flex-1">{placingBusy ? 'Scheduling…' : `Tap a time for ${placingTask.title}`}</span><button disabled={placingBusy} aria-label="Cancel task placement" className="mobile-icon-button" onClick={() => setPlacingTask(null)}><X size={15} /></button></div>}
+    {placingTask && saveError && <p role="alert" className="mb-2 text-xs text-rose-600">{saveError}</p>}
     {!online && <p role="status" className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">You’re offline. Reconnect to refresh your schedule or save changes.</p>}
     {props.error && <div role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">Couldn’t load the latest schedule. <button onClick={() => void props.onRefresh()} className="min-h-11 font-semibold underline">Try again</button></div>}
     {props.loading ? <div role="status" className="space-y-3 py-4"><p className="text-sm text-slate-500">Loading your schedule…</p>{[1, 2, 3].map(n => <div key={n} className="h-20 animate-pulse rounded-2xl bg-slate-100" />)}</div> : props.error ? null : <>
-      <p className="mb-3 mt-2 text-xs text-slate-400">{items.length ? items.length + ' items · ' + (view === 'day' ? 'Day timeline' : 'Agenda') : 'A little room to breathe'}</p>
+      <p className="mb-3 mt-2 text-xs text-slate-400">{items.length ? items.length + (items.length === 1 ? ' item · ' : ' items · ') + (view === 'day' ? 'Day timeline' : 'Agenda') : 'A little room to breathe'}</p>
       {view === 'day' ? <>
         {items.some(item => item.start === null) && <details className="mb-3 rounded-2xl border border-slate-100 p-3"><summary className="min-h-8 cursor-pointer text-sm font-semibold text-slate-600">Tasks & deadlines · {items.filter(item => item.start === null).length}</summary><div className="mt-2 space-y-2">{items.filter(item => item.start === null).map(item => <ItemCard key={item.id} item={item} onOpen={openItem} />)}</div></details>}
-        <MobileDayTimeline key={date} date={date} today={today} nowHour={nowHour} items={items} online={online} compact={compact}
-          onOpen={openItem} onCreate={props.onCreate} onChangeEvent={props.onChangeEvent}
+        <MobileDayTimeline editorPreview={props.editorPreview} key={date} date={date} today={today} nowHour={nowHour} items={items} online={online} compact={compact}
+          onOpen={openItem} onCreate={(day, hour, duration) => {
+            if (!placingTask) { props.onCreate(day, hour, duration); return; }
+            if (placingBusy) return;
+            setPlacingBusy(true); setSaveError('');
+            Promise.resolve(props.onScheduleTask(placingTask, day, hour, duration)).then(() => setPlacingTask(null)).catch(error => setSaveError(error instanceof Error ? error.message : 'Could not schedule. Tap a time to retry.')).finally(() => setPlacingBusy(false));
+          }} onChangeEvent={props.onChangeEvent}
           onSwipe={direction => changeDate(addDays(date, direction))} />
       </> : <div ref={agendaSwipe} className="mobile-gesture-surface space-y-6" aria-label="Schedule agenda">
         {days.filter(day => day >= date).map(day => {
@@ -168,7 +182,7 @@ export function MobileSchedule(props: Props) {
         <button onClick={() => changeDate(addDays(days[0], 7))} className="min-h-12 w-full rounded-xl bg-slate-50 text-sm font-semibold text-indigo-600">Next week <span aria-hidden="true">→</span></button>
       </div>}
     </>}
-    <button onClick={() => setAddOpen(true)} aria-label="Add to schedule" className="mobile-schedule-add fixed right-5 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-300/60 active:scale-95"><Plus size={27} /></button>
+    <button onClick={() => setAddOpen(true)} aria-label="Add to schedule" className="mobile-schedule-add fixed right-5 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm active:scale-95"><Plus size={21} /></button>
 
     {addOpen && <ModalFrame titleId="mobile-add-title" onClose={() => setAddOpen(false)} className="mobile-sheet w-full max-w-md rounded-3xl bg-white p-5 shadow-xl"><div className="flex items-center justify-between"><h2 id="mobile-add-title" className="text-xl font-bold">Add to your day</h2><button aria-label="Close add menu" className="mobile-icon-button" onClick={() => setAddOpen(false)}><X size={20} /></button></div><p className="mb-4 text-sm text-slate-400">{dateLabel(date)}</p>
       <button className="mb-2 min-h-16 w-full rounded-2xl bg-indigo-50 px-4 text-left font-semibold text-indigo-700" onClick={() => { setAddOpen(false); props.onCreate(date); }}>Calendar block <span className="block text-xs font-normal">Set a time, duration and linked task</span></button>
@@ -182,8 +196,8 @@ export function MobileSchedule(props: Props) {
       {selected.minutes > 0 && <p className="mt-1 text-sm text-slate-500">{durationLabel(selected.minutes)} planned</p>}
       {selected.task && <div className="mt-5 space-y-3">
         <button disabled={!online} onClick={() => { props.onStartFocus(selected.task!); setSelected(null); }} className="min-h-12 w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white disabled:opacity-40">Start focus</button>
-        <button disabled={!online} onClick={() => { const task = selected.task!; setSelected(null); openCompletionReport(task.id); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-50 text-sm font-semibold text-emerald-700 disabled:opacity-40"><Check size={17} />Complete task</button>
-        <button disabled={!online} onClick={() => { props.onScheduleTask(selected.task!, selected.date, 9); setSelected(null); }} className="min-h-12 w-full rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-40">Choose a time for this task</button>
+        <button disabled={!online} onClick={() => { const task = selected.task!; setSelected(null); openCompletionReport(task.id); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-xs text-slate-400 hover:text-emerald-600 disabled:opacity-40"><Check size={17} />Complete task</button>
+        <button disabled={!online} onClick={() => { setPlacingTask(selected.task!); setView('day'); setSelected(null); }} className="min-h-12 w-full rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-40">Choose a time for this task</button>
         <label className="block text-xs font-semibold text-slate-500">Move task to<input aria-label="Move task to date" type="date" value={moveDate} onChange={e => setMoveDate(e.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-3 text-slate-800" /></label>
         <button disabled={saving || !moveDate || !online} onClick={async () => { setSaving(true); setSaveError(''); try { await props.onMoveTask(selected.task!.id, moveDate); setSelected(null); } catch (error) { setSaveError(error instanceof Error ? error.message : 'Could not move task.'); } finally { setSaving(false); } }} className="min-h-12 w-full rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 disabled:opacity-40">{saving ? 'Moving…' : 'Move task'}</button>
         {saveError && <p role="alert" className="text-sm text-red-600">{saveError}</p>}

@@ -87,7 +87,24 @@ The Time design uses the contribution-calendar pattern documented by
 and the monthly calendar heatmap approach illustrated in
 [Apache ECharts](https://echarts.apache.org/examples/en/index.html).
 
-In **Day**, hold an event briefly, then drag it to move it. Drag the top or bottom
+On desktop, draw empty calendar time to create a block, drag its body to move it,
+or pull either edge to resize. Drop a task onto a time to save a linked session
+immediately; **Undo** removes that session and keeps the task. The task's clock
+button provides a keyboard-accessible way to choose its exact time. Workload,
+routines, day flow and the all-day row can expand when needed.
+
+The compact calendar editor accepts **Start** and **End** (for example `14:30`
+or `2:30pm`). Start preserves the current length; End changes it. The duration
+updates immediately. Linking tasks preserves the selected range. **Details**
+contains the block type, description, lock and removal action. Minimize the editor
+to see its draft outline against the calendar, then expand it to keep editing.
+Event fields and changes to task links are saved together; a failed save retains
+the draft and shows its error. A block can contain several linked tasks.
+
+Phones open in **Day** by default, while a saved Agenda preference is respected.
+Use the task-list icon to pick a task, then tap a time to place it. The small
+editor sheet can collapse without losing text or links. In **Day**, hold an event
+briefly, then drag it to move it. Drag the top or bottom
 handle directly to change its start or end; resizing does not open the editor.
 Hold empty time and drag to select a
 new block's length. The preview snaps to 15 minutes, scrolls near the timeline's

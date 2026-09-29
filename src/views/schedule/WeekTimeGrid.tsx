@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Check, Info, Link2, Lock, Repeat2, Users, X } from 'lucide-react';
+import type { CalendarPlacement } from '../../utils/calendarGestures';
+import { gesturePlacement } from '../../utils/calendarGestures';
 import type { DBEvent } from '../../db/schema';
 import type { DBEventTaskLinkFull } from '../../api/hooks';
 import { clampHour, fmtHourLabel, fmtTimeRange, packOverlaps, parseLocalDate, snapHour, type TimedBlock } from '../../utils/calendar';
@@ -14,7 +16,7 @@ import { useAppStore } from '../../store/useAppStore';
  * parent renders (they stay drag-and-drop day targets).
  */
 
-export const GRID_START_HOUR = 1;
+export const GRID_START_HOUR = 0;
 export const GRID_END_HOUR = 24;
 export const HOUR_PX = 48;
 const MIN_HOUR_PX = 28;
@@ -84,6 +86,7 @@ export interface DayCapacityBreakdown {
 }
 
 interface WeekTimeGridProps {
+  draft?: (CalendarPlacement & { title: string }) | null;
   days: string[]; // 7 ISO dates, Monday-first
   events: PlacedEvent[];
   meetings: CalendarMeeting[];
@@ -97,10 +100,11 @@ interface WeekTimeGridProps {
   dayBreakdowns?: Map<string, DayCapacityBreakdown>;
   breakdownResetKey?: string;
   renderAllDayCell: (date: string) => React.ReactNode;
-  onSlotClick: (date: string, startHour: number) => void;
+  onSlotClick: (date: string, startHour: number, durationHours?: number) => void;
   onEventClick: (ev: DBEvent) => void;
   onEventMove: (ev: DBEvent, next: { date: string; start_hour: number }) => void;
   onEventResize: (ev: DBEvent, durationHours: number) => void;
+  onEventChange?: (ev: DBEvent, next: CalendarPlacement) => Promise<void>;
   /** hover ✕ on blocks — one click removes without opening the editor */
   onEventDelete?: (ev: DBEvent) => void;
 }
@@ -210,7 +214,7 @@ export function DayFreeBadge({ breakdown, align = 'center', resetKey }: { breakd
 
 interface DragState { dy: number; dDay: number; colW: number }
 
-function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onClick, onMove, onResize, onDelete }: {
+function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onClick, onMove, onResize, onDelete, onChange }: {
   placed: PlacedEvent;
   dayIdx: number;
   days: string[];
@@ -222,6 +226,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
   onMove: (ev: DBEvent, next: { date: string; start_hour: number; dayIdx: number }) => void;
   onResize: (ev: DBEvent, durationHours: number) => void;
   onDelete?: (ev: DBEvent) => void;
+  onChange?: (ev: DBEvent, next: CalendarPlacement) => Promise<void>;
 }) {
   const ev = placed.event;
   const { navigateToGoal, setTaskSpotlight, triggerToast } = useAppStore();
@@ -229,21 +234,35 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
   const [resizeDelta, setResizeDelta] = useState<number | null>(null);
   const gesture = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
   const cancelled = useRef(false);
+  const resizeEdge = useRef<'start' | 'end'>('end');
+  const [pending, setPending] = useState<CalendarPlacement | null>(null);
+  const [saveError, setSaveError] = useState('');
 
-  const duration = Math.max(0.5, ev.duration_hours);
-  const start = clampHour(ev.start_hour, GRID_START_HOUR, GRID_END_HOUR - 0.5);
+  const duration = Math.max(0.25, ev.duration_hours);
+  const start = clampHour(ev.start_hour, GRID_START_HOUR, GRID_END_HOUR - 0.25);
   const completion = eventCompletion(links);
   const style = TYPE_STYLES[(ev.type ?? 'focus').toLowerCase()] ?? TYPE_STYLES.focus;
-  const draggable = !ev.locked;
+  const draggable = !ev.locked && !pending;
 
-  // Live values while dragging/resizing, snapped for feedback
-  const previewStart = drag
-    ? clampHour(snapHour(start + drag.dy / hourPx), GRID_START_HOUR, GRID_END_HOUR - duration)
-    : start;
-  const previewDuration = resizeDelta !== null
-    ? Math.max(0.5, snapHour(duration + resizeDelta / hourPx))
-    : duration;
-  const previewDay = drag ? Math.min(6, Math.max(0, dayIdx + drag.dDay)) : dayIdx;
+  const original = { date: placed.date, startHour: start, durationHours: duration };
+  const resized = resizeDelta !== null ? gesturePlacement(original, resizeEdge.current === 'start' ? 'resize-start' : 'resize-end', resizeDelta / hourPx) : null;
+  const previewStart = pending?.startHour ?? resized?.startHour ?? (drag
+    ? clampHour(snapHour(start + drag.dy / hourPx), GRID_START_HOUR, GRID_END_HOUR - duration) : start);
+  const previewDuration = pending?.durationHours ?? resized?.durationHours ?? duration;
+  const previewDay = pending ? Math.max(0, days.indexOf(pending.date)) : drag ? Math.min(days.length - 1, Math.max(0, dayIdx + drag.dDay)) : dayIdx;
+  const commit = async (next: CalendarPlacement, kind: 'move' | 'resize') => {
+    if (next.startHour === start && next.durationHours === duration && next.date === placed.date) return;
+    setSaveError('');
+    if (!onChange) {
+      if (kind === 'move') onMove(ev, { date: next.date, start_hour: next.startHour, dayIdx: days.indexOf(next.date) });
+      else onResize(ev, next.durationHours);
+      return;
+    }
+    setPending(next);
+    try { await onChange(ev, next); }
+    catch (reason) { setSaveError(reason instanceof Error ? reason.message : 'Could not save. The original time is restored.'); }
+    finally { setPending(null); }
+  };
 
   // Escape drops the block back where it was — no accidental moves/resizes.
   useEffect(() => {
@@ -267,7 +286,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
   };
 
   const onBlockPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || pending) return;
     e.stopPropagation();
     commitPointer(e);
     if (draggable) {
@@ -308,15 +327,16 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
       return;
     }
     if (drag) {
-      onMove(ev, { date: '', start_hour: previewStart, dayIdx: previewDay });
+      void commit({ date: days[previewDay], startHour: previewStart, durationHours: duration }, 'move');
       setDrag(null);
     }
   };
 
   const onResizePointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || pending) return;
     e.stopPropagation();
     commitPointer(e);
+    resizeEdge.current = e.currentTarget.getAttribute('data-resize-edge') === 'start' ? 'start' : 'end';
     setResizeDelta(0);
   };
   const onResizePointerMove = (e: React.PointerEvent) => {
@@ -334,8 +354,8 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
     }
     const moved = gesture.current?.moved;
     gesture.current = null;
-    if (moved && resizeDelta !== null && previewDuration !== duration) {
-      onResize(ev, previewDuration);
+    if (moved && resizeDelta !== null) {
+      void commit({ date: placed.date, startHour: previewStart, durationHours: previewDuration }, 'resize');
     }
     setResizeDelta(null);
   };
@@ -357,6 +377,10 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
 
   return (
     <div
+      tabIndex={0}
+      role="button"
+      aria-label={`${ev.title}, ${fmtTimeRange(previewStart, previewDuration)}${pending ? ', saving' : ''}`}
+      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && !pending) { e.preventDefault(); onClick(ev); } }}
       onPointerDown={onBlockPointerDown}
       onPointerMove={onBlockPointerMove}
       onPointerUp={onBlockPointerUp}
@@ -366,7 +390,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
         ${style}
         ${completion === 'done' ? 'opacity-60' : ''}
         ${draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
-        ${active ? 'z-30 shadow-lg ring-2 ring-[#4648d4]/30' : 'z-10 hover:shadow-md'}`}
+        ${active || pending ? 'z-30 shadow-lg ring-2 ring-[#4648d4]/30' : 'z-10 hover:shadow-md'}`}
       style={{
         top,
         height,
@@ -376,6 +400,8 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
       }}
       title={ev.title}
     >
+      {saveError && <div role="alert" className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg bg-rose-50 p-2 text-xs text-rose-700 shadow-lg">{saveError}</div>}
+      {pending && <span className="absolute right-1 top-1 text-[9px] text-indigo-500">Saving…</span>}
       {/* Landing tooltip: exactly where the block will drop / how long it will be */}
       {(dragging || resizing) && (
         <div className={`pointer-events-none absolute left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 font-mono text-[10px] font-bold text-white shadow-lg ${top < 40 ? '-bottom-8' : '-top-8'}`}>
@@ -412,8 +438,9 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
           <X size={12} />
         </button>
       )}
+      {draggable && onChange && <div data-resize-edge="start" onPointerDown={onResizePointerDown} onPointerMove={onResizePointerMove} onPointerUp={onResizePointerUp} onPointerCancel={onPointerCancel} className="absolute inset-x-0 top-0 h-2 cursor-ns-resize" title="Drag to change the start time"><div className="mx-auto h-0.5 w-6 rounded-full bg-current opacity-0 group-hover:opacity-25" /></div>}
       {draggable && (
-        <div
+        <div data-resize-edge="end"
           onPointerDown={onResizePointerDown}
           onPointerMove={onResizePointerMove}
           onPointerUp={onResizePointerUp}
@@ -430,7 +457,8 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
 
 // ── Day column ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelect, linksByEvent, isWorkDay, workStart, workEnd, isToday, isSelected, now, hourPx, gridHeight, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, days }: {
+function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelect, linksByEvent, isWorkDay, workStart, workEnd, isToday, isSelected, now, hourPx, gridHeight, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft, days }: {
+  draft?: (CalendarPlacement & { title: string }) | null;
   date: string;
   dayIdx: number;
   events: PlacedEvent[];
@@ -446,10 +474,11 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
   now: Date;
   hourPx: number;
   gridHeight: number;
-  onSlotClick: (date: string, startHour: number) => void;
+  onSlotClick: (date: string, startHour: number, durationHours?: number) => void;
   onEventClick: (ev: DBEvent) => void;
   onEventMove: (ev: DBEvent, next: { date: string; start_hour: number }) => void;
   onEventResize: (ev: DBEvent, durationHours: number) => void;
+  onEventChange?: (ev: DBEvent, next: CalendarPlacement) => Promise<void>;
   onEventDelete?: (ev: DBEvent) => void;
   days: string[];
 }) {
@@ -472,11 +501,21 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
     return packOverlaps(blocks);
   }, [events, meetings, routines, hourPx]);
 
+  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
+  const drawing = useRef<{ y: number; start: number; end: number; moved: boolean } | null>(null);
+  const skipClick = useRef(false);
+  const hourAt = (element: HTMLElement, y: number, limit = 23.75) => clampHour(snapHour(GRID_START_HOUR + (y - element.getBoundingClientRect().top) / hourPx), GRID_START_HOUR, limit);
+  const cancelDraw = () => { drawing.current = null; setSelection(null); skipClick.current = true; };
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') cancelDraw(); };
+    window.addEventListener('keydown', cancel);
+    window.addEventListener('blur', cancelDraw);
+    return () => { window.removeEventListener('keydown', cancel); window.removeEventListener('blur', cancelDraw); };
+  }, []);
   const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const raw = GRID_START_HOUR + (e.clientY - rect.top) / hourPx;
-    const hour = clampHour(snapHour(raw, 30), GRID_START_HOUR, GRID_END_HOUR - 0.5);
-    onSlotClick(date, hour);
+    if (skipClick.current) { skipClick.current = false; return; }
+    if (e.target !== e.currentTarget) return;
+    onSlotClick(date, hourAt(e.currentTarget, e.clientY));
   };
 
   const nowY = hourToY(now.getHours() + now.getMinutes() / 60, hourPx);
@@ -484,6 +523,33 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
   return (
     <div
       ref={setNodeRef}
+      aria-label={`Time slots for ${date}`}
+      tabIndex={0}
+      onKeyDown={e => { if (e.target === e.currentTarget && e.key === 'Enter') onSlotClick(date, 9); }}
+      onPointerDown={e => {
+        if (e.button !== 0 || e.target !== e.currentTarget) return;
+        skipClick.current = false;
+        const hour = hourAt(e.currentTarget, e.clientY);
+        drawing.current = { y: e.clientY, start: hour, end: hour + .5, moved: false };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={e => {
+        if (!drawing.current) return;
+        if (Math.abs(e.clientY - drawing.current.y) <= 5 && !drawing.current.moved) return;
+        drawing.current.moved = true;
+        drawing.current.end = hourAt(e.currentTarget, e.clientY, 24);
+        const low = Math.min(drawing.current.start, drawing.current.end);
+        setSelection({ start: low, end: Math.max(low + .25, drawing.current.start, drawing.current.end) });
+      }}
+      onPointerUp={e => {
+        const current = drawing.current;
+        drawing.current = null;
+        if (!current?.moved || !selection) return;
+        e.stopPropagation(); skipClick.current = true;
+        onSlotClick(date, selection.start, selection.end - selection.start);
+        setSelection(null);
+      }}
+      onPointerCancel={cancelDraw}
       onClick={handleBackgroundClick}
       className={`relative cursor-pointer border-l border-gray-100
         ${!isWorkDay ? 'bg-gray-50/70' : ''}
@@ -491,6 +557,8 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
         ${isOver ? 'bg-indigo-50/60 ring-1 ring-inset ring-indigo-300' : ''}`}
       style={{ height: gridHeight }}
     >
+      {selection && <div className="pointer-events-none absolute inset-x-0 z-30 rounded-lg border-2 border-indigo-400 bg-indigo-100/80 px-2 py-1 text-[10px] text-indigo-800" style={{ top: hourToY(selection.start, hourPx), height: (selection.end - selection.start) * hourPx }}>{fmtTimeRange(selection.start, selection.end - selection.start)}</div>}
+      {draft?.date === date && <div aria-label="Calendar draft preview" className="pointer-events-none absolute inset-x-1 z-30 overflow-hidden rounded-lg border-2 border-dashed border-indigo-400 bg-indigo-50/90 p-2 text-xs text-indigo-800" style={{ top: hourToY(draft.startHour, hourPx), height: Math.max(24, draft.durationHours * hourPx) }}><span className="block truncate font-medium">{draft.title}</span><span className="text-[10px]">{fmtTimeRange(draft.startHour, draft.durationHours)} · Draft</span></div>}
       {/* Off-hours shading inside working days */}
       {isWorkDay && workStart > GRID_START_HOUR && (
         <div className="pointer-events-none absolute inset-x-0 top-0 bg-gray-50/70" style={{ height: hourToY(Math.min(workStart, GRID_END_HOUR), hourPx) }} />
@@ -554,6 +622,7 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
           onClick={onEventClick}
           onMove={(ev, next) => onEventMove(ev, { date: days[next.dayIdx], start_hour: next.start_hour })}
           onResize={onEventResize}
+          onChange={onEventChange}
           onDelete={onEventDelete}
         />
       ))}
@@ -572,11 +641,17 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
-export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete }: WeekTimeGridProps) {
+export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft }: WeekTimeGridProps) {
   const now = useNowTick();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(() => scheduleHourPxForViewport(typeof window === 'undefined' ? DENSITY_REFERENCE_WIDTH : window.innerWidth));
   const gridHeight = (GRID_END_HOUR - GRID_START_HOUR) * hourPx;
+  useEffect(() => { if (draft && scrollRef.current) scrollRef.current.scrollTop = hourToY(Math.max(0, draft.startHour - 1), hourPx); }, [draft?.startHour, draft?.date]);
+  const [allDayExpanded, setAllDayExpanded] = useState(false);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = hourToY(Math.max(GRID_START_HOUR, workStart - 1), hourPx);
+    // Start near working hours once; later refreshes preserve the user's place.
+  }, []);
 
   useEffect(() => {
     const updateDensity = () => setHourPx(scheduleHourPxForViewport(window.innerWidth));
@@ -640,8 +715,8 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
               );
             })}
           </div>
-          <div className={`${COLS} h-[92px] border-t border-gray-100`}>
-            <div className="py-1 pr-1.5 text-right font-mono text-[8px] uppercase tracking-wider text-gray-300">all day</div>
+          <div className={`${COLS} ${allDayExpanded ? 'h-[92px]' : 'h-[40px]'} border-t border-gray-100`}>
+            <button type="button" aria-label={allDayExpanded ? 'Minimize all-day row' : 'Show all-day details'} aria-expanded={allDayExpanded} onClick={() => setAllDayExpanded(value => !value)} className="self-start py-2 pr-1.5 text-right text-[9px] text-slate-400">All day {allDayExpanded ? '−' : '+'}</button>
             {days.map(d => (
               <div key={d} className="h-full min-w-0 overflow-visible border-l border-gray-100">
                 {renderAllDayCell(d)}
@@ -685,7 +760,9 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
               now={now}
               hourPx={hourPx}
               gridHeight={gridHeight}
+              draft={draft}
               onSlotClick={onSlotClick}
+              onEventChange={onEventChange}
               onEventClick={onEventClick}
               onEventMove={onEventMove}
               onEventResize={onEventResize}

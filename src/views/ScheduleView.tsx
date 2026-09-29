@@ -1228,9 +1228,13 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const [dragTask, setDragTask] = useState<DBTask | null>(null);
   const [innerPage, setInnerPage] = useState<'plan' | 'month' | 'timeline' | 'feasibility'>(initialPage);
   const [composer, setComposer] = useState<ComposerSeed | null>(null);
+  const [editorPreview, setEditorPreview] = useState<(CalendarPlacement & { title: string }) | null>(null);
   const [taskComposerDate, setTaskComposerDate] = useState<string | null>(null);
   const [routineComposerOpen, setRoutineComposerOpen] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(() => window.innerWidth >= 1280);
+  const [feedback, setFeedback] = useState<{ label: string; undo?: () => Promise<void> } | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const scheduling = useRef(new Set<string>());
   const [rightPanel, setRightPanel] = useState<'assist' | 'drafts' | null>(null);
   const [mobileRefreshing, setMobileRefreshing] = useState(false);
   const refreshMobileSchedule = async () => {
@@ -1679,66 +1683,44 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     }
   };
 
-  /** Drop a task on a time slot: open the composer pre-linked and autofilled,
-   *  so the one question left is how many hours to spend. */
-  const scheduleTaskAsBlock = (task: DBTask, date: string, hour: number) => {
+  const refreshCalendar = () => Promise.all(['events', 'event-task-links', 'schedule-preview'].map(key => qc.invalidateQueries({ queryKey: [key] })));
+  // One transaction creates the session and its task link. The task itself can
+  // retain its day and have any number of independently placed work sessions.
+  const scheduleTaskAsBlock = async (task: DBTask, date: string, hour: number, drawnDuration?: number) => {
+    const key = `${task.id}|${date}|${hour}`;
+    if (scheduling.current.has(key)) return;
+    scheduling.current.add(key);
     const fill = autofillFromTask({ title: task.title, estimated_minutes: task.estimated_minutes }, task.actual_minutes ?? 0);
-    setComposer({
-      mode: 'create',
-      date,
-      startHour: hour,
-      durationHours: Math.max(0.5, Math.min(fill.duration_hours, GRID_END_HOUR - hour)),
-      linkedTaskId: task.id,
-      syncStartDate: true,
-    });
-  };
-
-  const moveEvent = async (ev: DBEvent, next: { date: string; start_hour: number }) => {
-    const { week_start, day_index } = dateToWeekPos(next.date);
+    const duration = Math.max(.25, Math.min(drawnDuration ?? fill.duration_hours, 24 - hour));
+    setFeedback({ label: `Scheduling ${task.title}…` });
     try {
-      await apiPatch(`/api/events/${ev.id}`, {
-        day_index,
-        start_hour: next.start_hour,
-        time_str: fmtTimeRange(next.start_hour, ev.duration_hours),
-        week_start,
+      const created = await apiPost<{ id: string }>('/api/events', {
+        ...dateToWeekPos(date), title: task.title, type: 'Focus', start_hour: hour,
+        duration_hours: duration, time_str: fmtTimeRange(hour, duration), description: '', locked: false, source: 'manual',
+        task_link_changes: { add: [{ task_id: task.id, planned_minutes: Math.min(Math.round(duration * 60), fill.planned_minutes ?? Math.round(duration * 60)) }] },
       });
-      await qc.invalidateQueries({ queryKey: ['events'] });
-      invalidate.schedulePreview();
-    } catch (e) {
-      triggerToast((e as Error).message || 'Could not move the block.', 'error');
-    }
+      await refreshCalendar();
+      setFeedback({ label: `${task.title} · ${fmtTimeRange(hour, duration)}`, undo: async () => { await apiDelete(`/api/events/${created.id}`); await refreshCalendar(); } });
+    } catch (error) {
+      setFeedback({ label: error instanceof Error ? error.message : 'Could not schedule this task. Try again.' });
+      throw error;
+    } finally { scheduling.current.delete(key); }
   };
 
-  const resizeEvent = async (ev: DBEvent, durationHours: number) => {
-    try {
-      await apiPatch(`/api/events/${ev.id}`, {
-        duration_hours: durationHours,
-        time_str: fmtTimeRange(ev.start_hour, durationHours),
-      });
-      await qc.invalidateQueries({ queryKey: ['events'] });
-      invalidate.schedulePreview();
-    } catch (e) {
-      triggerToast((e as Error).message || 'Could not resize the block.', 'error');
-    }
-  };
-
-  // One write for a touch gesture, including resizing the start and end together.
-  // Errors propagate so the phone can restore the original block and offer retry.
-  const changeMobileEvent = async (event: DBEvent, next: CalendarPlacement) => {
-    if (event.locked) throw new Error('This block is locked. Open it to edit its details.');
-    if (next.startHour < 0 || next.durationHours < 0.25 || next.startHour + next.durationHours > 24) {
-      throw new Error('Choose a time within this day.');
-    }
-    const { week_start, day_index } = dateToWeekPos(next.date);
+  const changeCalendarEvent = async (event: DBEvent, next: CalendarPlacement) => {
+    if (event.locked) throw new Error('This block is locked. Open its details to unlock it.');
+    if (next.startHour < 0 || next.durationHours < .25 || next.startHour + next.durationHours > 24) throw new Error('Choose a time within this day.');
+    const previous = { week_start: event.week_start, day_index: event.day_index, start_hour: event.start_hour, duration_hours: event.duration_hours, time_str: event.time_str };
     await apiPatch(`/api/events/${event.id}`, {
-      week_start, day_index, start_hour: next.startHour, duration_hours: next.durationHours,
-      time_str: fmtTimeRange(next.startHour, next.durationHours),
+      // Moving a weekly repeater in its week preserves recurrence.
+      ...dateToWeekPos(next.date), ...(event.week_start ? {} : { week_start: null }),
+      start_hour: next.startHour, duration_hours: next.durationHours, time_str: fmtTimeRange(next.startHour, next.durationHours),
     });
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: ['events'] }),
-      qc.invalidateQueries({ queryKey: ['schedule-preview'] }),
-    ]);
+    await refreshCalendar();
+    if (!isPhone) setFeedback({ label: `Updated · ${fmtTimeRange(next.startHour, next.durationHours)}`, undo: async () => { await apiPatch(`/api/events/${event.id}`, previous); await refreshCalendar(); } });
   };
+  const moveEvent = (event: DBEvent, next: { date: string; start_hour: number }) => changeCalendarEvent(event, { date: next.date, startHour: next.start_hour, durationHours: event.duration_hours });
+  const resizeEvent = (event: DBEvent, durationHours: number) => changeCalendarEvent(event, { date: eventDate(event) ?? addDays(weekStart, event.day_index), startHour: event.start_hour, durationHours });
 
   /** Hover-✕ on a block: one click removes it, no editor round-trip. */
   const deleteEvent = async (ev: DBEvent) => {
@@ -1787,7 +1769,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       const dragTop = e.active.rect.current.translated?.top ?? overTop;
       const rawHour = GRID_START_HOUR + (dragTop - overTop) / scheduleHourPxForViewport(window.innerWidth);
       const hour = clampHour(snapHour(rawHour, 30), GRID_START_HOUR, GRID_END_HOUR - 0.5);
-      scheduleTaskAsBlock(task, date, hour);
+      void scheduleTaskAsBlock(task, date, hour).catch(() => {});
     }
   };
 
@@ -1811,6 +1793,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       date: eventDate(ev) ?? addDays(weekStart, ((ev.day_index % 7) + 7) % 7),
       startHour: ev.start_hour,
       durationHours: ev.duration_hours,
+      links: linksByEvent.get(ev.id) ?? [],
       linkId: link?.id,
       linkedTaskId: link?.task_id,
     });
@@ -1844,132 +1827,37 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       {isPhone ? <MobileSchedule goals={goals} eventLinks={allLinks}
-        date={focusedDate} today={todayStr} now={clockDate} timezone={prefs?.timezone}
+        editorPreview={composer ? editorPreview : null} date={focusedDate} today={todayStr} now={clockDate} timezone={prefs?.timezone}
         days={weekDays} events={placedEvents} meetings={weekMeetings} tasks={allTasks}
         previewByDate={previewByDate} assignmentsByDate={assignmentsByDate} blockedTaskIds={blockDates}
         loading={isLoading || tasksLoading || eventsLoading || meetingsLoading}
         refreshing={mobileRefreshing || previewFetching} error={previewError || tasksError || eventsError || meetingsError}
         onDate={setFocusedDate} onRefresh={refreshMobileSchedule}
-        onCreate={openCreate} onEdit={openEdit} onAddTask={setTaskComposerDate} onChangeEvent={changeMobileEvent}
+        onCreate={openCreate} onEdit={openEdit} onAddTask={setTaskComposerDate} onChangeEvent={changeCalendarEvent}
         onScheduleTask={scheduleTaskAsBlock} onStartFocus={startFocusTimer}
         onMoveTask={async (taskId, date) => { await move.mutateAsync({ taskId, date }); }}
         renderRoutines={(date, closeDetails) => <RoutinesPanel date={date} today={todayStr} goals={goals} onCreate={() => { closeDetails(); setRoutineComposerOpen(true); }} onStartFocus={startRoutineFocus} />}
       /> : (
-      <div className="mx-auto w-full max-w-[1480px] px-4 py-5 md:px-8 animate-fade-in">
-        {/* Header */}
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="font-headline text-2xl font-bold text-black flex items-center gap-2">
-              <Calendar size={20} /> Schedule
-            </h2>
-            <p className="text-xs font-mono text-gray-400 uppercase tracking-widest mt-1">
-              Your week, hour by hour — blocks link to tasks and fill themselves in
-            </p>
+      <div className={`mx-auto w-full max-w-[1800px] px-4 py-5 md:px-6 animate-fade-in ${composer ? 'schedule-editor-open' : ''}`}>
+        <header className="mb-5 flex flex-wrap items-center gap-3 border-b border-slate-100 pb-4">
+          <h2 className="mr-auto text-xl font-semibold tracking-tight text-slate-900">Schedule</h2>
+          <div className="flex rounded-xl bg-slate-100/80 p-1" aria-label="Calendar view">
+            {(['plan', 'month', 'timeline'] as const).map(page => <button key={page} onClick={() => setInnerPage(page)} aria-pressed={innerPage === page} className={`rounded-lg px-3 py-1.5 text-xs ${innerPage === page ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-400'}`}>{page === 'plan' ? 'Week' : page === 'month' ? 'Month' : 'Timeline'}</button>)}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setRoutineComposerOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-100">
-              <Repeat2 size={14} /> Add routine
-            </button>
-            {statusInfo && scheduler && (
-              <button
-                type="button"
-                onClick={() => setInnerPage('feasibility')}
-                title="Open the structured feasibility audit (click or Alt-click)"
-                aria-label={`Open feasibility audit: ${schedulerStatusLabel(scheduler)}`}
-                className={`text-[10px] font-mono uppercase font-bold px-2.5 py-1 rounded-full border transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${statusInfo.cls}`}
-              >
-                {schedulerStatusLabel(scheduler)}
-              </button>
-            )}
-            {(scheduler?.unestimated_task_ids.length ?? 0) > 0 && (
-              <span className="text-[10px] font-mono px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1">
-                <AlertTriangle size={10} /> {scheduler!.unestimated_task_ids.length} unestimated
-              </span>
-            )}
-
-            <div className="flex items-center rounded-lg bg-gray-100 p-0.5">
-              <button
-                onClick={() => setInnerPage('plan')}
-                aria-pressed={innerPage === 'plan'}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold transition-all ${
-                  innerPage === 'plan' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                <Calendar size={12} /> Week
-              </button>
-              <button
-                onClick={() => setInnerPage('month')}
-                aria-pressed={innerPage === 'month'}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold transition-all ${
-                  innerPage === 'month' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                <CalendarDays size={12} /> Month
-              </button>
-              <button
-                onClick={() => setInnerPage('timeline')}
-                aria-pressed={innerPage === 'timeline'}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[10px] font-bold transition-all ${
-                  innerPage === 'timeline' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                <BarChart2 size={12} /> Timeline
-              </button>
-            </div>
-
-            {innerPage === 'plan' && (
-              <>
-                <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-[#f8f9fa] p-0.5">
-                  <button onClick={() => setFocusedDate(d => addDays(d, -7))} className="flex h-8 w-8 items-center justify-center rounded text-gray-600 hover:bg-gray-100" title="Previous week" aria-label="Previous week">
-                    <ChevronLeft size={14} />
-                  </button>
-                  <button
-                    onClick={() => setFocusedDate(d => addDays(d, -1))}
-                    className="flex h-8 min-w-9 items-center justify-center rounded px-1.5 font-mono text-[9px] font-bold uppercase tracking-wider text-gray-500 hover:bg-gray-100"
-                    title="Previous day"
-                    aria-label="Previous day"
-                  >
-                    -1d
-                  </button>
-                  <button
-                    onClick={() => setFocusedDate(todayStr)}
-                    disabled={focusedDate === todayStr}
-                    className="flex h-8 min-w-12 items-center justify-center rounded px-2 font-mono text-[9px] font-bold uppercase tracking-wider text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-                    aria-label="Jump to today"
-                  >
-                    Today
-                  </button>
-                  <button
-                    onClick={() => setFocusedDate(d => addDays(d, 1))}
-                    className="flex h-8 min-w-9 items-center justify-center rounded px-1.5 font-mono text-[9px] font-bold uppercase tracking-wider text-gray-500 hover:bg-gray-100"
-                    title="Next day"
-                    aria-label="Next day"
-                  >
-                    +1d
-                  </button>
-                  <button onClick={() => setFocusedDate(d => addDays(d, 7))} className="flex h-8 w-8 items-center justify-center rounded text-gray-600 hover:bg-gray-100" title="Next week" aria-label="Next week">
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
-                <span className="font-headline text-sm font-bold text-gray-700">{fmtWeekRange(weekStart)}</span>
-                <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wide text-[#4648d4]">
-                  {focusedDayLabel}
-                </span>
-                <button
-                  onClick={() => openCreate()}
-                  aria-label="Create calendar block"
-                  className="flex items-center gap-1.5 rounded-lg bg-[#4648d4] px-3 py-2 font-mono text-[10px] font-bold uppercase text-white shadow-sm hover:opacity-90"
-                >
-                  <Plus size={12} /> Create
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+          <button onClick={() => openCreate()} aria-label="Create calendar block" className="flex h-9 items-center gap-1 rounded-xl bg-slate-900 px-3 text-xs font-medium text-white"><Plus size={14} /> New block</button>
+          {innerPage === 'plan' && <div className="flex w-full flex-wrap items-center gap-2">
+            <button aria-label="Previous week" onClick={() => setFocusedDate(d => addDays(d, -7))} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50"><ChevronLeft size={17} /></button>
+            <button aria-label="Next week" onClick={() => setFocusedDate(d => addDays(d, 7))} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50"><ChevronRight size={17} /></button>
+            <span className="text-sm font-medium text-slate-700">{fmtWeekRange(weekStart)}</span>
+            <button onClick={() => setFocusedDate(todayStr)} aria-label="Jump to today" className="rounded-lg px-3 py-2 text-xs text-slate-400 hover:bg-slate-50">Today</button>
+            <input type="date" aria-label="Jump to calendar date" value={focusedDate} onChange={e => { if (e.target.value) setFocusedDate(e.target.value); }} className="min-w-0 rounded-lg border border-slate-100 px-2 py-1.5 text-xs text-slate-500" />
+            {statusInfo && scheduler && <button onClick={() => setInnerPage('feasibility')} className="ml-auto text-xs text-slate-400 hover:text-indigo-600" aria-label={`Open feasibility audit: ${schedulerStatusLabel(scheduler)}`}>{schedulerStatusLabel(scheduler)}</button>}
+          </div>}
+        </header>
 
         {innerPage === 'plan' ? (
           <>
+            <details className="mb-3 rounded-xl border border-slate-100 px-3 py-2"><summary className="cursor-pointer text-xs text-slate-400">Routines & workload</summary><div className="mt-3">
             <RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => setRoutineComposerOpen(true)} onStartFocus={startRoutineFocus} />
             <WorkloadHorizon
               scheduler={scheduler}
@@ -1982,6 +1870,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
               onOpenAudit={() => setInnerPage('feasibility')}
               onSelectDate={setFocusedDate}
             />
+            </div></details>
 
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
               <button
@@ -2009,7 +1898,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
               >
                 <Sparkles size={11} /> AI drafts
               </button>
-              <span className="ml-auto hidden font-mono text-[9px] uppercase tracking-wider text-gray-300 sm:inline">Calendar stays open</span>
+              <span className="ml-auto hidden font-mono text-[9px] uppercase tracking-wider text-gray-300 sm:inline">Draw to create · drag to move · pull an edge to resize</span>
             </div>
 
             <div className={`grid grid-cols-1 items-start gap-3 ${scheduleGridColumns}`}>
@@ -2021,12 +1910,14 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                   scheduledDates={scheduledDates}
                   onCollapse={() => setDrawerOpen(false)}
                   onCreateTask={createCalendarTask}
+                  onScheduleTask={task => setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ title: task.title, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0).duration_hours, linkedTaskId: task.id })}
                 />
               )}
 
               <div className="min-w-0">
                 {isLoading && <p className="mb-2 font-mono text-xs text-gray-400">Loading schedule…</p>}
                 <WeekTimeGrid
+                  draft={composer ? editorPreview : null}
                   days={weekDays}
                   events={placedEvents}
                   meetings={weekMeetings}
@@ -2052,12 +1943,14 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                       onStartFocus={task => void startFocusTimer(task)}
                     />
                   )}
-                  onSlotClick={(date, hour) => openCreate(date, hour)}
+                  onSlotClick={openCreate}
+                  onEventChange={changeCalendarEvent}
                   onEventClick={openEdit}
                   onEventMove={(ev, next) => void moveEvent(ev, next)}
                   onEventResize={(ev, d) => void resizeEvent(ev, d)}
                   onEventDelete={ev => void deleteEvent(ev)}
                 />
+                <details className="mt-4 rounded-xl border border-slate-100 p-3"><summary className="cursor-pointer text-xs text-slate-400">Day flow & time breakdown</summary>
                 <WeeklyParentBreakdown
                   weekDays={weekDays}
                   tasks={allTasks}
@@ -2088,6 +1981,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                     Previewing "{draftPreview.name}" — dashed chips in the all-day row show where work would start.
                   </p>
                 )}
+                </details>
               </div>
 
               {rightPanel && <div className="min-w-0">
@@ -2128,6 +2022,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       </div>
       )}
 
+      {feedback && <div role="status" className="calendar-feedback"><span className="min-w-0 truncate">{feedback.label}</span>{feedback.undo && <button disabled={undoBusy} className="min-h-9 shrink-0 font-semibold text-indigo-600" onClick={async () => { setUndoBusy(true); try { await feedback.undo!(); setFeedback(null); } catch (error) { triggerToast(error instanceof Error ? error.message : 'Could not undo. Try again.', 'error'); } finally { setUndoBusy(false); } }}>{undoBusy ? 'Undoing…' : 'Undo'}</button>}<button disabled={undoBusy} aria-label="Dismiss calendar update" className="min-h-9 px-1 text-slate-400" onClick={() => setFeedback(null)}>×</button></div>}
       <DragOverlay dropAnimation={null}>
         {dragTask && (
           <div className="flex items-center gap-1 text-[10px] rounded px-1.5 py-1 border bg-[#EEF2FF] text-[#4648d4] border-[#4648d4] shadow-lg">
@@ -2165,7 +2060,9 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
 
       {composer && (
         <EventComposer
-          seed={composer}
+          key={`${composer.mode}|${composer.event?.id ?? ''}|${composer.date}|${composer.startHour}|${composer.durationHours}|${composer.linkedTaskId ?? ''}`}
+          onPreview={setEditorPreview}
+          seed={{ ...composer, event: allEvents.find(event => event.id === composer.event?.id) ?? composer.event }}
           days={weekDays}
           tasks={allTasks}
           goals={goals}

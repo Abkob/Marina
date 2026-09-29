@@ -6,7 +6,7 @@ Research and code audit: 27 September 2026.
 
 Make the calendar itself the main editing surface. Create, place and resize a block where it will live; show a small contextual editor only for information the calendar cannot supply. Keep a collapsible task tray on desktop and one compact bottom sheet on mobile. Replacing the time picker alone would leave the larger interruption problem unresolved.
 
-The immediate resize bug is fixed in this change. The broader layout and interaction system below are a design specification, not implemented features.
+Implemented on 29 September 2026: the calendar now has a compact workspace, direct task drops with Undo, drawing to create, resizing from either edge, Start/End text inputs, a nonblocking editor with a live draft outline, and a collapsible phone sheet. Task links and event fields save in one database transaction. Existing agenda/month/timeline views and planning tools remain available. The comparison below records the research that informed the implementation.
 
 ## What was actually studied
 
@@ -28,7 +28,7 @@ The desktop resize handle's pointer-up event bubbled into the block's open-edito
 
 The fix isolates resize release/movement, requires a real block gesture before opening the editor, avoids saves for unchanged edge taps, and cancels interrupted pointer gestures. Mobile edge handles now resize immediately instead of requiring a hold; the body retains hold-to-move so ordinary scrolling remains usable. Pointer taps on the handles do not open the editor; keyboard/assistive activation retains access to precise editing. Existing mobile save feedback, failure recovery and Undo remain available.
 
-Other issues found in the current code need the larger redesign: desktop empty-slot clicks open the full composer, task drops also open it, start time has 92 quarter-hour choices, duration is a separate limited list, and there is no directly editable end time. Desktop currently clears its gesture preview before the cloud refresh finishes; retaining the new placement while saving is part of the next implementation, not this patch.
+The redesign replaces the former 92-choice start menu and separate duration list with typed Start/End fields. Task drops now save directly, while an empty-slot selection opens the compact editor. Desktop gestures retain their new placement until saving finishes and restore the original on failure. A selected draft remains visible on the calendar when its editor is minimized.
 
 ## Proposed interaction contract
 

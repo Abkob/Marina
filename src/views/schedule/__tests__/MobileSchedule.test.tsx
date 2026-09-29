@@ -69,6 +69,7 @@ describe('phone calendar interactions', () => {
       fireEvent.touchMove(element, { touches: [{ clientX: 140, clientY: 103 }] });
       fireEvent.touchEnd(element, { changedTouches: [{ clientX: 140, clientY: 103 }] });
     };
+    openOptions(); fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
     swipe(screen.getByLabelText('Schedule agenda'));
     expect(p.onDate).toHaveBeenLastCalledWith('2026-09-25');
     fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
@@ -80,7 +81,7 @@ describe('phone calendar interactions', () => {
   });
   it('navigates across weeks, jumps to dates and opens existing events', () => {
     const p = props(); render(<MobileSchedule {...p} />);
-    fireEvent.click(screen.getByRole('button', { name: /Design session/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Design session,/ }));
     expect(p.onEdit).toHaveBeenCalledWith(event);
     fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
     fireEvent.click(screen.getByLabelText('Next week'));
@@ -93,12 +94,13 @@ describe('phone calendar interactions', () => {
     const p = props(); render(<MobileSchedule {...p} />);
     chooseDay();
     fireEvent.click(screen.getByRole('button', { name: `Add event on ${date} at 12 AM` }));
-    expect(p.onCreate).toHaveBeenCalledWith(date, 0);
+    expect(p.onCreate).toHaveBeenCalledWith(date, 0, undefined);
     expect(screen.getByLabelText('Current time')).toHaveStyle({ top: '684px' });
   });
   it('saves task moves and retains the dialog with an error if saving fails', async () => {
     const p = props(); p.onMoveTask.mockRejectedValueOnce(new Error('Connection lost'));
     render(<MobileSchedule {...p} />);
+    fireEvent.click(screen.getByText(/Tasks & deadlines/));
     fireEvent.click(screen.getByRole('button', { name: /Read chapter/ }));
     fireEvent.change(screen.getByLabelText('Move task to date'), { target: { value: '2026-09-29' } });
     fireEvent.click(screen.getByRole('button', { name: 'Move task' }));
@@ -118,6 +120,7 @@ describe('phone calendar interactions', () => {
   });
   it('uses the existing task completion workflow', () => {
     render(<MobileSchedule {...props()} />);
+    fireEvent.click(screen.getByText(/Tasks & deadlines/));
     fireEvent.click(screen.getByRole('button', { name: /Read chapter/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Complete task' }));
     expect(store.openCompletionReport).toHaveBeenCalledWith('task');

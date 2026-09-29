@@ -20,6 +20,7 @@ interface TaskTreeProps {
   goals: DBGoal[];
   mode: 'drag' | 'select';
   selectedTaskId?: string | null;
+  onSchedule?: (task: DBTask) => void;
   onSelect?: (task: DBTask) => void;
   /** drag mode: ids allowed to be dragged (leaf, schedulable). Others render muted. */
   draggableIds?: Set<string>;
@@ -102,7 +103,7 @@ function RowBody({ task, context, depth, hasChildren, isOpen, onToggle, schedule
   );
 }
 
-function DraggableRow(props: Parameters<typeof RowBody>[0] & { draggable: boolean }) {
+function DraggableRow(props: Parameters<typeof RowBody>[0] & { draggable: boolean; onSchedule?: (task: DBTask) => void }) {
   const { navigateToGoal, setTaskSpotlight, triggerToast } = useAppStore();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: props.task.id,
@@ -135,6 +136,7 @@ function DraggableRow(props: Parameters<typeof RowBody>[0] & { draggable: boolea
         ? <GripVertical size={9} className="shrink-0 text-gray-300" />
         : <span className="w-[9px] shrink-0" />}
       <RowBody {...props} />
+      {props.draggable && props.onSchedule && <button type="button" onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); props.onSchedule?.(props.task); }} aria-label={`Schedule ${props.task.title}`} title="Choose a time" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white hover:text-indigo-600 focus-visible:text-indigo-600"><CalendarClock size={13} /></button>}
     </div>
   );
 }
@@ -159,7 +161,7 @@ function SelectableRow(props: Parameters<typeof RowBody>[0] & { selected: boolea
   );
 }
 
-export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggableIds, scheduledDates, searchPlaceholder, hideGoalHeaders = false, includeCriticalPath = false }: TaskTreeProps) {
+export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, onSchedule, draggableIds, scheduledDates, searchPlaceholder, hideGoalHeaders = false, includeCriticalPath = false }: TaskTreeProps) {
   const [q, setQ] = useState('');
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
   const [closedNodes, setClosedNodes] = useState<Set<string>>(new Set());
@@ -202,7 +204,7 @@ export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, draggab
     return (
       <div key={task.id}>
         {mode === 'drag' ? (
-          <DraggableRow {...common} draggable={draggable} />
+          <DraggableRow {...common} draggable={draggable} onSchedule={onSchedule} />
         ) : (
           <SelectableRow {...common} selected={selectedTaskId === task.id} onSelect={() => onSelect?.(task)} />
         )}
