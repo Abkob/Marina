@@ -4,7 +4,7 @@ import { z } from 'zod';
 import {
   checkInRoutine, createRoutine, createRoutineSchema, isRoutinesSchemaMissing, listRoutineEntries, listRoutines,
   logRoutineSession, RoutineError, routineCheckInSchema, routineIdSchema, routineRangeSchema, routineSessionSchema,
-  updateRoutine, updateRoutineSchema,
+  updateRoutine, updateRoutineSchema, rescheduleRoutine, routineScheduleSchema,
 } from '../services/routines.js';
 
 const router = Router();
@@ -16,6 +16,7 @@ router.get('/entries', async (req, res) => {
 });
 router.post('/', async (req, res) => { res.status(201).json(await createRoutine(createRoutineSchema.parse(req.body))); });
 router.patch('/:id', async (req, res) => { res.json(await updateRoutine(routineIdSchema.parse(req.params.id), updateRoutineSchema.parse(req.body))); });
+router.post('/:id/schedule', async (req, res) => { res.json(await rescheduleRoutine(routineIdSchema.parse(req.params.id), routineScheduleSchema.parse(req.body))); });
 router.post('/:id/check-in', async (req, res) => { res.json(await checkInRoutine(routineIdSchema.parse(req.params.id), routineCheckInSchema.parse(req.body))); });
 router.post('/:id/sessions', async (req, res) => { res.json(await logRoutineSession(routineIdSchema.parse(req.params.id), routineSessionSchema.parse(req.body))); });
 router.use(((error, _req, res, next) => {

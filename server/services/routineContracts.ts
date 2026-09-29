@@ -18,6 +18,16 @@ export const createRoutineSchema = z.object({
   .refine(v => !v.preferred_time || Number(v.preferred_time.slice(0, 2)) * 60 + Number(v.preferred_time.slice(3)) + v.planned_minutes <= 1440, 'The preferred time and planned duration must fit before midnight')
   .describe('Native routine. For target_unit=minutes, target_count MUST equal planned_minutes (e.g. 20 minutes means both are 20). Weekdays must be unique ISO numbers. For weekly cadence, weekly_target cannot exceed selected weekdays. A preferred time plus planned duration must finish before midnight.');
 export const updateRoutineSchema = z.object({ title: z.string().trim().min(1).max(200).optional(), note: note.optional(), archived: z.literal(true).optional() }).strict().refine(v => Object.keys(v).length > 0, 'No changes supplied');
+export const routineScheduleSchema = z.object({
+  cadence: createRoutineSchema.shape.cadence, weekdays: createRoutineSchema.shape.weekdays,
+  weekly_target: createRoutineSchema.shape.weekly_target, target_count: createRoutineSchema.shape.target_count,
+  target_unit: createRoutineSchema.shape.target_unit, planned_minutes: createRoutineSchema.shape.planned_minutes,
+  preferred_time: createRoutineSchema.shape.preferred_time,
+  effective_from: date, expected_updated_at: z.string().min(1),
+}).strict()
+  .refine(v => v.target_unit === 'minutes' && v.target_count === v.planned_minutes, 'Use a duration in minutes for the repeat schedule')
+  .refine(v => v.cadence !== 'weekly' || v.weekly_target <= v.weekdays.length, 'Choose enough available days for the weekly sessions')
+  .refine(v => !v.preferred_time || Number(v.preferred_time.slice(0, 2)) * 60 + Number(v.preferred_time.slice(3)) + v.planned_minutes <= 1440, 'The session must finish before midnight');
 export const routineCheckInSchema = z.object({
   date, status: z.enum(['completed', 'skipped', 'pending']), completed_count: z.number().int().min(0).max(10000).optional(), notes: note.optional(),
 }).strict();

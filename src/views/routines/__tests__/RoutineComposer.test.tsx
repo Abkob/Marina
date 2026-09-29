@@ -2,88 +2,77 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { DBGoal } from '../../../db/schema';
+import type { DBRoutine } from '../../../types/routines';
 import { RoutineComposer } from '../RoutineComposer';
 
-const create = vi.hoisted(() => ({ mutateAsync: vi.fn(), isPending: false }));
-vi.mock('../../../api/routines', () => ({ useCreateRoutine: () => create }));
-const goals = [{ id: 'physics', title: 'Physics 210', archived_at: null }] as DBGoal[];
-beforeEach(() => { vi.clearAllMocks(); create.mutateAsync.mockResolvedValue({ id: 'new' }); create.isPending = false; });
-
-function composer() {
+const mocks = vi.hoisted(() => ({ create: { mutateAsync: vi.fn(), isPending: false }, edit: { mutateAsync: vi.fn(), isPending: false } }));
+vi.mock('../../../api/routines', () => ({ useCreateRoutine: () => mocks.create, useRescheduleRoutine: () => mocks.edit }));
+beforeEach(() => { vi.clearAllMocks(); mocks.create.mutateAsync.mockResolvedValue({}); mocks.edit.mutateAsync.mockResolvedValue({}); });
+const routine = { id: 'routine', title: 'Biology', planned_minutes: 30, weekdays: [1, 3, 5], weekly_target: 3, cadence: 'daily', target_unit: 'minutes', target_count: 30, preferred_time: '09:00', updated_at: '2026-09-22T08:00:00Z' } as DBRoutine;
+function composer(edit?: DBRoutine) {
   const onSaved = vi.fn();
-  const onClose = vi.fn();
-  render(<RoutineComposer date="2026-09-22" goals={goals} onClose={onClose} onSaved={onSaved} />);
-  return { onSaved, onClose };
+  render(<RoutineComposer date="2026-09-22" today="2026-09-22" routine={edit} goals={[]} onClose={vi.fn()} onSaved={onSaved} />);
+  return onSaved;
 }
+async function name() { await userEvent.type(screen.getByLabelText('Name'), 'Biology revision'); }
 
-describe('RoutineComposer', () => {
-  it('creates a standalone anytime catch-up routine with a small daily budget', async () => {
-    const user = userEvent.setup();
-    const { onSaved } = composer();
+describe('time-based repeat editor', () => {
+  it('creates minutes and a weekly frequency, without count targets', async () => {
+    const user = userEvent.setup(); const saved = composer(); await name();
+    expect(screen.getByRole('status')).toHaveTextContent('2h 15m');
     await user.click(screen.getByRole('button', { name: 'Create routine' }));
-    expect(create.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Daily catch-up', cadence: 'daily', goal_id: null, weekdays: [1, 2, 3, 4, 5],
-      weekly_target: 5, target_count: 20, target_unit: 'minutes', planned_minutes: 20,
-      preferred_time: null, start_date: '2026-09-22',
-    }));
-    expect(onSaved).toHaveBeenCalledOnce();
-    expect(screen.getByText(/Missed days don’t pile up/)).toBeInTheDocument();
+    expect(mocks.create.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ title: 'Biology revision', cadence: 'weekly', weekly_target: 3, planned_minutes: 45, target_count: 45, target_unit: 'minutes', preferred_time: null }));
+    expect(saved).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText('Measure')).not.toBeInTheDocument();
   });
-
-  it('creates goal-linked practice with a count target and independent time budget', async () => {
-    const user = userEvent.setup();
-    composer();
-    await user.click(screen.getByRole('button', { name: 'Practice' }));
-    await user.selectOptions(screen.getByLabelText('Linked goal'), 'physics');
-    await user.clear(screen.getByLabelText('Time budget (minutes)', { exact: false }));
-    await user.type(screen.getByLabelText('Time budget (minutes)', { exact: false }), '40');
+  it('accepts hours and typed clock times, derives a precise end and weekly total', async () => {
+    const user = userEvent.setup(); composer(); await name();
+    await user.clear(screen.getByLabelText('Each session')); await user.type(screen.getByLabelText('Each session'), '1.5h');
+    await user.click(screen.getByRole('button', { name: 'At a time' }));
+    await user.clear(screen.getByLabelText('Start time')); await user.type(screen.getByLabelText('Start time'), '2:30pm');
+    expect(screen.getByText('Ends 16:00')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('4h 30m');
     await user.click(screen.getByRole('button', { name: 'Create routine' }));
-    expect(create.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Practice problems', cadence: 'weekly', weekly_target: 3, goal_id: 'physics',
-      target_count: 5, target_unit: 'problems', planned_minutes: 40,
-    }));
+    expect(mocks.create.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ planned_minutes: 90, target_count: 90, preferred_time: '14:30' }));
   });
-
-  it('records an optional preferred time and derives minutes budget from a minutes target', async () => {
-    const user = userEvent.setup();
-    composer();
-    await user.selectOptions(screen.getByLabelText('When'), 'preferred');
-    await user.type(screen.getByLabelText('Preferred time'), '09:30');
-    await user.clear(screen.getByLabelText('Target per session'));
-    await user.type(screen.getByLabelText('Target per session'), '35');
+  it('derives fixed-day frequency from the weekday choices', async () => {
+    const user = userEvent.setup(); composer(); await name();
+    await user.click(screen.getByRole('button', { name: 'Choose days' }));
+    for (const day of ['Tuesday', 'Thursday', 'Saturday', 'Sunday']) await user.click(screen.getByRole('button', { name: day }));
+    expect(screen.getByLabelText('Times per week')).toHaveValue(3);
     await user.click(screen.getByRole('button', { name: 'Create routine' }));
-    expect(create.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ preferred_time: '09:30', planned_minutes: 35, target_count: 35 }));
+    expect(mocks.create.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ cadence: 'daily', weekdays: [1, 3, 5], weekly_target: 3 }));
   });
-
-  it('requires at least one eligible day', async () => {
-    const user = userEvent.setup();
-    composer();
-    for (const name of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
-      await user.click(screen.getByRole('button', { name }));
-    }
+  it('rejects too few eligible days and an overnight time range', async () => {
+    const user = userEvent.setup(); composer(); await name();
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) await user.click(screen.getByRole('button', { name: day }));
     await user.click(screen.getByRole('button', { name: 'Create routine' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Choose at least one day');
-    expect(create.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose enough available days');
+    await user.click(screen.getByRole('button', { name: 'Monday' })); await user.click(screen.getByRole('button', { name: 'At a time' }));
+    await user.clear(screen.getByLabelText('Start time')); await user.type(screen.getByLabelText('Start time'), '23:50');
+    await user.click(screen.getByRole('button', { name: 'Create routine' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('before midnight');
+    expect(mocks.create.mutateAsync).not.toHaveBeenCalled();
   });
-
-  it('explains why a preferred slot cannot run past midnight', async () => {
-    const user = userEvent.setup();
-    composer();
-    await user.selectOptions(screen.getByLabelText('When'), 'preferred');
-    await user.type(screen.getByLabelText('Preferred time'), '23:55');
+  it('keeps failed saves and the draft visible for retry', async () => {
+    mocks.create.mutateAsync.mockRejectedValue(new Error('Cloud save unavailable'));
+    const user = userEvent.setup(); const saved = composer(); await name();
     await user.click(screen.getByRole('button', { name: 'Create routine' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Choose an earlier time');
-    expect(create.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Cloud save unavailable');
+    expect(screen.getByLabelText('Name')).toHaveValue('Biology revision'); expect(saved).not.toHaveBeenCalled();
   });
-
-  it('retains the form on API failure and lets the user retry', async () => {
-    const user = userEvent.setup();
-    create.mutateAsync.mockRejectedValue(new Error('Unable to save right now'));
-    const { onSaved } = composer();
-    await user.click(screen.getByRole('button', { name: 'Create routine' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Unable to save right now');
-    expect(screen.getByLabelText('Routine name')).toHaveValue('Daily catch-up');
-    expect(onSaved).not.toHaveBeenCalled();
+  it('edits the same routine from next Monday with a concurrency token', async () => {
+    const user = userEvent.setup(); composer(routine);
+    await user.click(screen.getByRole('button', { name: '1h' }));
+    await user.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(mocks.edit.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ routineId: routine.id, planned_minutes: 60, effective_from: '2026-09-28', expected_updated_at: routine.updated_at }));
+    expect(mocks.create.mutateAsync).not.toHaveBeenCalled();
+  });
+  it('does not let an edit change this week or begin midweek', async () => {
+    const user = userEvent.setup(); composer(routine);
+    await user.clear(screen.getByLabelText('Apply from Monday')); await user.type(screen.getByLabelText('Apply from Monday'), '2026-09-29');
+    await user.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose a Monday');
+    expect(mocks.edit.mutateAsync).not.toHaveBeenCalled();
   });
 });

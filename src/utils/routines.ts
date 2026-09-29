@@ -1,4 +1,4 @@
-import type { DBRoutine, DBRoutineEntry, RoutineReservation } from '../types/routines';
+import type { DBRoutine, DBRoutineEntry, RoutineReservation, RoutineSchedule } from '../types/routines';
 
 const DAY = 86_400_000;
 const dateMs = (date: string) => Date.parse(`${date}T12:00:00Z`);
@@ -17,17 +17,44 @@ export function routineWeekStart(date: string): string {
   return addRoutineDays(date, 1 - weekday);
 }
 
+export function routineForDate(routine: DBRoutine, date: string): DBRoutine {
+  const version = [...(routine.schedule_history ?? [])].sort((a, b) => a.before.localeCompare(b.before)).find(item => date < item.before);
+  return version ? { ...routine, ...version } : routine;
+}
+
+export function routineSchedule(routine: RoutineSchedule): RoutineSchedule {
+  const { cadence, weekdays, weekly_target, target_count, target_unit, planned_minutes, preferred_time } = routine;
+  return { cadence, weekdays, weekly_target, target_count, target_unit, planned_minutes, preferred_time };
+}
+
+export function routineTimeLabel(minutes: number): string {
+  const rounded = Math.round(minutes);
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return hours ? `${hours}h${rest ? ` ${rest}m` : ''}` : `${rest} min`;
+}
+
+/** Accept minutes, decimal hours, or a compact duration without an OS picker. */
+export function parseRoutineDuration(value: string): number | null {
+  const match = value.trim().toLowerCase().match(/^(?:(\d+(?:\.\d+)?)\s*h(?:ours?)?\s*)?(?:(\d+)\s*(?:m(?:in(?:ute)?s?)?)?)?$/);
+  if (!match || (!match[1] && !match[2])) return null;
+  const minutes = Number(match[1] ?? 0) * 60 + Number(match[2] ?? 0);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440 ? minutes : null;
+}
+
 /** Date-only arithmetic deliberately avoids DST and browser timezone shifts. */
 export function routineEligibleOn(routine: DBRoutine, date: string): boolean {
+  routine = routineForDate(routine, date);
   if (!isRoutineDate(date) || date < routine.start_date) return false;
   if (routine.archived_at && date >= (routine.archived_on ?? routine.archived_at.slice(0, 10))) return false;
   return routine.weekdays.includes(new Date(dateMs(date)).getUTCDay() || 7);
 }
 
 export function routineProgress(routine: DBRoutine, entries: DBRoutineEntry[], date: string) {
+  routine = routineForDate(routine, date);
   const start = routineWeekStart(date);
   const end = addRoutineDays(start, 6);
-  const own = entries.filter(entry => entry.routine_id === routine.id);
+  const own = [...new Map(entries.filter(entry => entry.routine_id === routine.id).map(entry => [entry.date, entry])).values()];
   const entry = own.find(item => item.date === date) ?? null;
   const completedDates = new Set(own.filter(item => item.date >= start && item.date <= end && item.status === 'completed').map(item => item.date));
   const weekTarget = routine.cadence === 'weekly' ? routine.weekly_target
@@ -40,6 +67,8 @@ export function routineProgress(routine: DBRoutine, entries: DBRoutineEntry[], d
     status: entry?.status ?? (scheduled ? 'pending' as const : 'off' as const),
     weekCompleted: completedDates.size, weekTarget, remainingThisWeek,
     minutes: Number(entry?.minutes ?? 0), completedCount: Number(entry?.completed_count ?? 0),
+    weekMinutes: own.filter(item => item.date >= start && item.date <= end).reduce((sum, item) => sum + Number(item.minutes), 0),
+    weekPlannedMinutes: weekTarget * routine.planned_minutes,
   };
 }
 
@@ -53,27 +82,30 @@ export function routineReservations(routines: DBRoutine[], entries: DBRoutineEnt
   const reservations: RoutineReservation[] = [];
   const first = from > today ? from : today;
   if (first > to) return reservations;
-  for (const routine of routines) {
-    const own = new Map(entries.filter(entry => entry.routine_id === routine.id).map(entry => [entry.date, entry]));
-    const add = (date: string) => {
-      if (date < first || date > to) return;
-      const entry = own.get(date);
-      if (entry?.status === 'skipped' && !entry.minutes) return;
-      const archiveCutoff = routine.archived_on ?? routine.archived_at?.slice(0, 10);
-      const archivedToday = Boolean(archiveCutoff && date >= addRoutineDays(archiveCutoff, -1));
-      if (archivedToday && entry?.status !== 'completed' && !entry?.minutes) return;
-      reservations.push({ routine_id: routine.id, title: routine.title, date,
-        minutes: entry?.status === 'skipped' || (archivedToday && entry?.status !== 'completed')
-          ? Number(entry?.minutes ?? 0) : Math.max(routine.planned_minutes, Number(entry?.minutes ?? 0)), preferred_time: routine.preferred_time });
-    };
-    if (routine.cadence === 'daily') {
-      for (let date = first; date <= to; date = addRoutineDays(date, 1)) {
-        if (routineEligibleOn(routine, date)) add(date);
+  // Weekly boundaries also delimit schedule edits, so a past week always keeps its original plan.
+  for (const original of routines) {
+    const own = new Map(entries.filter(entry => entry.routine_id === original.id).map(entry => [entry.date, entry]));
+    for (let week = routineWeekStart(first); week <= to; week = addRoutineDays(week, 7)) {
+      const routine = routineForDate(original, week);
+      const weekEnd = addRoutineDays(week, 6);
+      const add = (date: string) => {
+        if (date < first || date > to || date < week || date > weekEnd) return;
+        const entry = own.get(date);
+        if (entry?.status === 'skipped' && !entry.minutes) return;
+        const archiveCutoff = routine.archived_on ?? routine.archived_at?.slice(0, 10);
+        const archivedToday = Boolean(archiveCutoff && date >= addRoutineDays(archiveCutoff, -1));
+        if (archivedToday && entry?.status !== 'completed' && !entry?.minutes) return;
+        reservations.push({ routine_id: routine.id, title: routine.title, date,
+          minutes: entry?.status === 'skipped' || (archivedToday && entry?.status !== 'completed')
+            ? Number(entry?.minutes ?? 0) : Math.max(routine.planned_minutes, Number(entry?.minutes ?? 0)), preferred_time: routine.preferred_time });
+      };
+      if (routine.cadence === 'daily') {
+        for (let date = week > first ? week : first; date <= to && date <= weekEnd; date = addRoutineDays(date, 1)) {
+          if (routineEligibleOn(routine, date)) add(date);
+        }
+        continue;
       }
-      continue;
-    }
-    for (let start = routineWeekStart(first); start <= to; start = addRoutineDays(start, 7)) {
-      const days = Array.from({ length: 7 }, (_, i) => addRoutineDays(start, i));
+      const days = Array.from({ length: 7 }, (_, i) => addRoutineDays(week, i));
       const completed = days.filter(date => own.get(date)?.status === 'completed');
       let remaining = Math.max(0, routine.weekly_target - completed.length);
       completed.filter(date => routineEligibleOn(routine, date)).forEach(add);

@@ -97,6 +97,7 @@ interface WeekTimeGridProps {
   workDays: number[]; // 1=Mon … 7=Sun
   selectedDate?: string;
   onDaySelect?: (date: string) => void;
+  onRoutineSelect?: (routineId: string) => void;
   dayBreakdowns?: Map<string, DayCapacityBreakdown>;
   breakdownResetKey?: string;
   renderAllDayCell: (date: string) => React.ReactNode;
@@ -457,7 +458,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
 
 // ── Day column ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelect, linksByEvent, isWorkDay, workStart, workEnd, isToday, isSelected, now, hourPx, gridHeight, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft, days }: {
+function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelect, onRoutineSelect, linksByEvent, isWorkDay, workStart, workEnd, isToday, isSelected, now, hourPx, gridHeight, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft, days }: {
   draft?: (CalendarPlacement & { title: string }) | null;
   date: string;
   dayIdx: number;
@@ -465,6 +466,7 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
   meetings: CalendarMeeting[];
   routines: CalendarRoutine[];
   onRoutineDaySelect?: (date: string) => void;
+  onRoutineSelect?: (routineId: string) => void;
   linksByEvent: Map<string, DBEventTaskLinkFull[]>;
   isWorkDay: boolean;
   workStart: number;
@@ -598,10 +600,10 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
         const pos = packed.get(`r:${routine.routine_id}`) ?? { col: 0, cols: 1 };
         const top = hourToY(start, hourPx);
         const height = Math.max(16, Math.min(routine.minutes / 60 * hourPx, gridHeight - top) - 2);
-        return <button key={routine.routine_id} type="button" onClick={event => { event.stopPropagation(); onRoutineDaySelect?.(date); }}
+        return <button key={routine.routine_id} type="button" onClick={event => { event.stopPropagation(); if (onRoutineSelect) onRoutineSelect(routine.routine_id); else onRoutineDaySelect?.(date); }}
           className="absolute z-10 overflow-hidden rounded-md border border-dashed border-teal-500 bg-teal-50 px-1.5 text-left text-teal-900"
           style={{ top, height, left: `calc(${pos.col / pos.cols * 100}% + 2px)`, width: `calc(${100 / pos.cols}% - 4px)` }}
-          title={`Routine: ${routine.title} · ${routine.preferred_time} · ${routine.minutes}m reserved. Select the day to check in.`}
+          title={`Repeating time: ${routine.title} · ${routine.preferred_time} · ${routine.minutes}m reserved. Edit the repeat schedule.`}
           aria-label={`Routine ${routine.title} at ${routine.preferred_time}`}>
           <span className="flex items-center gap-1 truncate text-[11px] font-semibold"><Repeat2 size={10} className="shrink-0" />{routine.title}</span>
           {height > 32 && <span className="text-[9px]">{routine.preferred_time} · {routine.minutes}m routine</span>}
@@ -641,7 +643,7 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
-export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft }: WeekTimeGridProps) {
+export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, onRoutineSelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft }: WeekTimeGridProps) {
   const now = useNowTick();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(() => scheduleHourPxForViewport(typeof window === 'undefined' ? DENSITY_REFERENCE_WIDTH : window.innerWidth));
@@ -751,6 +753,7 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
               meetings={meetingsByDate.get(d) ?? []}
               routines={routines.filter(routine => routine.date === d && routineHour(routine) >= GRID_START_HOUR && routineHour(routine) < GRID_END_HOUR)}
               onRoutineDaySelect={onDaySelect}
+              onRoutineSelect={onRoutineSelect}
               linksByEvent={linksByEvent}
               isWorkDay={workDays.includes(i + 1)}
               workStart={workStart}

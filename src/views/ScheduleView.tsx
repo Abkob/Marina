@@ -37,6 +37,7 @@ import { ModalFrame } from '../components/ModalFrame';
 import { useCloudWorkTimer } from '../hooks/useCloudWorkTimer';
 import { RoutinesPanel } from './routines/RoutinesPanel';
 import { RoutineComposer } from './routines/RoutineComposer';
+import { useRoutines } from '../api/routines';
 import type { DBRoutine } from '../types/routines';
 import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { MobileSchedule } from './schedule/MobileSchedule';
@@ -1231,6 +1232,9 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const [editorPreview, setEditorPreview] = useState<(CalendarPlacement & { title: string }) | null>(null);
   const [taskComposerDate, setTaskComposerDate] = useState<string | null>(null);
   const [routineComposerOpen, setRoutineComposerOpen] = useState(false);
+  const [editingRoutine, setEditingRoutine] = useState<DBRoutine | undefined>();
+  const routineList = useRoutines();
+  const openRoutine = (routine?: DBRoutine) => { setEditingRoutine(routine); setRoutineComposerOpen(true); };
   const [drawerOpen, setDrawerOpen] = useState(() => window.innerWidth >= 1280);
   const [feedback, setFeedback] = useState<{ label: string; undo?: () => Promise<void> } | null>(null);
   const [undoBusy, setUndoBusy] = useState(false);
@@ -1836,7 +1840,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
         onCreate={openCreate} onEdit={openEdit} onAddTask={setTaskComposerDate} onChangeEvent={changeCalendarEvent}
         onScheduleTask={scheduleTaskAsBlock} onStartFocus={startFocusTimer}
         onMoveTask={async (taskId, date) => { await move.mutateAsync({ taskId, date }); }}
-        renderRoutines={(date, closeDetails) => <RoutinesPanel date={date} today={todayStr} goals={goals} onCreate={() => { closeDetails(); setRoutineComposerOpen(true); }} onStartFocus={startRoutineFocus} />}
+        renderRoutines={(date, closeDetails) => <RoutinesPanel date={date} today={todayStr} goals={goals} onCreate={() => { closeDetails(); openRoutine(); }} onEdit={routine => { closeDetails(); openRoutine(routine); }} onStartFocus={startRoutineFocus} />}
       /> : (
       <div className={`mx-auto w-full max-w-[1800px] px-4 py-5 md:px-6 animate-fade-in ${composer ? 'schedule-editor-open' : ''}`}>
         <header className="mb-5 flex flex-wrap items-center gap-3 border-b border-slate-100 pb-4">
@@ -1858,7 +1862,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
         {innerPage === 'plan' ? (
           <>
             <details className="mb-3 rounded-xl border border-slate-100 px-3 py-2"><summary className="cursor-pointer text-xs text-slate-400">Routines & workload</summary><div className="mt-3">
-            <RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => setRoutineComposerOpen(true)} onStartFocus={startRoutineFocus} />
+            <RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => openRoutine()} onEdit={openRoutine} onStartFocus={startRoutineFocus} />
             <WorkloadHorizon
               scheduler={scheduler}
               taskLookup={taskLookup}
@@ -1928,6 +1932,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                   workDays={workDays}
                   selectedDate={focusedDate}
                   onDaySelect={setFocusedDate}
+                  onRoutineSelect={id => { const routine = routineList.data?.find(item => item.id === id); if (routine && !routine.archived_at) openRoutine(routine); }}
                   dayBreakdowns={dayBreakdowns}
                   breakdownResetKey={`${weekStart}|${focusedDate}`}
                   renderAllDayCell={date => (
@@ -2033,7 +2038,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
       </DragOverlay>
 
       {routineComposerOpen && (
-        <RoutineComposer goals={goals} date={focusedDate < todayStr ? todayStr : focusedDate} onClose={() => setRoutineComposerOpen(false)} onSaved={() => { setRoutineComposerOpen(false); triggerToast('Routine created. Its time is now reserved in your plan.', 'success'); }} />
+        <RoutineComposer goals={goals} today={todayStr} routine={editingRoutine} date={focusedDate < todayStr ? todayStr : focusedDate} onClose={() => setRoutineComposerOpen(false)} onSaved={() => { setRoutineComposerOpen(false); triggerToast(editingRoutine ? 'Repeat schedule saved. Previous weeks are preserved.' : 'Repeating time added to your plan.', 'success'); }} />
       )}
 
       {taskComposerDate && (

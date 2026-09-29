@@ -4,10 +4,10 @@ import { activeGoalSql } from '../utils/archiveVisibility.js';
 import { z } from 'zod';
 import { query, transaction } from '../db.js';
 import type { DBRoutine, DBRoutineEntry } from '../../src/types/routines.js';
-import { addRoutineDays, routineEligibleOn } from '../../src/utils/routines.js';
+import { addRoutineDays, routineEligibleOn, routineForDate, routineSchedule, routineWeekStart } from '../../src/utils/routines.js';
 import { localDateStr } from '../utils/localDate.js';
 
-import { createRoutineSchema, updateRoutineSchema, routineCheckInSchema, routineSessionSchema } from './routineContracts.js';
+import { createRoutineSchema, updateRoutineSchema, routineCheckInSchema, routineSessionSchema, routineScheduleSchema } from './routineContracts.js';
 export * from './routineContracts.js';
 
 export class RoutineError extends Error {
@@ -61,6 +61,30 @@ export async function updateRoutine(id: string, input: z.infer<typeof updateRout
   return rows[0] as unknown as DBRoutine;
 }
 
+/** Change following weeks atomically, keeping the same routine and immutable past schedules. */
+export async function rescheduleRoutine(id: string, input: z.infer<typeof routineScheduleSchema>): Promise<DBRoutine> {
+  return transaction(async client => {
+    const nextWeek = addRoutineDays(routineWeekStart(await routineToday(client)), 7);
+    if (input.effective_from < nextWeek || routineWeekStart(input.effective_from) !== input.effective_from) {
+      throw new RoutineError(400, 'Choose a Monday from next week onward. This week and previous records keep their original schedule.');
+    }
+    const { rows } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
+    const routine = rows[0] as DBRoutine | undefined;
+    if (!routine) throw new RoutineError(404, 'Routine not found');
+    if (routine.archived_at) throw new RoutineError(409, 'This routine has stopped repeating; its history is preserved');
+    if (routine.updated_at !== input.expected_updated_at) throw new RoutineError(409, 'This routine changed on another device. Close and reopen the editor to load the latest schedule.');
+    // Replacing a pending change retains the schedule that actually applied before its boundary.
+    const previous = routineForDate(routine, addRoutineDays(input.effective_from, -1));
+    const history = (routine.schedule_history ?? []).filter(item => item.before < input.effective_from);
+    history.push({ ...routineSchedule(previous), before: input.effective_from });
+    const updated = await client.query(`UPDATE routines SET cadence=$2, weekdays=$3::jsonb, weekly_target=$4,
+      target_count=$5,target_unit='minutes',planned_minutes=$5,preferred_time=$6,schedule_history=$7::jsonb,updated_at=$8
+      WHERE id=$1 RETURNING *`, [id, input.cadence, JSON.stringify(input.weekdays), input.weekly_target,
+      input.planned_minutes, input.preferred_time, JSON.stringify(history), new Date().toISOString()]);
+    return updated.rows[0] as DBRoutine;
+  });
+}
+
 function requireActionable(routine: DBRoutine | undefined, date: string, sessionStartedAt?: string): asserts routine is DBRoutine {
   if (!routine) throw new RoutineError(404, 'Routine not found');
   // Archiving prevents new activity, but must not strand an already-running
@@ -75,7 +99,7 @@ export async function checkInRoutine(id: string, input: z.infer<typeof routineCh
   if (input.status === 'completed' && input.date > await routineToday(existingClient)) throw new RoutineError(400, 'Future routine days cannot be completed yet');
   const apply = async (client: PoolClient) => {
     const { rows: routines } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
-    const routine = routines[0] as DBRoutine | undefined;
+    const routine = routines[0] ? routineForDate(routines[0] as DBRoutine, input.date) : undefined;
     requireActionable(routine, input.date);
     if (input.status === 'completed' && input.completed_count !== undefined && input.completed_count < routine.target_count) {
       throw new RoutineError(400, 'Completed count must reach the routine target');
@@ -113,7 +137,7 @@ export async function logRoutineSession(id: string, input: z.infer<typeof routin
   if (input.date !== startedDate) throw new RoutineError(400, 'The routine date must match the focus start date in your schedule timezone');
   const apply = async (client: PoolClient) => {
     const { rows: routines } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
-    const routine = routines[0] as DBRoutine | undefined;
+    const routine = routines[0] ? routineForDate(routines[0] as DBRoutine, input.date) : undefined;
     if (!routine) throw new RoutineError(404, 'Routine not found');
     const { rows: existingSession } = await client.query('SELECT id,routine_id,minutes FROM work_sessions WHERE id=$1', [input.id]);
     if (existingSession[0]) {

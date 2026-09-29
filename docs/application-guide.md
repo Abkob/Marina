@@ -359,6 +359,25 @@ notifications, so the open app polls every two minutes and syncs immediately
 after Marina edits. Portable Marina backups intentionally omit Google OAuth
 tokens and remote mapping IDs; reconnect Google after a restore.
 
+## Repeating time
+
+In Schedule, open Routines and use **+** to reserve repeating time. Set a session
+duration (for example `45 min` or `1.5h`) and how many times per week. Choose
+specific weekdays or keep the days flexible; optionally enter a clock time.
+The editor shows the total weekly hours, and offers the same controls in a
+compact phone sheet. Goal, start date and notes are under the optional details.
+
+The overview keeps routines visible after reaching the weekly target. It shows
+logged hours separately from planned hours and session completion. Start uses
+the cloud timer; **Finish session** only closes a session and does not add hours.
+The options menu also offers skip, undo, repeat editing and stop repeating.
+
+Repeat edits apply from a Monday next week or later. Previous schedule settings
+and logged work stay intact; concurrent edits from another device show an error.
+Existing count-based routines retain their history and can switch to time by
+editing their following weeks. Flexible repeats reserve one session per day,
+up to seven per week, and do not automatically resolve time conflicts.
+
 ## Operational limits
 
 Vercel Functions have a request/response body limit, so large files use direct Blob flows and complete backups are assembled in private Blob storage before download. Scheduled maintenance is configured once daily so it works on Vercel Hobby; higher tiers can increase the cron frequency. Local pg_dump rotation and Obsidian sync remain local-only. Continue taking managed PostgreSQL backups through the database provider as a second, independent recovery layer.

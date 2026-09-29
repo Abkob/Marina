@@ -1001,3 +1001,7 @@ CREATE TABLE IF NOT EXISTS work_timers (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_work_timers_one_running ON work_timers(status) WHERE status='running';
 INSERT INTO schema_migrations (name) VALUES ('M-026-cloud-work-timer') ON CONFLICT (name) DO NOTHING;
+
+-- M-027: dated repeat schedules; logs and existing routine identities stay intact.
+ALTER TABLE routines ADD COLUMN IF NOT EXISTS schedule_history JSONB NOT NULL DEFAULT '[]'::jsonb;
+INSERT INTO schema_migrations (name) VALUES ('M-027-routine-schedules') ON CONFLICT (name) DO NOTHING;

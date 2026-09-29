@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateRoutineInput, DBRoutine, DBRoutineEntry, RoutineCheckInInput } from '../types/routines';
+import type { CreateRoutineInput, DBRoutine, DBRoutineEntry, RoutineCheckInInput, RoutineScheduleInput } from '../types/routines';
 import { apiFetch, apiPatch, apiPost } from '../utils/apiFetch';
 
 export function useRoutines() {
@@ -30,6 +30,15 @@ export function useCreateRoutine() {
   const invalidate = useInvalidateRoutines();
   return useMutation({
     mutationFn: (input: CreateRoutineInput) => apiPost<DBRoutine>('/api/routines', input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRescheduleRoutine() {
+  const invalidate = useInvalidateRoutines();
+  return useMutation({
+    mutationFn: ({ routineId, ...input }: RoutineScheduleInput & { routineId: string }) =>
+      apiPost<DBRoutine>(`/api/routines/${encodeURIComponent(routineId)}/schedule`, input),
     onSuccess: invalidate,
   });
 }

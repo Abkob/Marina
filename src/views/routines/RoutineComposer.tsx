@@ -1,141 +1,104 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { BookOpen, Brain, Repeat2, X } from 'lucide-react';
+import { ChevronDown, Repeat2, X } from 'lucide-react';
 import { ModalFrame } from '../../components/ModalFrame';
-import { useCreateRoutine } from '../../api/routines';
+import { useCreateRoutine, useRescheduleRoutine } from '../../api/routines';
 import type { DBGoal } from '../../db/schema';
-import type { DBRoutine, RoutineTargetUnit } from '../../types/routines';
-import { isRoutineDate } from '../../utils/routines';
+import type { DBRoutine } from '../../types/routines';
+import { addRoutineDays, isRoutineDate, parseRoutineDuration, routineTimeLabel, routineWeekStart } from '../../utils/routines';
+import { clockInput, parseClockTime } from '../../utils/calendarTimeInput';
+import { fmtYMD } from '../../utils/calendar';
+import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../../hooks/useMediaQuery';
 
 export interface RoutineComposerProps {
   goals: DBGoal[];
   date: string;
+  today?: string;
+  routine?: DBRoutine;
   onClose: () => void;
   onSaved: () => void;
 }
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const PRESETS = [
-  { label: 'Catch-up', icon: Repeat2, title: 'Daily catch-up', note: 'Review today’s notes and pick up anything unfinished.', cadence: 'daily', target: 20, unit: 'minutes', minutes: 20 },
-  { label: 'Revision', icon: BookOpen, title: 'Revision', note: 'Revisit a topic and recall the key ideas without looking.', cadence: 'weekly', target: 30, unit: 'minutes', minutes: 30 },
-  { label: 'Practice', icon: Brain, title: 'Practice problems', note: 'Choose a small set of problems to practise.', cadence: 'weekly', target: 5, unit: 'problems', minutes: 25 },
-] as const;
-const INPUT = 'mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100';
+const INPUT = 'mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-base text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100';
+const CHIP = 'min-h-11 rounded-lg px-3 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-teal-600';
 
-export function RoutineComposer({ goals, date, onClose, onSaved }: RoutineComposerProps) {
+export function RoutineComposer({ goals, date, today = fmtYMD(new Date()), routine, onClose, onSaved }: RoutineComposerProps) {
   const create = useCreateRoutine();
+  const reschedule = useRescheduleRoutine();
+  const mobile = useMediaQuery(MOBILE_LAYOUT_QUERY);
   const titleRef = useRef<HTMLInputElement>(null);
-  const [preset, setPreset] = useState('Catch-up');
-  const [title, setTitle] = useState<string>(PRESETS[0].title);
-  const [note, setNote] = useState<string>(PRESETS[0].note);
-  const [goalId, setGoalId] = useState('');
-  const [cadence, setCadence] = useState<DBRoutine['cadence']>('daily');
-  const [weekdays, setWeekdays] = useState([1, 2, 3, 4, 5]);
-  const [weeklyTarget, setWeeklyTarget] = useState('3');
-  const [targetCount, setTargetCount] = useState('20');
-  const [unit, setUnit] = useState<RoutineTargetUnit>('minutes');
-  const [plannedMinutes, setPlannedMinutes] = useState('20');
-  const [timing, setTiming] = useState<'anytime' | 'preferred'>('anytime');
-  const [preferredTime, setPreferredTime] = useState('');
-  const [startDate, setStartDate] = useState(date);
+  const [title, setTitle] = useState(routine?.title ?? '');
+  const [note, setNote] = useState(routine?.note ?? '');
+  const [goalId, setGoalId] = useState(routine?.goal_id ?? '');
+  const [cadence, setCadence] = useState<DBRoutine['cadence']>(routine?.cadence ?? 'weekly');
+  const [weekdays, setWeekdays] = useState(routine?.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
+  const [weeklyTarget, setWeeklyTarget] = useState(String(routine?.weekly_target ?? 3));
+  const [duration, setDuration] = useState(routineTimeLabel(routine?.planned_minutes ?? 45));
+  const [timing, setTiming] = useState<'anytime' | 'preferred'>(routine?.preferred_time ? 'preferred' : 'anytime');
+  const [preferredTime, setPreferredTime] = useState(routine?.preferred_time ?? '09:00');
+  const nextWeek = addRoutineDays(routineWeekStart(today), 7);
+  const pendingBoundary = routine?.schedule_history?.map(item => item.before).sort().at(-1);
+  const [startDate, setStartDate] = useState(routine ? pendingBoundary && pendingBoundary > nextWeek ? pendingBoundary : nextWeek : date);
   const [error, setError] = useState('');
-
-  function choosePreset(selected: typeof PRESETS[number]) {
-    setPreset(selected.label);
-    setTitle(selected.title);
-    setNote(selected.note);
-    setCadence(selected.cadence);
-    setTargetCount(String(selected.target));
-    setUnit(selected.unit);
-    setPlannedMinutes(String(selected.minutes));
-    setError('');
-  }
+  const minutes = parseRoutineDuration(duration);
+  const frequency = cadence === 'daily' ? weekdays.length : Number(weeklyTarget);
+  const weeklyMinutes = minutes && frequency > 0 && frequency <= 7 ? minutes * frequency : null;
+  const hour = timing === 'preferred' ? parseClockTime(preferredTime) : null;
+  const busy = create.isPending || reschedule.isPending;
+  const close = () => { if (!busy) onClose(); };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (create.isPending) return;
-    const count = Number(targetCount);
-    const minutes = unit === 'minutes' ? count : Number(plannedMinutes);
-    const quota = Number(weeklyTarget);
-    if (!title.trim()) { setError('Give your routine a name.'); return; }
+    if (busy) return;
+    if (!title.trim()) { setError('Give this repeating time a name.'); return; }
+    if (!minutes) { setError('Enter a duration like 45 min, 1h 30m, or 1.5h (up to 24 hours).'); return; }
     if (!weekdays.length) { setError('Choose at least one day.'); return; }
-    if (!Number.isInteger(count) || count <= 0 || count > 1440) { setError('Choose a target from 1 to 1,440.'); return; }
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) { setError('Set a time budget between 1 and 1,440 minutes.'); return; }
-    if (cadence === 'weekly' && (!Number.isInteger(quota) || quota < 1 || quota > weekdays.length)) {
-      setError('Weekly sessions cannot exceed your selected days: one session target per day.'); return;
-    }
+    if (!Number.isInteger(frequency) || frequency < 1 || frequency > weekdays.length) { setError('Choose enough available days for your sessions: one session per day.'); return; }
     if (!isRoutineDate(startDate)) { setError('Choose a valid start date.'); return; }
-    if (timing === 'preferred' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(preferredTime)) { setError('Choose a preferred time or use Anytime.'); return; }
-    if (timing === 'preferred') {
-      const [hours, minute] = preferredTime.split(':').map(Number);
-      if (hours * 60 + minute + minutes > 1440) { setError('Choose an earlier time so the routine finishes before midnight.'); return; }
-    }
+    if (timing === 'preferred' && hour === null) { setError('Enter a time like 09:30 or 2:30pm.'); return; }
+    if (hour !== null && hour * 60 + minutes > 1440) { setError('Choose an earlier time so the session finishes before midnight.'); return; }
+    if (routine && (startDate < nextWeek || routineWeekStart(startDate) !== startDate)) { setError('Choose a Monday from next week onward.'); return; }
+    const schedule = {
+      cadence, weekdays: [...weekdays].sort((a, b) => a - b), weekly_target: frequency,
+      target_count: minutes, target_unit: 'minutes' as const, planned_minutes: minutes,
+      preferred_time: hour === null ? null : clockInput(hour),
+    };
     setError('');
     try {
-      await create.mutateAsync({
-        title: title.trim(), note: note.trim(), goal_id: goalId || null, cadence,
-        weekdays: [...weekdays].sort((a, b) => a - b),
-        weekly_target: cadence === 'daily' ? weekdays.length : quota,
-        target_count: count, target_unit: unit, planned_minutes: minutes,
-        preferred_time: timing === 'preferred' ? preferredTime : null,
-        start_date: startDate,
-      });
+      if (routine) await reschedule.mutateAsync({ ...schedule, routineId: routine.id, effective_from: startDate, expected_updated_at: routine.updated_at });
+      else await create.mutateAsync({ ...schedule, title: title.trim(), note: note.trim(), goal_id: goalId || null, start_date: startDate });
       onSaved();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not save the routine. Please try again.');
-    }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save. Your changes are still here; try again.'); }
   }
 
-  return (
-    <ModalFrame titleId="new-routine-title" onClose={onClose} initialFocusRef={titleRef} className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-      <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
-        <div>
-          <h2 id="new-routine-title" className="text-xl font-bold text-gray-950">A little, regularly</h2>
-          <p className="mt-1 text-sm text-gray-500">A routine to keep returning to—not a task to finish forever.</p>
+  return <ModalFrame titleId="repeat-time-title" onClose={close} initialFocusRef={mobile || routine ? undefined : titleRef} overlayClassName="bg-slate-950/20" className="routine-editor flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
+    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+      <div className="flex items-center gap-2.5"><Repeat2 size={17} className="text-teal-600" /><h2 id="repeat-time-title" className="text-sm font-semibold text-slate-900">{routine ? 'Edit repeat schedule' : 'Repeat time'}</h2></div>
+      <button type="button" aria-label="Close repeat editor" disabled={busy} onClick={close} className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600"><X size={18} /></button>
+    </header>
+    <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col">
+      <fieldset disabled={busy} className="min-h-0 min-w-0 space-y-4 overflow-y-auto border-0 px-5 py-4">
+        {routine ? <p className="break-words text-lg font-medium text-slate-900">{routine.title}</p> : <label className="block text-xs font-medium text-slate-500">Name<input ref={titleRef} value={title} maxLength={200} onChange={event => setTitle(event.target.value)} className={INPUT} placeholder="e.g. Biology revision" autoComplete="off" /></label>}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="min-w-0 text-xs font-medium text-slate-500">Each session<input value={duration} onChange={event => setDuration(event.target.value)} onBlur={() => { if (minutes) setDuration(routineTimeLabel(minutes)); }} className={INPUT} placeholder="45 min or 1.5h" autoComplete="off" /></label>
+          <label className="min-w-0 text-xs font-medium text-slate-500">Times per week<input type="number" inputMode="numeric" min={1} max={7} value={cadence === 'daily' ? weekdays.length : weeklyTarget} readOnly={cadence === 'daily'} onChange={event => setWeeklyTarget(event.target.value)} className={INPUT} /></label>
         </div>
-        <button type="button" aria-label="Close new routine" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-800"><X size={20} /></button>
-      </div>
-      <form onSubmit={submit} className="overflow-y-auto px-6 py-5">
+        <div className="-mt-3 flex flex-wrap gap-1" aria-label="Session duration presets">{[30, 45, 60, 90].map(value => <button type="button" key={value} aria-pressed={minutes === value} onClick={() => setDuration(routineTimeLabel(value))} className={`${CHIP} ${minutes === value ? 'bg-teal-50 text-teal-800' : 'text-slate-500 hover:bg-slate-50'}`}>{routineTimeLabel(value)}</button>)}</div>
         <fieldset>
-          <legend className="text-sm font-semibold text-gray-700">Start with an idea</legend>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {PRESETS.map(option => <button key={option.label} type="button" aria-pressed={preset === option.label} onClick={() => choosePreset(option)} className={`flex items-center justify-center gap-2 rounded-xl border px-2 py-3 text-sm font-semibold transition-colors ${preset === option.label ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}><option.icon size={16} className="hidden sm:block" />{option.label}</button>)}
-          </div>
+          <legend className="mb-2 text-xs font-medium text-slate-500">Repeat on</legend>
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100/80 p-1">{([{ value: 'weekly', label: 'Flexible days' }, { value: 'daily', label: 'Choose days' }] as const).map(option => <button type="button" key={option.value} aria-pressed={cadence === option.value} onClick={() => setCadence(option.value)} className={`${CHIP} ${cadence === option.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{option.label}</button>)}</div>
+          <div className="routine-days mt-3 grid grid-cols-7 gap-1">{WEEKDAYS.map((day, index) => <button type="button" key={day} aria-label={day} aria-pressed={weekdays.includes(index + 1)} onClick={() => setWeekdays(current => current.includes(index + 1) ? current.filter(value => value !== index + 1) : [...current, index + 1])} className={`h-11 min-w-0 rounded-xl text-xs focus-visible:outline-2 focus-visible:outline-teal-600 ${weekdays.includes(index + 1) ? 'bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-200/60' : 'text-slate-400 hover:bg-slate-50'}`}>{day.slice(0, 2)}</button>)}</div>
+          <p className="mt-2 text-xs leading-5 text-slate-400">{cadence === 'weekly' ? `${weeklyTarget || '…'} sessions across the available days above. One per day.` : 'One session on each selected day, every week.'}</p>
         </fieldset>
-        <label className="mt-5 block text-sm font-medium text-gray-700">Routine name
-          <input ref={titleRef} value={title} maxLength={200} onChange={event => { setTitle(event.target.value); setPreset(''); }} className={INPUT} placeholder="e.g. Physics 210 revision" required />
-        </label>
-        <label className="mt-4 block text-sm font-medium text-gray-700">Linked goal
-          <select value={goalId} onChange={event => setGoalId(event.target.value)} className={INPUT}><option value="">No goal · standalone routine</option>{goals.filter(goal => !goal.archived_at).map(goal => <option key={goal.id} value={goal.id}>{goal.title}</option>)}</select>
-        </label>
-        <fieldset className="mt-5">
-          <legend className="text-sm font-semibold text-gray-700">How often?</legend>
-          <div className="mt-2 flex rounded-xl bg-gray-100 p-1">
-            {(['daily', 'weekly'] as const).map(value => <button key={value} type="button" aria-pressed={cadence === value} onClick={() => setCadence(value)} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${cadence === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}`}>{value === 'daily' ? 'On selected days' : 'Flexible weekly target'}</button>)}
-          </div>
-          {cadence === 'weekly' && <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-700"><input aria-label="Sessions per week" type="number" min="1" max={Math.max(1, weekdays.length)} value={weeklyTarget} onChange={event => setWeeklyTarget(event.target.value)} className="w-16 rounded-lg border border-gray-200 px-2 py-2" required />sessions per week, on any of these days</label>}
-          <div className="mt-3 grid grid-cols-7 gap-1">
-            {WEEKDAYS.map((day, index) => <button key={day} type="button" aria-label={day} aria-pressed={weekdays.includes(index + 1)} onClick={() => setWeekdays(current => current.includes(index + 1) ? current.filter(value => value !== index + 1) : [...current, index + 1])} className={`rounded-lg py-2.5 text-xs font-semibold ${weekdays.includes(index + 1) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{day.slice(0, 3)}</button>)}
-          </div>
+        <fieldset>
+          <legend className="mb-2 text-xs font-medium text-slate-500">Time</legend>
+          <div className="flex flex-wrap items-center gap-1">{(['anytime', 'preferred'] as const).map(value => <button type="button" key={value} aria-pressed={timing === value} onClick={() => setTiming(value)} className={`${CHIP} ${timing === value ? 'bg-slate-100 text-slate-800' : 'text-slate-500'}`}>{value === 'anytime' ? 'Anytime' : 'At a time'}</button>)}</div>
+          {timing === 'preferred' && <div className="mt-2 flex items-center gap-3"><label className="min-w-0 flex-1 text-xs text-slate-500">Start time<input aria-label="Start time" value={preferredTime} onChange={event => setPreferredTime(event.target.value)} onBlur={() => { if (hour !== null) setPreferredTime(clockInput(hour)); }} className={INPUT} placeholder="09:00 or 2pm" autoComplete="off" /></label><p className="flex-1 pt-5 text-xs text-slate-400">{hour !== null && minutes && hour * 60 + minutes <= 1440 ? `Ends ${clockInput(hour + minutes / 60)}` : 'Use a clock time'}</p></div>}
         </fieldset>
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <label className="block text-sm font-medium text-gray-700">Target per session<input type="number" value={targetCount} min="1" max="1440" onChange={event => setTargetCount(event.target.value)} className={INPUT} required /></label>
-          <label className="block text-sm font-medium text-gray-700">Measure<select value={unit} onChange={event => setUnit(event.target.value as RoutineTargetUnit)} className={INPUT}><option value="minutes">Minutes</option><option value="problems">Problems</option><option value="pages">Pages</option><option value="sessions">Sessions</option></select></label>
-        </div>
-        {unit !== 'minutes' && <label className="mt-4 block text-sm font-medium text-gray-700">Time budget (minutes)<input type="number" value={plannedMinutes} min="1" max="1440" onChange={event => setPlannedMinutes(event.target.value)} className={INPUT} required /><span className="mt-1 block text-xs font-normal leading-relaxed text-gray-500">A rough allowance for the planner; your actual work time is recorded separately.</span></label>}
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-gray-700">When<select value={timing} onChange={event => setTiming(event.target.value as 'anytime' | 'preferred')} className={INPUT}><option value="anytime">Anytime that day</option><option value="preferred">Preferred clock time</option></select></label>
-          {timing === 'preferred' && <label className="block text-sm font-medium text-gray-700">Preferred time<input type="time" value={preferredTime} onChange={event => setPreferredTime(event.target.value)} className={INPUT} required /></label>}
-          <label className="block text-sm font-medium text-gray-700">Starts on<input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className={INPUT} required /></label>
-        </div>
-        {timing === 'preferred' && <p className="mt-2 text-xs leading-relaxed text-gray-500">A preferred calendar slot shown in Marina, not a synced Google Calendar event. Your time budget counts toward available study time.</p>}
-        <label className="mt-4 block text-sm font-medium text-gray-700">What should I work on? <span className="font-normal text-gray-400">Optional</span><textarea rows={2} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} className={`${INPUT} resize-y`} placeholder="Topics, a problem set, or a reminder for future you" /></label>
-        <p className="mt-5 rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">Missed days don’t pile up. Done, skipped and worked-on days keep their history, ready for a day-by-day matrix later.</p>
-        {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100">Cancel</button>
-          <button type="submit" disabled={create.isPending} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">{create.isPending ? 'Saving…' : 'Create routine'}</button>
-        </div>
-      </form>
-    </ModalFrame>
-  );
+        {routine ? <div><label className="block text-xs font-medium text-slate-500">Apply from Monday<input type="date" value={startDate} min={nextWeek} step={7} onChange={event => setStartDate(event.target.value)} className={INPUT} /></label><p className="mt-2 text-xs leading-5 text-slate-400">This week and your logged history keep their original settings. {routine.target_unit !== 'minutes' && 'Following weeks will use time instead of count targets.'}</p></div> : <details className="group"><summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-xs text-slate-400"><ChevronDown size={14} className="group-open:rotate-180" />Goal, start date & notes</summary><div className="space-y-3 pb-1 pt-1"><label className="block text-xs font-medium text-slate-500">Linked goal<select value={goalId} onChange={event => setGoalId(event.target.value)} className={INPUT}><option value="">No linked goal</option>{goals.filter(goal => !goal.archived_at).map(goal => <option key={goal.id} value={goal.id}>{goal.title}</option>)}</select></label><label className="block text-xs font-medium text-slate-500">Starts<input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className={INPUT} /></label><label className="block text-xs font-medium text-slate-500">Notes<textarea value={note} maxLength={10000} onChange={event => setNote(event.target.value)} className={`${INPUT} min-h-20 py-3`} rows={2} /></label></div></details>}
+        {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      </fieldset>
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]"><div role="status" className="min-w-0"><p className="text-sm font-medium text-slate-800">{weeklyMinutes ? routineTimeLabel(weeklyMinutes) : '—'} <span className="text-[11px] font-normal text-slate-400">/ week</span></p><p className="mt-1 text-[11px] text-slate-400">{minutes ? routineTimeLabel(minutes) : '…'} × {frequency || '…'} sessions</p></div><button type="submit" disabled={busy} className="min-h-11 shrink-0 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:opacity-50">{busy ? 'Saving…' : routine ? 'Save schedule' : 'Create routine'}</button></footer>
+    </form>
+  </ModalFrame>;
 }

@@ -19,7 +19,13 @@ export interface DBRoutine {
   archived_on?: string | null;
   created_at: string;
   updated_at: string;
+  /** Prior schedules, valid before each boundary; actual entries are never rewritten. */
+  schedule_history?: RoutineScheduleVersion[];
 }
+
+export type RoutineSchedule = Pick<DBRoutine, 'cadence' | 'weekdays' | 'weekly_target' | 'target_count' | 'target_unit' | 'planned_minutes' | 'preferred_time'>;
+export type RoutineScheduleVersion = RoutineSchedule & { before: string };
+export type RoutineScheduleInput = RoutineSchedule & { effective_from: string; expected_updated_at: string };
 
 export interface DBRoutineEntry {
   id: string;
