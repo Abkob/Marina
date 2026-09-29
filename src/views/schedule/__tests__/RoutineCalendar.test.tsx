@@ -19,6 +19,6 @@ describe('routine calendar markers', () => {
     expect(second.style.left).not.toBe(first.style.left);
     fireEvent.click(second);
     expect(select).toHaveBeenCalledWith('2026-09-21');
-    expect(screen.getByText('10m routines')).toBeInTheDocument();
+    expect(screen.queryByText('10m routines')).not.toBeInTheDocument();
   });
 });

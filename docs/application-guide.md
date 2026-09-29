@@ -361,7 +361,8 @@ tokens and remote mapping IDs; reconnect Google after a restore.
 
 ## Repeating time
 
-In Schedule, open Routines and use **+** to reserve repeating time. Set a session
+In Schedule, open **Plan → Repeating time** on desktop, or **Schedule options →
+Repeating time** on a phone, and use **+** to reserve repeating time. Set a session
 duration (for example `45 min` or `1.5h`) and how many times per week. Choose
 specific weekdays or keep the days flexible; optionally enter a clock time.
 The editor shows the total weekly hours, and offers the same controls in a

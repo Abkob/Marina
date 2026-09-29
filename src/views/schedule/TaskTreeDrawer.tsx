@@ -226,11 +226,12 @@ export function OneOffTaskComposer({
  * Left drawer of the Schedule, goal-first: pick a goal, get that goal's task
  * tree, drag tasks onto the calendar, or create a task with optional context.
  */
-export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onCollapse, onCreateTask, onScheduleTask }: {
+export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onCollapse, onCreateTask, onScheduleTask, embedded = false }: {
   tasks: DBTask[];
   goals: DBGoal[];
   draggableIds: Set<string>;
   scheduledDates: Map<string, string>;
+  embedded?: boolean;
   onCollapse: () => void;
   onScheduleTask?: (task: DBTask) => void;
   onCreateTask: (draft: CalendarTaskDraft) => Promise<void>;
@@ -250,7 +251,7 @@ export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onC
   return (
     <div
       ref={setNodeRef}
-      className={`sticky top-20 flex max-h-[calc(100vh-140px)] flex-col overflow-hidden rounded-xl border bg-white transition-colors ${isOver ? 'border-indigo-400 bg-indigo-50/60 ring-1 ring-indigo-300/50' : 'border-gray-200'}`}
+      className={`${embedded ? 'flex flex-col bg-white' : 'sticky top-20 flex max-h-[calc(100vh-140px)] flex-col overflow-hidden rounded-xl border bg-white'} transition-colors ${isOver ? 'border-indigo-400 bg-indigo-50/60 ring-1 ring-indigo-300/50' : 'border-gray-200'}`}
     >
       <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2.5">
         <p className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-gray-700">
@@ -267,12 +268,12 @@ export function TaskTreeDrawer({ tasks, goals, draggableIds, scheduledDates, onC
           <button
             type="button"
             onClick={() => setCreatingTask(value => !value)}
-            className={`rounded p-1 transition-colors ${creatingTask ? 'bg-indigo-50 text-[#4648d4]' : 'text-gray-300 hover:bg-indigo-50 hover:text-[#4648d4]'}`}
+            className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors ${creatingTask ? 'bg-indigo-50 text-[#4648d4]' : 'text-gray-400 hover:bg-indigo-50 hover:text-[#4648d4]'}`}
             title="Create a task, goal task, or subtask"
             aria-label="Create task"
             aria-pressed={creatingTask}
           ><Plus size={13} /></button>
-          <button onClick={onCollapse} className="rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-600" title="Hide the task drawer"><PanelLeftClose size={13} /></button>
+          {!embedded && <button onClick={onCollapse} className="rounded p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-600" title="Hide the task drawer"><PanelLeftClose size={13} /></button>}
         </div>
       </div>
 

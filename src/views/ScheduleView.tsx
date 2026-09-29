@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/core';
 import {
   Sparkles, Calendar, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, ChevronDown,
-  GripVertical, Check, Eye, EyeOff, BarChart2, CalendarDays, PanelLeftOpen, PanelRightClose, Play, Plus, Repeat2,
+  GripVertical, Check, Eye, EyeOff, BarChart2, CalendarDays, PanelRightClose, Play, Plus, Repeat2, X,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -41,14 +41,14 @@ import { useRoutines } from '../api/routines';
 import type { DBRoutine } from '../types/routines';
 import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { MobileSchedule } from './schedule/MobileSchedule';
+import { monthDates, type CalendarView } from '../utils/calendarView';
+import { ScheduleToolbar } from './schedule/ScheduleToolbar';
+import { ScheduleMonthView } from './schedule/ScheduleMonthView';
 import type { CalendarPlacement } from '../utils/calendarGestures';
 
 /**
- * Schedule workspace, Google-Calendar style: a week time-grid carrying
- * calendar blocks (linkable to tasks — names and durations autofill) and
- * meetings, an all-day row for day-level task scheduling (drag between days,
- * or from the backlog), and the planning insights — feasibility, capacity,
- * week load, attention — in plain language above the grid.
+ * Calendar workspace: Day, Week and Month share date navigation. Task planning,
+ * repeats and optional reports live in a single drawer, opened on demand.
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -565,7 +565,7 @@ function MiniScheduleTaskTree({ tasks, allTasks, tone, isBlocked, onOpenTask, on
   );
 }
 
-function CompactAllDayCell({ date, day, startTasks, ghostIds, taskLookup, allTasks, isBlocked, onAddTask, onStartFocus }: {
+function CompactAllDayCell({ date, day, startTasks, ghostIds, taskLookup, allTasks, isBlocked, onStartFocus }: {
   date: string;
   day: ScheduleDay | undefined;
   startTasks: DBTask[];
@@ -573,7 +573,6 @@ function CompactAllDayCell({ date, day, startTasks, ghostIds, taskLookup, allTas
   taskLookup: Record<string, ScheduleTaskInfo>;
   allTasks: DBTask[];
   isBlocked: (taskId: string) => boolean;
-  onAddTask: (date: string) => void;
   onStartFocus: (task: FocusTaskRef) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${date}` });
@@ -633,23 +632,13 @@ function CompactAllDayCell({ date, day, startTasks, ghostIds, taskLookup, allTas
 
   const firstDeadline = deadlineRows[0];
   const duePreview = dueTasks.slice(0, 2).map(t => t.title).join(', ');
-  const hasContent = deadlineRows.length > 0 || dueTasks.length > 0 || startTasks.length > 0 || ghostIds.length > 0 || day?.override;
 
   return (
     <div
       ref={setNodeRef}
       className={`group/day relative h-full overflow-visible px-1 py-1 transition-colors ${isOver ? 'bg-indigo-50/70' : ''}`}
     >
-      <button
-        type="button"
-        onClick={event => { event.stopPropagation(); onAddTask(date); }}
-        className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-md border border-indigo-100 bg-white text-indigo-300 opacity-100 shadow-sm transition-all hover:border-indigo-300 hover:text-[#4648d4] focus:opacity-100 sm:opacity-0 sm:group-hover/day:opacity-100"
-        aria-label={`Add all-day task on ${date}`}
-        title="Add an all-day task"
-      >
-        <Plus size={11} />
-      </button>
-      <div className="flex h-full min-h-0 flex-col gap-1 overflow-hidden pr-6">
+      <div className="flex h-full min-h-0 flex-col gap-1 overflow-hidden">
         {day?.override && (
           <p className="h-4 truncate font-mono text-[8px] leading-4 text-amber-600" title={day.override.note ?? undefined}>
             {fmtMins(day.override.available_minutes)} free
@@ -696,15 +685,6 @@ function CompactAllDayCell({ date, day, startTasks, ghostIds, taskLookup, allTas
           </button>
         )}
 
-        {!hasContent && (
-          <button
-            type="button"
-            onClick={() => onAddTask(date)}
-            className="flex h-6 w-full items-center justify-center gap-1 rounded-md border border-dashed border-indigo-100 text-[9px] font-semibold text-indigo-300 hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-[#4648d4]"
-          >
-            <Plus size={10} /> task
-          </button>
-        )}
       </div>
 
       {open && (
@@ -1068,7 +1048,7 @@ function WeeklyParentBreakdown({ weekDays, tasks, goals, placedEvents, linksByEv
       return map.get(id)!;
     };
     const add = (date: string, minutes: number, task: DBTask | null, fallback: { id: string; title: string; subtitle: string; tone: WeeklyParentRow['tone'] }) => {
-      if (minutes <= 0) return;
+      if (minutes <= 0 || !weekDays.includes(date)) return;
       const root = task ? rootPlanningTask(task, taskById) : null;
       const goal = root?.goal_id ? goalById.get(root.goal_id) : null;
       const row = root
@@ -1219,7 +1199,15 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   }, [todayStr]);
   const weekStart = mondayOf(focusedDate);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-  const { data: previewData, isLoading, isError: previewError, isFetching: previewFetching } = useSchedulePreview(weekStart, weekDays[6]);
+  const [innerPage, setInnerPage] = useState<'plan' | 'day' | 'month'>('plan');
+  const [report, setReport] = useState<'workload' | 'flow' | 'feasibility' | 'timeline' | null>(initialPage === 'timeline' ? 'timeline' : null);
+  const [workloadRange, setWorkloadRange] = useState<'week' | 'month'>('week');
+  const calendarView: CalendarView = innerPage === 'plan' ? 'week' : innerPage;
+  const monthDays = useMemo(() => monthDates(focusedDate), [focusedDate]);
+  const visibleDays = innerPage === 'day' && !isPhone ? [focusedDate] : weekDays;
+  const rangeStart = innerPage === 'month' && !isPhone ? monthDays[0] : weekStart;
+  const rangeEnd = innerPage === 'month' && !isPhone ? monthDays[41] : weekDays[6];
+  const { data: previewData, isLoading, isError: previewError, isFetching: previewFetching } = useSchedulePreview(rangeStart, rangeEnd);
   const { data: allTasks = [], isLoading: tasksLoading, isError: tasksError } = useAllTasks();
   const { data: allEvents = [], isLoading: eventsLoading, isError: eventsError } = useEvents();
   const { data: allLinks = [] } = useAllEventTaskLinks();
@@ -1227,7 +1215,6 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const { data: goals = [] } = useGoals();
   const [draftPreview, setDraftPreview] = useState<Draft | null>(null);
   const [dragTask, setDragTask] = useState<DBTask | null>(null);
-  const [innerPage, setInnerPage] = useState<'plan' | 'month' | 'timeline' | 'feasibility'>(initialPage);
   const [composer, setComposer] = useState<ComposerSeed | null>(null);
   const [editorPreview, setEditorPreview] = useState<(CalendarPlacement & { title: string }) | null>(null);
   const [taskComposerDate, setTaskComposerDate] = useState<string | null>(null);
@@ -1235,11 +1222,10 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const [editingRoutine, setEditingRoutine] = useState<DBRoutine | undefined>();
   const routineList = useRoutines();
   const openRoutine = (routine?: DBRoutine) => { setEditingRoutine(routine); setRoutineComposerOpen(true); };
-  const [drawerOpen, setDrawerOpen] = useState(() => window.innerWidth >= 1280);
+  const [planningPanel, setPlanningPanel] = useState<'tasks' | 'routines' | 'assist' | 'drafts' | null>(null);
   const [feedback, setFeedback] = useState<{ label: string; undo?: () => Promise<void> } | null>(null);
   const [undoBusy, setUndoBusy] = useState(false);
   const scheduling = useRef(new Set<string>());
-  const [rightPanel, setRightPanel] = useState<'assist' | 'drafts' | null>(null);
   const [mobileRefreshing, setMobileRefreshing] = useState(false);
   const refreshMobileSchedule = async () => {
     setMobileRefreshing(true);
@@ -1332,14 +1318,14 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   const backlog = useMemo(() => scheduleWork.filter(t => !t.start_date && (t.estimated_minutes ?? 0) > 0), [scheduleWork]);
   const unestimated = useMemo(() => scheduleWork.filter(t => !(t.estimated_minutes! > 0)), [scheduleWork]);
 
-  // Calendar blocks placed in this week. Only dated blocks render — the old
+  // Calendar blocks in the visible range. Only dated blocks render — the old
   // "no date = repeats every week" rule is gone (it made seeded demo events
   // stamp themselves onto every week forever).
   const placedEvents: PlacedEvent[] = useMemo(() =>
     allEvents
       .map(ev => ({ event: ev, date: eventDate(ev) }))
-      .filter((p): p is PlacedEvent => p.date !== null && p.date >= weekStart && p.date <= weekDays[6]),
-    [allEvents, weekStart, weekDays],
+      .filter((p): p is PlacedEvent => p.date !== null && p.date >= rangeStart && p.date <= rangeEnd),
+    [allEvents, rangeStart, rangeEnd],
   );
 
   const linksByEvent = useMemo(() => {
@@ -1365,8 +1351,8 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
           durationHours: Math.max(0.25, (m.duration_minutes ?? 60) / 60),
         };
       })
-      .filter((m): m is CalendarMeeting => m !== null && m.date >= weekStart && m.date <= weekDays[6]),
-    [allMeetings, weekStart, weekDays, prefs?.timezone],
+      .filter((m): m is CalendarMeeting => m !== null && m.date >= rangeStart && m.date <= rangeEnd),
+    [allMeetings, rangeStart, rangeEnd, prefs?.timezone],
   );
 
   const workDays: number[] = useMemo(() => {
@@ -1780,6 +1766,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   // ── Composer openers ────────────────────────────────────────────────────────
 
   const openCreate = (date?: string, hour?: number, durationHours = 1) => {
+    setPlanningPanel(null);
     const now = new Date();
     setComposer({
       mode: 'create',
@@ -1790,6 +1777,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
   };
 
   const openEdit = (ev: DBEvent) => {
+    setPlanningPanel(null);
     const link = (linksByEvent.get(ev.id) ?? [])[0];
     setComposer({
       mode: 'edit',
@@ -1803,30 +1791,12 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     });
   };
 
-  const statusInfo = scheduler ? (STATUS_STYLE[scheduler.status] ?? STATUS_STYLE.feasible) : null;
-  const focusedDayLabel = parseLocalDate(focusedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  const scheduleGridColumns = drawerOpen && rightPanel
-    ? 'xl:grid-cols-[240px_minmax(0,1fr)_360px]'
-    : drawerOpen
-      ? 'xl:grid-cols-[240px_minmax(0,1fr)]'
-      : rightPanel
-        ? 'xl:grid-cols-[minmax(0,1fr)_360px]'
-        : 'xl:grid-cols-1';
-
-  if (!isPhone && innerPage === 'feasibility' && scheduler) {
-    return (
-      <FeasibilityReport
-        scheduler={scheduler}
-        taskLookup={taskLookup}
-        goals={goals}
-        allTasks={allTasks}
-        weekDays={weekDays}
-        previewDays={previewData?.days ?? []}
-        prefs={prefs}
-        onBack={() => setInnerPage('plan')}
-      />
-    );
-  }
+  const showAllDay = visibleDays.some(date => {
+    const day = previewByDate.get(date);
+    return (day?.deadlines?.length ?? 0) > 0 || (day?.deadline_titles?.length ?? 0) > 0 || (day?.tasks?.length ?? 0) > 0 || day?.override
+      || (startsByDate.get(date) ?? []).some(task => !blockDates.has(`${task.id}|${date}`)) || (ghostsByDate.get(date)?.length ?? 0) > 0;
+  }) || !!dragTask;
+  const reportTitle = report === 'workload' ? 'Capacity & workload' : report === 'flow' ? 'Time breakdown' : report === 'timeline' ? 'Task timeline' : 'Feasibility';
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -1842,90 +1812,24 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
         onMoveTask={async (taskId, date) => { await move.mutateAsync({ taskId, date }); }}
         renderRoutines={(date, closeDetails) => <RoutinesPanel date={date} today={todayStr} goals={goals} onCreate={() => { closeDetails(); openRoutine(); }} onEdit={routine => { closeDetails(); openRoutine(routine); }} onStartFocus={startRoutineFocus} />}
       /> : (
-      <div className={`mx-auto w-full max-w-[1800px] px-4 py-5 md:px-6 animate-fade-in ${composer ? 'schedule-editor-open' : ''}`}>
-        <header className="mb-5 flex flex-wrap items-center gap-3 border-b border-slate-100 pb-4">
-          <h2 className="mr-auto text-xl font-semibold tracking-tight text-slate-900">Schedule</h2>
-          <div className="flex rounded-xl bg-slate-100/80 p-1" aria-label="Calendar view">
-            {(['plan', 'month', 'timeline'] as const).map(page => <button key={page} onClick={() => setInnerPage(page)} aria-pressed={innerPage === page} className={`rounded-lg px-3 py-1.5 text-xs ${innerPage === page ? 'bg-white font-medium text-slate-800 shadow-sm' : 'text-slate-400'}`}>{page === 'plan' ? 'Week' : page === 'month' ? 'Month' : 'Timeline'}</button>)}
-          </div>
-          <button onClick={() => openCreate()} aria-label="Create calendar block" className="flex h-9 items-center gap-1 rounded-xl bg-slate-900 px-3 text-xs font-medium text-white"><Plus size={14} /> New block</button>
-          {innerPage === 'plan' && <div className="flex w-full flex-wrap items-center gap-2">
-            <button aria-label="Previous week" onClick={() => setFocusedDate(d => addDays(d, -7))} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50"><ChevronLeft size={17} /></button>
-            <button aria-label="Next week" onClick={() => setFocusedDate(d => addDays(d, 7))} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50"><ChevronRight size={17} /></button>
-            <span className="text-sm font-medium text-slate-700">{fmtWeekRange(weekStart)}</span>
-            <button onClick={() => setFocusedDate(todayStr)} aria-label="Jump to today" className="rounded-lg px-3 py-2 text-xs text-slate-400 hover:bg-slate-50">Today</button>
-            <input type="date" aria-label="Jump to calendar date" value={focusedDate} onChange={e => { if (e.target.value) setFocusedDate(e.target.value); }} className="min-w-0 rounded-lg border border-slate-100 px-2 py-1.5 text-xs text-slate-500" />
-            {statusInfo && scheduler && <button onClick={() => setInnerPage('feasibility')} className="ml-auto text-xs text-slate-400 hover:text-indigo-600" aria-label={`Open feasibility audit: ${schedulerStatusLabel(scheduler)}`}>{schedulerStatusLabel(scheduler)}</button>}
-          </div>}
-        </header>
-
-        {innerPage === 'plan' ? (
-          <>
-            <details className="mb-3 rounded-xl border border-slate-100 px-3 py-2"><summary className="cursor-pointer text-xs text-slate-400">Routines & workload</summary><div className="mt-3">
-            <RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => openRoutine()} onEdit={openRoutine} onStartFocus={startRoutineFocus} />
-            <WorkloadHorizon
-              scheduler={scheduler}
-              taskLookup={taskLookup}
-              allTasks={allTasks}
-              rangeStart={weekStart}
-              rangeEnd={weekDays[6]}
-              today={todayStr}
-              mode="week"
-              onOpenAudit={() => setInnerPage('feasibility')}
-              onSelectDate={setFocusedDate}
-            />
-            </div></details>
-
-            <div className="mb-2 flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(value => !value)}
-                aria-pressed={drawerOpen}
-                className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 font-mono text-[9px] font-bold uppercase tracking-wider transition-colors ${drawerOpen ? 'border-indigo-200 bg-indigo-50 text-[#4648d4]' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}
-              >
-                <PanelLeftOpen size={11} /> Tasks
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightPanel(panel => panel === 'assist' ? null : 'assist')}
-                aria-pressed={rightPanel === 'assist'}
-                className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 font-mono text-[9px] font-bold uppercase tracking-wider transition-colors ${rightPanel === 'assist' ? 'border-indigo-200 bg-indigo-50 text-[#4648d4]' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}
-              >
-                <Sparkles size={11} /> Plan assist
-                {suggestions.length > 0 && <span className="rounded-full bg-white px-1 text-[8px]">{suggestions.length}</span>}
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightPanel(panel => panel === 'drafts' ? null : 'drafts')}
-                aria-pressed={rightPanel === 'drafts'}
-                className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 font-mono text-[9px] font-bold uppercase tracking-wider transition-colors ${rightPanel === 'drafts' ? 'border-indigo-200 bg-indigo-50 text-[#4648d4]' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}
-              >
-                <Sparkles size={11} /> AI drafts
-              </button>
-              <span className="ml-auto hidden font-mono text-[9px] uppercase tracking-wider text-gray-300 sm:inline">Draw to create · drag to move · pull an edge to resize</span>
-            </div>
-
-            <div className={`grid grid-cols-1 items-start gap-3 ${scheduleGridColumns}`}>
-              {drawerOpen && (
-                <TaskTreeDrawer
-                  tasks={allTasks}
-                  goals={goals}
-                  draggableIds={draggableIds}
-                  scheduledDates={scheduledDates}
-                  onCollapse={() => setDrawerOpen(false)}
-                  onCreateTask={createCalendarTask}
-                  onScheduleTask={task => setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ title: task.title, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0).duration_hours, linkedTaskId: task.id })}
-                />
-              )}
-
-              <div className="min-w-0">
-                {isLoading && <p className="mb-2 font-mono text-xs text-gray-400">Loading schedule…</p>}
+      <div className={`schedule-workspace mx-auto w-full max-w-[1800px] px-4 py-3 md:px-6 ${composer ? 'schedule-editor-open' : ''}`}>
+        <h1 className="sr-only">Schedule</h1>
+        <ScheduleToolbar date={focusedDate} today={todayStr} view={calendarView} planning={!!planningPanel}
+          onDate={setFocusedDate} onView={view => setInnerPage(view === 'week' ? 'plan' : view)}
+          onPlan={() => setPlanningPanel(panel => panel ? null : 'tasks')} onCreate={() => openCreate()} />
+        {(previewError || tasksError || eventsError || meetingsError) && <p role="alert" className="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">Some calendar data could not load. <button onClick={() => void refreshMobileSchedule()} className="underline">Try again</button></p>}
+        <div className={`schedule-layout ${planningPanel ? 'schedule-planning-open' : ''}`}>
+          <section className="min-w-0" aria-label="Calendar">
+            {isLoading && <p role="status" className="mb-2 text-xs text-slate-400">Loading schedule…</p>}
+            {innerPage === 'month' ? <ScheduleMonthView days={monthDays} date={focusedDate} today={todayStr}
+              events={placedEvents} meetings={weekMeetings} tasksByDate={startsByDate} previewByDate={previewByDate} blockedTaskIds={blockDates}
+              onDate={date => { setFocusedDate(date); setInnerPage('day'); }} onEvent={openEdit} /> : (
                 <WeekTimeGrid
                   draft={composer ? editorPreview : null}
-                  days={weekDays}
+                  days={visibleDays}
                   events={placedEvents}
                   meetings={weekMeetings}
-                  routines={weekDays.flatMap(date => previewByDate.get(date)?.routines ?? [])}
+                  routines={visibleDays.flatMap(date => previewByDate.get(date)?.routines ?? [])}
                   linksByEvent={linksByEvent}
                   workStart={prefs?.work_start ?? 9}
                   workEnd={prefs?.work_end ?? 18}
@@ -1933,8 +1837,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                   selectedDate={focusedDate}
                   onDaySelect={setFocusedDate}
                   onRoutineSelect={id => { const routine = routineList.data?.find(item => item.id === id); if (routine && !routine.archived_at) openRoutine(routine); }}
-                  dayBreakdowns={dayBreakdowns}
-                  breakdownResetKey={`${weekStart}|${focusedDate}`}
+                  showAllDay={showAllDay}
                   renderAllDayCell={date => (
                     <CompactAllDayCell
                       date={date}
@@ -1944,7 +1847,6 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                       taskLookup={taskLookup}
                       allTasks={allTasks}
                       isBlocked={taskId => blockDates.has(`${taskId}|${date}`)}
-                      onAddTask={setTaskComposerDate}
                       onStartFocus={task => void startFocusTimer(task)}
                     />
                   )}
@@ -1955,7 +1857,45 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                   onEventResize={(ev, d) => void resizeEvent(ev, d)}
                   onEventDelete={ev => void deleteEvent(ev)}
                 />
-                <details className="mt-4 rounded-xl border border-slate-100 p-3"><summary className="cursor-pointer text-xs text-slate-400">Day flow & time breakdown</summary>
+            )}
+            {draftPreview && <p className="mt-2 text-xs text-indigo-500">Previewing “{draftPreview.name}” · dashed tasks show proposed dates.</p>}
+          </section>
+          {planningPanel && <aside id="schedule-planning" className="schedule-planning" aria-label="Planning tools" onKeyDown={e => { if (e.key === 'Escape') { setPlanningPanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="schedule-planning"]')?.focus(); } }}>
+            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+              <select aria-label="Planning tool" value={planningPanel} className="min-h-10 min-w-0 flex-1 rounded-lg bg-white px-2 text-sm font-medium text-slate-700" onChange={e => {
+                const value = e.target.value;
+                if (value === 'workload' || value === 'flow' || value === 'timeline' || value === 'feasibility') setReport(value);
+                else setPlanningPanel(value as 'tasks' | 'routines' | 'assist' | 'drafts');
+              }}>
+                <optgroup label="Plan"><option value="tasks">Tasks</option><option value="routines">Repeating time</option><option value="assist">Suggestions</option><option value="drafts">AI drafts</option></optgroup>
+                <optgroup label="Explore"><option value="workload">Capacity & workload</option><option value="flow">Time breakdown</option><option value="timeline">Task timeline</option><option value="feasibility" disabled={!scheduler}>Feasibility</option></optgroup>
+              </select>
+              <button aria-label="Close planning tools" onClick={() => setPlanningPanel(null)} className="schedule-toolbar-icon"><X size={16} /></button>
+            </div>
+            <div className="schedule-planning-content">
+              {planningPanel === 'tasks' && <TaskTreeDrawer embedded tasks={allTasks} goals={goals} draggableIds={draggableIds} scheduledDates={scheduledDates}
+                onCollapse={() => setPlanningPanel(null)} onCreateTask={createCalendarTask}
+                onScheduleTask={task => { setPlanningPanel(null); setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ title: task.title, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0).duration_hours, linkedTaskId: task.id }); }} />}
+              {planningPanel === 'routines' && <div className="p-3"><RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => openRoutine()} onEdit={openRoutine} onStartFocus={startRoutineFocus} /></div>}
+              {planningPanel === 'assist' && <PlanAssistPanel suggestions={suggestions} taskLookup={taskLookup} unestimated={unestimated} rollupCount={rollupTasks.length}
+                onPlace={(taskId, date) => move.mutateAsync({ taskId, date }).then(() => {}).catch(() => { /* The mutation shows its save error. */ })} onPlaceAll={placeAllSuggestions} />}
+              {planningPanel === 'drafts' && <DraftsPanel preview={draftPreview} onPreview={setDraftPreview}
+                onApplied={() => { invalidate.allTasks(); invalidate.schedulePreview(); qc.invalidateQueries({ queryKey: ['goals'] }); }} />}
+            </div>
+          </aside>}
+        </div>
+      </div>
+      )}
+
+      {!isPhone && report && <ModalFrame titleId="schedule-report-title" onClose={() => setReport(null)} overlayClassName="bg-slate-900/20" className="w-full max-w-6xl max-h-[90dvh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between"><h2 id="schedule-report-title" className="text-lg font-semibold text-slate-800">{reportTitle}</h2><button aria-label="Close report" onClick={() => setReport(null)} className="schedule-toolbar-icon"><X size={18} /></button></div>
+        {report === 'workload' && <>
+          <div className="mb-3 flex items-center gap-3"><select aria-label="Workload range" value={workloadRange} onChange={e => setWorkloadRange(e.target.value as 'week' | 'month')} className="schedule-view-select"><option value="week">Selected week</option><option value="month">Next 35 days</option></select>
+            {workloadRange === 'week' && <p className="text-xs text-slate-500">{fmtWeekRange(weekStart)} · {fmtMins(Math.max(0, dayBreakdowns.get(focusedDate)?.freeMinutes ?? 0))} available on {parseLocalDate(focusedDate).toLocaleDateString('en-US', { weekday: 'long' })}</p>}
+          </div>
+          <WorkloadHorizon scheduler={scheduler} taskLookup={taskLookup} allTasks={allTasks} rangeStart={workloadRange === 'week' ? weekStart : todayStr} rangeEnd={workloadRange === 'week' ? weekDays[6] : addDays(todayStr, 34)} today={todayStr} mode={workloadRange} onOpenAudit={() => setReport('feasibility')} onSelectDate={date => { setFocusedDate(date); setInnerPage('day'); setReport(null); }} />
+        </>}
+        {report === 'flow' && <>
                 <WeeklyParentBreakdown
                   weekDays={weekDays}
                   tasks={allTasks}
@@ -1976,56 +1916,10 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
                   blockDates={blockDates}
                   taskOrder={flowTaskIdsByDate.get(focusedDate)}
                 />
-                <div className="mt-1.5 flex items-center gap-2">
-                  <p className="font-mono text-[9px] uppercase tracking-wider text-gray-300">
-                    + in all-day adds a task · drag a task onto an hour for a Focus block · Play records actual work
-                  </p>
-                </div>
-                {draftPreview && (
-                  <p className="mt-1 font-mono text-[10px] text-indigo-500">
-                    Previewing "{draftPreview.name}" — dashed chips in the all-day row show where work would start.
-                  </p>
-                )}
-                </details>
-              </div>
-
-              {rightPanel && <div className="min-w-0">
-                {rightPanel === 'assist' ? <PlanAssistPanel
-                  suggestions={suggestions}
-                  taskLookup={taskLookup}
-                  unestimated={unestimated}
-                  rollupCount={rollupTasks.length}
-                  onPlace={(taskId, date) => move.mutate({ taskId, date })}
-                  onPlaceAll={placeAllSuggestions}
-                  onCollapse={() => setRightPanel(null)}
-                /> : <DraftsPanel
-                  preview={draftPreview}
-                  onPreview={setDraftPreview}
-                  onApplied={() => { invalidate.allTasks(); invalidate.schedulePreview(); qc.invalidateQueries({ queryKey: ['goals'] }); }}
-                  onCollapse={() => setRightPanel(null)}
-                />}
-              </div>}
-            </div>
-          </>
-        ) : innerPage === 'month' ? (
-          <WorkloadHorizon
-            scheduler={scheduler}
-            taskLookup={taskLookup}
-            allTasks={allTasks}
-            rangeStart={todayStr}
-            rangeEnd={addDays(todayStr, 34)}
-            today={todayStr}
-            mode="month"
-            onOpenAudit={() => setInnerPage('feasibility')}
-            onSelectDate={date => { setFocusedDate(date); setInnerPage('plan'); }}
-          />
-        ) : (
-          <div className="h-[calc(100vh-240px)] min-h-[640px]">
-            <GanttView embedded />
-          </div>
-        )}
-      </div>
-      )}
+        </>}
+        {report === 'timeline' && <div className="h-[70dvh]"><GanttView embedded /></div>}
+        {report === 'feasibility' && scheduler && <FeasibilityReport scheduler={scheduler} taskLookup={taskLookup} goals={goals} allTasks={allTasks} weekDays={weekDays} previewDays={previewData?.days ?? []} prefs={prefs} onBack={() => setReport(null)} />}
+      </ModalFrame>}
 
       {feedback && <div role="status" className="calendar-feedback"><span className="min-w-0 truncate">{feedback.label}</span>{feedback.undo && <button disabled={undoBusy} className="min-h-9 shrink-0 font-semibold text-indigo-600" onClick={async () => { setUndoBusy(true); try { await feedback.undo!(); setFeedback(null); } catch (error) { triggerToast(error instanceof Error ? error.message : 'Could not undo. Try again.', 'error'); } finally { setUndoBusy(false); } }}>{undoBusy ? 'Undoing…' : 'Undo'}</button>}<button disabled={undoBusy} aria-label="Dismiss calendar update" className="min-h-9 px-1 text-slate-400" onClick={() => setFeedback(null)}>×</button></div>}
       <DragOverlay dropAnimation={null}>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MobileSchedule } from '../MobileSchedule';
 import type { DBEvent, DBTask } from '../../../db/schema';
@@ -33,6 +33,7 @@ describe('phone calendar interactions', () => {
   it('remembers compact controls and Day view after leaving and reopening Schedule', () => {
     const first = render(<MobileSchedule {...props()} />);
     openOptions();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand calendar controls' }));
     fireEvent.click(screen.getByRole('button', { name: 'Minimize calendar controls' }));
     expect(screen.queryByLabelText('Week dates')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Day' }));
@@ -49,8 +50,7 @@ describe('phone calendar interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand calendar controls' }));
     expect(screen.getByLabelText('Week dates')).toBeInTheDocument();
   });
-  it('starts compact on a small iPhone while honoring a saved expanded preference', () => {
-    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(max-width: 389px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  it('starts compact on every phone while honoring a saved expanded preference', () => {
     const first = render(<MobileSchedule {...props()} />);
     openOptions();
     fireEvent.click(screen.getByRole('button', { name: 'Expand calendar controls' }));
@@ -76,6 +76,9 @@ describe('phone calendar interactions', () => {
     swipe(screen.getByLabelText('Month date picker'));
     expect(screen.getByLabelText('Month date picker')).toHaveTextContent('October 2026');
     fireEvent.click(screen.getByRole('button', { name: 'Close choose a date' }));
+    openOptions();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand calendar controls' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close schedule options' }));
     swipe(screen.getByLabelText('Week dates'));
     expect(p.onDate).toHaveBeenLastCalledWith('2026-10-01');
   });
@@ -115,8 +118,19 @@ describe('phone calendar interactions', () => {
     expect(screen.queryByRole('button', { name: 'Refresh schedule' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Install on iPhone' })).not.toBeInTheDocument();
     openOptions();
-    fireEvent.click(screen.getByRole('button', { name: 'Routines' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Repeating time' }));
     expect(screen.getByRole('button', { name: 'Create native routine' })).toBeInTheDocument();
+  });
+  it('creates a block directly and keeps task scheduling in one options sheet', () => {
+    const p = props(); render(<MobileSchedule {...p} />);
+    expect(screen.queryByRole('button', { name: 'Schedule a task' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create calendar block' }));
+    expect(p.onCreate).toHaveBeenCalledExactlyOnceWith(date);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    openOptions();
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule a task' }));
+    expect(screen.getByRole('dialog', { name: 'Schedule a task' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog', { name: 'Schedule a task' })).getByRole('button', { name: /Read chapter/ })).toBeInTheDocument();
   });
   it('uses the existing task completion workflow', () => {
     render(<MobileSchedule {...props()} />);

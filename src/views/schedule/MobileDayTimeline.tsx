@@ -306,6 +306,6 @@ export function MobileDayTimeline(props: Props) {
     </div>
     {error && <p role="alert" className="mt-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     {undo && !saving && !draft && <div role="status" className="absolute inset-x-2 top-2 z-30 flex items-center justify-between gap-2 rounded-xl bg-indigo-50 px-3 text-xs text-indigo-800 shadow-md"><span>Block updated · {fmtTimeRange(undo.after.startHour, undo.after.durationHours)}</span><button disabled={!props.online} onClick={() => void save(undo.event, undo.after, undo.before, true)} className="flex min-h-11 shrink-0 items-center gap-1.5 px-2 font-semibold disabled:opacity-40"><Undo2 size={15} /> Undo</button></div>}
-    <p className="mt-2 flex items-start gap-1 pr-16 text-xs leading-5 text-slate-400"><GripHorizontal size={14} className="mt-0.5 shrink-0" /><span>Hold to move. Drag an edge to resize. Swipe for another day.</span></p>
+    {!props.compact && <p className="mt-2 flex items-start gap-1 pr-16 text-xs leading-5 text-slate-400"><GripHorizontal size={14} className="mt-0.5 shrink-0" /><span>Hold to move. Drag an edge to resize. Swipe for another day.</span></p>}
   </div>;
 }

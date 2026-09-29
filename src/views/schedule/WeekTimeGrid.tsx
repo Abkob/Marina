@@ -21,7 +21,7 @@ export const GRID_END_HOUR = 24;
 export const HOUR_PX = 48;
 const MIN_HOUR_PX = 28;
 const DENSITY_REFERENCE_WIDTH = 1440;
-const COLS = 'grid grid-cols-[52px_repeat(7,minmax(0,1fr))]';
+
 
 /**
  * Browser zoom-out increases the CSS viewport width. Use that extra room to
@@ -87,7 +87,7 @@ export interface DayCapacityBreakdown {
 
 interface WeekTimeGridProps {
   draft?: (CalendarPlacement & { title: string }) | null;
-  days: string[]; // 7 ISO dates, Monday-first
+  days: string[]; // One day or seven ISO dates, Monday-first
   events: PlacedEvent[];
   meetings: CalendarMeeting[];
   routines?: CalendarRoutine[];
@@ -100,6 +100,7 @@ interface WeekTimeGridProps {
   onRoutineSelect?: (routineId: string) => void;
   dayBreakdowns?: Map<string, DayCapacityBreakdown>;
   breakdownResetKey?: string;
+  showAllDay?: boolean;
   renderAllDayCell: (date: string) => React.ReactNode;
   onSlotClick: (date: string, startHour: number, durationHours?: number) => void;
   onEventClick: (ev: DBEvent) => void;
@@ -417,7 +418,7 @@ function EventBlock({ placed, dayIdx, days, pos, links, hourPx, gridHeight, onCl
         {height > 34 && (
           <p className="truncate font-mono text-[10px] opacity-70">{fmtTimeRange(previewStart, previewDuration)}</p>
         )}
-        {height > 52 && linkedTitle && (
+        {height > 52 && linkedTitle && (linkedTitle !== ev.title || completion === 'partial') && (
           <p className="mt-0.5 flex items-center gap-1 truncate text-[10px] opacity-80">
             {completion === 'done'
               ? <Check size={10} className="shrink-0" />
@@ -643,7 +644,8 @@ function DayColumn({ date, dayIdx, events, meetings, routines, onRoutineDaySelec
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
-export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, onRoutineSelect, dayBreakdowns, breakdownResetKey, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft }: WeekTimeGridProps) {
+export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEvent, workStart, workEnd, workDays, selectedDate, onDaySelect, onRoutineSelect, dayBreakdowns, breakdownResetKey, showAllDay = true, renderAllDayCell, onSlotClick, onEventClick, onEventMove, onEventResize, onEventDelete, onEventChange, draft }: WeekTimeGridProps) {
+  const columns = { gridTemplateColumns: `52px repeat(${days.length}, minmax(0, 1fr))` };
   const now = useNowTick();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(() => scheduleHourPxForViewport(typeof window === 'undefined' ? DENSITY_REFERENCE_WIDTH : window.innerWidth));
@@ -689,11 +691,11 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
       <div
         ref={scrollRef}
         className="relative overflow-y-auto overscroll-contain"
-        style={{ maxHeight: 'clamp(520px, calc(100vh - 100px), 820px)' }}
+        style={{ height: 'max(400px, calc(var(--app-viewport-height, 100dvh) - 165px))' }}
       >
         {/* Sticky: day headers + all-day cells share the scrollbar gutter with the grid */}
         <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-          <div className={COLS}>
+          <div className="grid" style={columns}>
             <div />
             {days.map((d, index) => {
               const h = dayHeaderParts(d, now);
@@ -702,7 +704,7 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
               return (
                 <div
                   key={d}
-                  className={`flex flex-col items-center border-l border-gray-100 py-1.5 transition-colors hover:bg-gray-50 ${selected ? 'bg-indigo-50/70' : ''}`}
+                  className={`flex flex-col items-center border-l border-gray-100 py-1.5 transition-colors hover:bg-gray-50 ${selected && days.length > 1 ? 'bg-indigo-50/40' : ''}`}
                 >
                   <button type="button" onClick={() => onDaySelect?.(d)} className="flex flex-col items-center rounded-lg px-2 py-1 hover:bg-gray-50" title="Focus this day" aria-label={`Focus ${h.dow} ${h.dom}`}>
                     <span className={`font-mono text-[9px] font-bold uppercase tracking-widest ${h.isToday ? 'text-[#4648d4]' : 'text-gray-400'}`}>{h.dow}</span>
@@ -712,23 +714,23 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
                     </span>
                   </button>
                   <DayFreeBadge breakdown={dayBreakdowns?.get(d)} align={breakdownAlign} resetKey={breakdownResetKey} />
-                  {routines.some(routine => routine.date === d) && <button type="button" onClick={() => onDaySelect?.(d)} className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-teal-700" title="Routine time is included in this day’s capacity"><Repeat2 size={10} />{fmtMins(routines.filter(routine => routine.date === d).reduce((sum, routine) => sum + routine.minutes, 0))} routines</button>}
+                  {dayBreakdowns && routines.some(routine => routine.date === d) && <button type="button" onClick={() => onDaySelect?.(d)} className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-teal-700" title="Routine time is included in this day’s capacity"><Repeat2 size={10} />{fmtMins(routines.filter(routine => routine.date === d).reduce((sum, routine) => sum + routine.minutes, 0))} routines</button>}
                 </div>
               );
             })}
           </div>
-          <div className={`${COLS} ${allDayExpanded ? 'h-[92px]' : 'h-[40px]'} border-t border-gray-100`}>
+          {showAllDay && <div style={columns} className={`grid ${allDayExpanded ? 'h-[92px]' : 'h-[40px]'} border-t border-gray-100`}>
             <button type="button" aria-label={allDayExpanded ? 'Minimize all-day row' : 'Show all-day details'} aria-expanded={allDayExpanded} onClick={() => setAllDayExpanded(value => !value)} className="self-start py-2 pr-1.5 text-right text-[9px] text-slate-400">All day {allDayExpanded ? '−' : '+'}</button>
             {days.map(d => (
               <div key={d} className="h-full min-w-0 overflow-visible border-l border-gray-100">
                 {renderAllDayCell(d)}
               </div>
             ))}
-          </div>
+          </div>}
         </div>
 
         {/* Time grid */}
-        <div className={COLS}>
+        <div className="grid" style={columns}>
           <div className="relative" style={{ height: gridHeight }}>
             <span className="absolute right-1.5 top-1 font-mono text-[9px] text-gray-400">
               {fmtHourLabel(GRID_START_HOUR)}
@@ -755,7 +757,7 @@ export function WeekTimeGrid({ days, events, meetings, routines = [], linksByEve
               onRoutineDaySelect={onDaySelect}
               onRoutineSelect={onRoutineSelect}
               linksByEvent={linksByEvent}
-              isWorkDay={workDays.includes(i + 1)}
+              isWorkDay={workDays.includes(parseLocalDate(d).getDay() || 7)}
               workStart={workStart}
               workEnd={workEnd}
               isToday={dayHeaderParts(d, now).isToday}

@@ -77,7 +77,6 @@ export function MobileSchedule(props: Props) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [routinesOpen, setRoutinesOpen] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(false);
   const [placingTask, setPlacingTask] = useState<DBTask | null>(null);
   const [placingBusy, setPlacingBusy] = useState(false);
@@ -122,7 +121,6 @@ export function MobileSchedule(props: Props) {
         </button>
         <button aria-label="Previous day" className="mobile-icon-button text-slate-500" onClick={() => changeDate(addDays(date, -1))}><ChevronLeft size={19} /></button>
         <button aria-label="Next day" className="mobile-icon-button text-slate-500" onClick={() => changeDate(addDays(date, 1))}><ChevronRight size={19} /></button>
-        <button aria-label="Schedule a task" className="mobile-icon-button text-slate-400" onClick={() => setTasksOpen(true)}><List size={19} /></button>
         <button aria-label="Schedule options" aria-haspopup="dialog" onClick={() => setOptionsOpen(true)} className="mobile-icon-button text-slate-600"><SlidersHorizontal size={20} /></button>
       </div>
       {!compact && <div ref={weekSwipe} className="mobile-gesture-surface mt-2 grid grid-cols-7 gap-1" aria-label="Week dates">
@@ -145,15 +143,18 @@ export function MobileSchedule(props: Props) {
       <div className="mt-3 flex items-center justify-between"><button aria-label="Previous week" className="min-h-11 px-2 text-sm text-slate-600" onClick={() => changeDate(addDays(date, -7))}>← Previous week</button><button onClick={() => changeDate(today)} className="min-h-11 px-3 text-sm font-semibold text-indigo-600">Today</button><button aria-label="Next week" className="min-h-11 px-2 text-sm text-slate-600" onClick={() => changeDate(addDays(date, 7))}>Next week →</button></div>
     </MobileSheet>}
     {optionsOpen && <MobileSheet title="Schedule options" onClose={() => setOptionsOpen(false)}>
+      <button onClick={() => { setOptionsOpen(false); setTasksOpen(true); }} className="flex min-h-14 w-full items-center gap-3 text-sm font-medium"><List size={18} className="text-slate-400" />Schedule a task</button>
+      <button onClick={() => { setOptionsOpen(false); props.onAddTask(date); }} className="flex min-h-14 w-full items-center gap-3 text-sm font-medium"><Plus size={18} className="text-slate-400" />Create task</button>
+      <button onClick={() => { setOptionsOpen(false); setRoutinesOpen(true); }} className="mb-4 flex min-h-14 w-full items-center gap-3 border-b border-slate-100 text-sm font-medium"><Repeat size={18} className="text-slate-400" />Repeating time</button>
       <p className="mb-2 text-xs font-semibold text-slate-500">View</p>
       <div className="mb-5 flex gap-1 rounded-2xl bg-slate-100 p-1">{(['agenda', 'day'] as const).map(mode => <button key={mode} onClick={() => { setView(mode); setOptionsOpen(false); }} aria-pressed={view === mode} className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-semibold ${view === mode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>{mode === 'agenda' ? <List size={18} /> : <Clock size={18} />}{mode === 'agenda' ? 'Agenda' : 'Day'}</button>)}</div>
       <button onClick={() => setCompact(!compact)} aria-label={compact ? 'Expand calendar controls' : 'Minimize calendar controls'} aria-pressed={compact} className="flex min-h-16 w-full items-center justify-between gap-4 border-b border-slate-100 text-left"><span><span className="block text-sm font-medium">Compact calendar</span><span className="text-xs text-slate-500">Hide the week strip · saved on this device</span></span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${compact ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>{compact ? 'On' : 'Off'}</span></button>
-      <button onClick={() => { setOptionsOpen(false); setRoutinesOpen(true); }} className="flex min-h-14 w-full items-center gap-3 text-sm font-medium"><Repeat size={18} className="text-teal-600" />Routines</button>
       <button onClick={() => { void props.onRefresh(); setOptionsOpen(false); }} disabled={props.refreshing || !online} aria-label="Refresh schedule" className="flex min-h-14 w-full items-center gap-3 text-sm text-slate-600 disabled:opacity-40"><RefreshCw size={18} className={props.refreshing ? 'animate-spin' : ''} />Refresh schedule</button>
       {!standalone && <button onClick={() => { setOptionsOpen(false); setInstallOpen(true); }} aria-label="Install on iPhone" className="flex min-h-14 w-full items-center gap-3 text-sm text-slate-600"><Share size={18} />Add to Home Screen</button>}
       {props.timezone && <p className="mt-3 text-xs text-slate-400">Times in {props.timezone.replaceAll('_', ' ')}</p>}
+      <p className="mt-3 text-xs leading-5 text-slate-400">Tap a time to add. Hold a block to move it; drag an edge to resize. Swipe to change days.</p>
     </MobileSheet>}
-    {routinesOpen && <MobileSheet title="Your routines" onClose={() => setRoutinesOpen(false)}>{props.renderRoutines(date, () => setRoutinesOpen(false))}</MobileSheet>}
+    {routinesOpen && <MobileSheet title="Repeating time" onClose={() => setRoutinesOpen(false)}>{props.renderRoutines(date, () => setRoutinesOpen(false))}</MobileSheet>}
 
     {tasksOpen && <MobileSheet title="Schedule a task" onClose={() => setTasksOpen(false)}><TaskPicker tasks={props.tasks} goals={props.goals ?? []} onPick={task => { setPlacingTask(task); setTasksOpen(false); setSaveError(''); setView('day'); }} /></MobileSheet>}
     {placingTask && <div role="status" className="mb-2 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-1 text-xs text-indigo-700"><span className="min-w-0 flex-1">{placingBusy ? 'Scheduling…' : `Tap a time for ${placingTask.title}`}</span><button disabled={placingBusy} aria-label="Cancel task placement" className="mobile-icon-button" onClick={() => setPlacingTask(null)}><X size={15} /></button></div>}
@@ -161,7 +162,7 @@ export function MobileSchedule(props: Props) {
     {!online && <p role="status" className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">You’re offline. Reconnect to refresh your schedule or save changes.</p>}
     {props.error && <div role="alert" className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">Couldn’t load the latest schedule. <button onClick={() => void props.onRefresh()} className="min-h-11 font-semibold underline">Try again</button></div>}
     {props.loading ? <div role="status" className="space-y-3 py-4"><p className="text-sm text-slate-500">Loading your schedule…</p>{[1, 2, 3].map(n => <div key={n} className="h-20 animate-pulse rounded-2xl bg-slate-100" />)}</div> : props.error ? null : <>
-      <p className="mb-3 mt-2 text-xs text-slate-400">{items.length ? items.length + (items.length === 1 ? ' item · ' : ' items · ') + (view === 'day' ? 'Day timeline' : 'Agenda') : 'A little room to breathe'}</p>
+
       {view === 'day' ? <>
         {items.some(item => item.start === null) && <details className="mb-3 rounded-2xl border border-slate-100 p-3"><summary className="min-h-8 cursor-pointer text-sm font-semibold text-slate-600">Tasks & deadlines · {items.filter(item => item.start === null).length}</summary><div className="mt-2 space-y-2">{items.filter(item => item.start === null).map(item => <ItemCard key={item.id} item={item} onOpen={openItem} />)}</div></details>}
         <MobileDayTimeline editorPreview={props.editorPreview} key={date} date={date} today={today} nowHour={nowHour} items={items} online={online} compact={compact}
@@ -182,13 +183,8 @@ export function MobileSchedule(props: Props) {
         <button onClick={() => changeDate(addDays(days[0], 7))} className="min-h-12 w-full rounded-xl bg-slate-50 text-sm font-semibold text-indigo-600">Next week <span aria-hidden="true">→</span></button>
       </div>}
     </>}
-    <button onClick={() => setAddOpen(true)} aria-label="Add to schedule" className="mobile-schedule-add fixed right-5 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm active:scale-95"><Plus size={21} /></button>
+    <button onClick={() => props.onCreate(date)} aria-label="Create calendar block" className="mobile-schedule-add fixed right-5 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm active:scale-95"><Plus size={21} /></button>
 
-    {addOpen && <ModalFrame titleId="mobile-add-title" onClose={() => setAddOpen(false)} className="mobile-sheet w-full max-w-md rounded-3xl bg-white p-5 shadow-xl"><div className="flex items-center justify-between"><h2 id="mobile-add-title" className="text-xl font-bold">Add to your day</h2><button aria-label="Close add menu" className="mobile-icon-button" onClick={() => setAddOpen(false)}><X size={20} /></button></div><p className="mb-4 text-sm text-slate-400">{dateLabel(date)}</p>
-      <button className="mb-2 min-h-16 w-full rounded-2xl bg-indigo-50 px-4 text-left font-semibold text-indigo-700" onClick={() => { setAddOpen(false); props.onCreate(date); }}>Calendar block <span className="block text-xs font-normal">Set a time, duration and linked task</span></button>
-      <button className="min-h-16 w-full rounded-2xl bg-violet-50 px-4 text-left font-semibold text-violet-700" onClick={() => { setAddOpen(false); props.onAddTask(date); }}>Task <span className="block text-xs font-normal">Add work to this day</span></button>
-      <button className="mt-2 min-h-16 w-full rounded-2xl bg-teal-50 px-4 text-left font-semibold text-teal-700" onClick={() => { setAddOpen(false); setRoutinesOpen(true); }}>Repeating time <span className="block text-xs font-normal">Duration, time and sessions per week</span></button>
-    </ModalFrame>}
     {installOpen && <ModalFrame titleId="mobile-install-title" onClose={() => setInstallOpen(false)} className="mobile-sheet w-full max-w-md rounded-3xl bg-white p-6 shadow-xl"><div className="flex items-center justify-between"><h2 id="mobile-install-title" className="text-xl font-bold">Marina on your Home Screen</h2><button aria-label="Close install instructions" className="mobile-icon-button shrink-0" onClick={() => setInstallOpen(false)}><X size={20} /></button></div><p className="mt-3 text-sm leading-6 text-slate-500">Open this website in Safari on your iPhone, then:</p><ol className="my-4 list-decimal space-y-3 pl-5 text-sm text-slate-700"><li>Tap Share (the square with an arrow).</li><li>Choose <strong>Add to Home Screen</strong>.</li><li>Keep <strong>Open as Web App</strong> on if shown, then tap <strong>Add</strong>.</li></ol><p className="text-xs leading-5 text-slate-400">Your shortcut opens straight to Schedule. Sign in with the same workspace password. An internet connection keeps your schedule up to date.</p></ModalFrame>}
     {selected && <ModalFrame titleId="mobile-item-title" onClose={() => setSelected(null)} className="mobile-sheet w-full max-w-md rounded-3xl bg-white p-5 shadow-xl"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-indigo-500">{selected.detail}</p><h2 id="mobile-item-title" className="mt-2 break-words text-xl font-bold text-slate-900">{selected.title}</h2></div><button aria-label="Close schedule details" className="mobile-icon-button shrink-0" onClick={() => setSelected(null)}><X size={20} /></button></div>
       {selected.context && <p className="mt-2 text-sm text-slate-500">{selected.context}</p>}

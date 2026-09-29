@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { GRID_START_HOUR, HOUR_PX, scheduleHourPxForViewport } from '../../views/schedule/WeekTimeGrid';
+import { GRID_START_HOUR, GRID_END_HOUR, HOUR_PX, scheduleHourPxForViewport } from '../../views/schedule/WeekTimeGrid';
 
 describe('schedule viewport density', () => {
-  it('starts the visible schedule at 1 AM', () => {
-    expect(GRID_START_HOUR).toBe(1);
+  it('keeps midnight and the full 24-hour day available', () => {
+    expect(GRID_START_HOUR).toBe(0);
+    expect(GRID_END_HOUR).toBe(24);
   });
 
   it('keeps the comfortable density at normal viewport widths', () => {

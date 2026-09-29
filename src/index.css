@@ -413,3 +413,42 @@
   .routine-editor form > fieldset { padding: 16px; }
   .modal-overlay .routine-days button { min-width: 0; }
 }
+/* Calendar is the workspace. Planning tools appear only when requested. */
+.schedule-toolbar { display: flex; align-items: center; gap: 8px; min-height: 60px; margin-bottom: 12px; }
+.schedule-toolbar-icon { display: inline-flex; flex: none; height: 40px; width: 40px; align-items: center; justify-content: center; border-radius: 10px; color: #64748b; }
+.schedule-toolbar-text { min-height: 40px; padding: 0 12px; border-radius: 10px; font-size: 13px; color: #64748b; }
+.schedule-toolbar-icon:hover, .schedule-toolbar-text:hover { background: #f8fafc; color: #334155; }
+.schedule-workspace :is(button, select, input, summary):focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+.schedule-view-select { min-height: 40px; border: 0; border-radius: 10px; background: #f8fafc; padding: 0 10px; font-size: 13px; color: #475569; }
+.schedule-date-picker { position: relative; min-width: 0; }
+.schedule-date-heading { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px; cursor: pointer; list-style: none; color: #0f172a; font-size: 20px; font-weight: 600; letter-spacing: -.035em; }
+.schedule-date-heading::-webkit-details-marker { display: none; }
+.schedule-date-heading svg { color: #94a3b8; flex-shrink: 0; }
+.schedule-date-popover { position: absolute; top: 100%; left: 0; z-index: 45; width: 240px; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; background: white; box-shadow: 0 12px 30px #0f172a12; }
+.schedule-layout { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px; }
+.schedule-planning-open { grid-template-columns: minmax(0, 1fr) 320px; }
+.schedule-planning { min-width: 0; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+.schedule-planning-content { max-height: calc(100dvh - 225px); overflow-y: auto; overscroll-behavior: contain; }
+.schedule-planning-content > section, .schedule-planning-content > div { border: 0; border-radius: 0; box-shadow: none; }
+.schedule-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: hidden; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+.schedule-month-weekday { padding: 12px; text-align: center; font-size: 11px; color: #64748b; }
+.schedule-month-day { min-width: 0; min-height: max(88px, calc((100dvh - 210px) / 6)); border-top: 1px solid #f1f5f9; border-left: 1px solid #f1f5f9; padding: 6px; }
+.schedule-month-day:nth-child(7n + 1) { border-left: 0; }
+.schedule-month-outside { background: #fafbfc; }
+.schedule-month-outside .schedule-month-date { color: #94a3b8; }
+.schedule-month-date { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; margin-bottom: 4px; border-radius: 50%; font-size: 12px; color: #475569; }
+.schedule-month-date:hover { background: #f1f5f9; }
+.schedule-month-date[aria-current="date"] { background: #4648d4; color: white; }
+.schedule-month-event { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 4px 6px; border-radius: 5px; border-left: 2px solid #a5b4fc; background: #eef2ff; color: #4338ca; text-align: left; font-size: 11px; }
+.schedule-month-meeting { border-color: #7dd3fc; background: #f0f9ff; color: #0369a1; }
+.schedule-month-routine { border-color: #5eead4; background: #f0fdfa; color: #0f766e; }
+.schedule-month-more { display: block; max-width: 100%; min-height: 26px; padding: 2px 6px; color: #64748b; font-size: 11px; text-align: left; }
+.schedule-month-due { float: right; min-height: 32px; padding: 2px 4px; font-size: 10px; color: #be123c; }
+@media (max-width: 1100px) {
+  .schedule-planning-open { grid-template-columns: minmax(0, 1fr); }
+  .schedule-planning { position: absolute; top: 0; right: 0; z-index: 44; width: min(340px, calc(100% - 24px)); box-shadow: 0 12px 36px #0f172a18; }
+  .schedule-date-heading { font-size: 17px; }
+  .schedule-toolbar { gap: 2px; }
+  .schedule-month-event { gap: 3px; }
+  .schedule-month-event > span:last-child:not(:first-child) { display: none; }
+}
