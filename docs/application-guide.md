@@ -13,10 +13,12 @@ Marina is a private React/Vite workspace backed by an Express API and PostgreSQL
 
 ## iPhone Home Screen app
 
-On an iPhone, Marina opens directly to a mobile Schedule with an agenda, a tappable
-day timeline, a week strip, and a month/date picker. Open events to edit their
+On an iPhone, Marina opens directly to a compact day timeline, with an optional
+agenda, week strip, and month/date picker. Open events to edit their
 date, time or duration. Open tasks to move them, block time, start focus, or use
-the existing completion flow. Desktop keeps the full weekly planning workspace.
+the existing completion flow. Desktop has Day, Week and Month views, with tasks,
+repeats and reports available through **Plan**. The **+** button opens the time
+editor directly; on phones, task and repeat tools are in **Schedule options**.
 
 The bottom bar opens Schedule, Goals, Work and Capture. **More** is a searchable
 menu for every other page, including the phone's chronological Timeline. The
@@ -26,9 +28,9 @@ Copilot's conversation/goal panels collapse to leave room for the current task.
 Phone layouts work in portrait and landscape, respect screen safe areas, and
 keep forms and chat above the on-screen keyboard.
 
-Use the minimize/expand button beside **Today** to collapse the calendar controls.
-Compact mode starts enabled on narrow phones such as the iPhone 13 mini, removes
-the extra heading and week strip, and fits the Day timeline above the bottom bar.
+Open **Schedule options → Compact calendar** to show or hide the week strip.
+Compact mode is the default on phones unless an expanded preference was already
+saved, and fits the Day timeline above the bottom bar.
 The compact setting and Day/Agenda choice are saved on the device. Tap the date
 to open the full date picker in either mode.
 
