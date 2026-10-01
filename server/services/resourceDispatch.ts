@@ -52,7 +52,7 @@ export async function dispatchResourceEvents() {
 
 export function wakeResourceProcessing() {
   if (process.env.NODE_ENV === 'test') return;
-  // This only accelerates work; jobs/outbox and the minute reconciler own
+  // This only accelerates work; jobs/outbox and the scheduled reconciler own
   // recovery. Never make a successful resource save depend on external delivery.
   void runInBackground(durableProcessingConfigured() ? dispatchResourceEvents()
     : !isVercelRuntime ? processPendingResources(1) : Promise.resolve(0), 'resource processing wake-up');

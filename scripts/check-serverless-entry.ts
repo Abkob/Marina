@@ -21,4 +21,12 @@ if (typeof entry.default !== 'function') {
   throw new Error('api/index.ts must default-export an Express request handler');
 }
 
-console.log(JSON.stringify({ ok: true, listener_started: false, database_touched: false }));
+// Exercise lazy PDF dependencies on the build's OS as well as importing the
+// handler. A successful entry import alone cannot prove PDF workers are usable.
+const { extractPdfPages } = await import('../server/services/pdfText.js');
+const { textPdf } = await import('../server/__tests__/fixtures/uploadPdf.js');
+const pdf = await extractPdfPages(new Uint8Array(textPdf('Marina PDF deployment check')));
+if (pdf.total !== 1 || !pdf.pages[0]?.text.includes('Marina PDF deployment check')) {
+  throw new Error('PDF extraction failed the serverless readiness check');
+}
+console.log(JSON.stringify({ ok: true, listener_started: false, database_touched: false, pdf_extraction: true }));

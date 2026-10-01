@@ -1,0 +1,51 @@
+// @vitest-environment node
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { extractPdfPages } from '../../../server/services/pdfText.js';
+import { DocumentError } from '../../../server/services/uploadValidation.js';
+import { textPdf } from '../../../server/__tests__/fixtures/uploadPdf.js';
+import { encryptedPdf } from '../../../server/__tests__/fixtures/encryptedPdf.js';
+
+afterEach(() => { vi.doUnmock('pdf-parse'); vi.doUnmock('pdf-parse/worker'); vi.resetModules(); });
+
+describe('serverless PDF extraction', () => {
+  it('extracts real PDF text and page numbers with the embedded worker', async () => {
+    const result = await extractPdfPages(new Uint8Array(textPdf('Algebra deployment check')));
+    expect(result.total).toBe(1);
+    expect(result.pages[0]).toMatchObject({ num: 1 });
+    expect(result.pages[0].text).toContain('Algebra deployment check');
+  });
+  it('preserves an empty page so scanned PDFs can be reported as needing OCR', async () => {
+    const result = await extractPdfPages(new Uint8Array(textPdf()));
+    expect(result.total).toBe(1);
+    expect(result.pages[0].text.trim()).toBe('');
+  });
+  it('distinguishes corrupt content from an unavailable parser', async () => {
+    await expect(extractPdfPages(new Uint8Array(Buffer.from('%PDF-1.7\ninvalid document'))))
+      .rejects.toMatchObject({ code: 'corrupt_pdf' });
+  });
+  it('identifies password protection using the parser error type', async () => {
+    await expect(extractPdfPages(new Uint8Array(Buffer.from(encryptedPdf, 'base64'))))
+      .rejects.toMatchObject({ code: 'encrypted_pdf' });
+  });
+  it('keeps a missing worker retryable instead of blaming the uploaded PDF', async () => {
+    vi.doMock('pdf-parse/worker', () => { throw new Error('Native worker dependency unavailable'); });
+    const { extractPdfPages: isolatedExtract } = await import('../../../server/services/pdfText.js');
+    const error = await isolatedExtract(new Uint8Array(textPdf())).catch(value => value);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(DocumentError);
+    expect(error).not.toHaveProperty('code', 'corrupt_pdf');
+  });
+  it('releases the parser after a runtime failure and keeps it retryable', async () => {
+    const failure = new Error('Setting up fake worker failed');
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('pdf-parse/worker', () => ({getData: () => 'embedded-worker', CanvasFactory: class {}}));
+    vi.doMock('pdf-parse', () => ({PDFParse: class {
+      static setWorker() {}
+      getText() { return Promise.reject(failure); }
+      destroy = destroy;
+    }}));
+    const { extractPdfPages: isolatedExtract } = await import('../../../server/services/pdfText.js');
+    await expect(isolatedExtract(new Uint8Array(textPdf()))).rejects.toBe(failure);
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+});

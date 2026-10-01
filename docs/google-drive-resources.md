@@ -6,7 +6,9 @@ Marina stores original resources in the connected user's Google Drive. Neon keep
 
 On October 2, 2026, the Vercel CLI login was renewed and Marina project access verified. Production is linked to GitHub `Abkob/Marina`, branch `main`. The Google project is **Marina Drive** (`marina-drive`), with Drive, Calendar, and Tasks APIs enabled. The web client's credentials were updated in Vercel as **sensitive** variables; a missing readable `value` is not evidence that a setting is absent. Actual OAuth consent still needs a live connection check. The Inngest Vercel integration is connected to only Marina on **Hobby (Free)**, with event/signing keys installed for Production and Preview.
 
-Migrations M-028 and M-029 were applied to the production database using credentials retrieved from the linked Vercel project's production environment. Existing resource IDs, titles, URLs, and file references were checked before and after and preserved. No seed data was applied. The running application remains on the earlier release until deployment prerequisites pass.
+Migrations M-028 and M-029 were applied to the production database using credentials retrieved from the linked Vercel project's production environment. Existing resource IDs, titles, URLs, and file references were checked before and after and preserved. No seed data was applied. Commit `1fffe4e` deployed successfully to the production alias. Inngest automatically registered both functions, and recovery run `01M3WXDM40X47KQCAA1V3DGA20` completed successfully with the ten-minute schedule. Unsigned `/api/inngest` requests return 401 by design; the signed coordinator requests succeed.
+
+The first live upload saved its original and triggered Inngest, but PDF extraction reported a parser error. The saved 210-page PDF parsed locally, exposing a serverless dependency gap. The follow-up explicitly loads the bundled PDF worker and canvas support, distinguishes runtime failures from corrupt documents, and exercises real PDF extraction during deployment readiness checks. The existing resource should be retried after that fix deploys; uploading another copy is unnecessary. Google Drive still needs its separate connection in Marina before new uploads use Drive.
 
 Before migrating, a fresh private cloud backup was written, read back, and verified against a local recovery copy:
 
@@ -16,6 +18,8 @@ Before migrating, a fresh private cloud backup was written, read back, and verif
 - Local archive entry checksums verified; matching private cloud verification receipt retained. Recovery files are ignored by Git.
 
 A second backup was verified immediately before deployment: `marina-complete-before-drive-2026-10-01T23-29-11.600Z.marina-backup.zip`, SHA-256 `bd251a8b0b2045099d8f8a931dbb5eac7621358b655b633e35a66af9d1d83e22`. It contains 51 tables, 2,594 rows, and zero referenced originals. Private cloud read-back and local archive entry checksums both passed.
+
+After the first live upload, `marina-complete-before-drive-2026-10-01T23-43-54.697Z.marina-backup.zip` was verified in private cloud storage and locally, including the original PDF: 51 tables, 2,598 rows, one file, SHA-256 `9ac6e332577b555f67467260f70484e109e5fb3e92fe37bf23a386e607920425`.
 
 ## Connection and deployment
 
@@ -47,7 +51,9 @@ Coverage includes concurrent session creation/imports, duplicate finalization, m
 
 The October 2 recovery-schedule adjustment passed 82 focused upload lifecycle, readiness, and Drive client tests, TypeScript, and the serverless bundle/import check on Node 24.
 
-Live Google upload/consent, Inngest execution, and a deployed chat response remain required; synthetic tests cannot establish those account-specific results or guarantee zero defects.
+The PDF worker fix passed 16 parser/chunk tests and 39 real-PostgreSQL upload integration tests, plus TypeScript and the expanded serverless readiness check. Regression coverage includes actual text, blank pages, password protection, corrupt bytes, missing runtime dependencies, and parser cleanup after failure.
+
+Live Google upload/consent, successful PDF indexing after the worker fix, and a deployed chat response remain required; synthetic tests cannot establish those account-specific results or guarantee zero defects.
 
 ## References
 
@@ -56,3 +62,4 @@ Live Google upload/consent, Inngest execution, and a deployed chat response rema
 - [Google Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
 - [Inngest on Vercel](https://www.inngest.com/docs/durable-execution/deploying-functions/platforms/vercel)
 - [Inngest execution limits](https://www.inngest.com/docs/durable-execution/limits)
+- [PDF parser serverless worker setup](https://github.com/mehmet-kozan/pdf-parse/blob/main/docs/troubleshooting.md)

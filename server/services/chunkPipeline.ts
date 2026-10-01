@@ -4,6 +4,7 @@ import path from 'path';
 import { query, transaction } from '../db.js';
 import type pg from 'pg';
 import { DocumentError } from './uploadValidation.js';
+import { extractPdfPages } from './pdfText.js';
 
 const CHUNK_MAX_CHARS = 2000;
 const SUPPORTED_TEXT_EXTS = new Set(['.txt', '.md', '.csv']);
@@ -40,32 +41,16 @@ async function extractText(filePath: string, mimeType: string): Promise<Extracte
   const ext = path.extname(filePath).toLowerCase();
 
   if (mimeType === 'application/pdf' || ext === '.pdf') {
-    try {
-      // pdf-parse v2 exports the PDFParse class (there is no default-function
-      // export like v1 — calling the module as a function throws).
-      const { PDFParse } = await import('pdf-parse');
-      const buffer = await fs.readFile(filePath);
-      const parser = new PDFParse({ data: new Uint8Array(buffer) });
-      try {
-        const result = await parser.getText();
-        const pageOffsets: PageOffset[] = [];
-        let joined = '';
-        for (const page of result.pages) {
-          const start = joined.length;
-          joined += page.text;
-          pageOffsets.push({ num: page.num, start, end: joined.length });
-          joined += '\n\n';
-        }
-        return { text: joined, totalPages: result.total ?? result.pages.length, pageOffsets };
-      } finally {
-        await parser.destroy().catch(() => {});
-      }
-    } catch (err) {
-      if (/password|encrypted/i.test(`${(err as Error).name} ${(err as Error).message}`)) {
-        throw new DocumentError('encrypted_pdf', 'This PDF is password protected. Upload an unlocked copy to index its text.');
-      }
-      throw new DocumentError('corrupt_pdf', 'The PDF could not be read. The original file is preserved; try exporting a new PDF.');
+    const result = await extractPdfPages(new Uint8Array(await fs.readFile(filePath)));
+    const pageOffsets: PageOffset[] = [];
+    let joined = '';
+    for (const page of result.pages) {
+      const start = joined.length;
+      joined += page.text;
+      pageOffsets.push({ num: page.num, start, end: joined.length });
+      joined += '\n\n';
     }
+    return { text: joined, totalPages: result.total ?? result.pages.length, pageOffsets };
   }
 
   if (SUPPORTED_TEXT_EXTS.has(ext) || mimeType.startsWith('text/')) {
