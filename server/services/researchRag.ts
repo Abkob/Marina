@@ -29,7 +29,11 @@ export async function searchResearchEvidence(text: string, limit = 8): Promise<R
        FROM research_papers rp
        JOIN resources r ON r.id = rp.resource_id
        JOIN resource_chunks rc ON rc.resource_id = r.id
+       LEFT JOIN resource_drive_files df ON df.resource_id = r.id AND r.file_path LIKE 'gdrive://%'
+       LEFT JOIN resource_processing_jobs pj ON pj.resource_id = r.id
       WHERE ${activeResourceSql('r.id')}
+        AND (df.resource_id IS NULL OR (df.available AND pj.status='ready' AND r.file_validation='valid'))
+        AND (pj.resource_id IS NULL OR pj.status='ready')
       ORDER BY r.updated_at DESC NULLS LAST, rc.chunk_index ASC
       LIMIT 1000`,
   );

@@ -40,6 +40,7 @@ import { cronRouter } from './routes/cron.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { resourceWorkflowsRouter } from './routes/resourceWorkflows.js';
 import { googleWorkspaceOauthRouter, googleWorkspaceRouter } from './routes/google-workspace.js';
+import { googleDriveRouter } from './routes/google-drive.js';
 import { EMBED_DIMENSION, EMBED_MODEL } from './embeddingProvider.js';
 import { getProviderSummary, isNvidiaChatModel } from './config/providers.js';
 import { scheduleObsidianVaultSync, shouldSyncObsidianVaultForRequest } from './services/obsidianVaultSync.js';
@@ -133,6 +134,7 @@ export function createApp(): express.Express {
   app.use('/api/orchestrator', orchestratorRouter);
   app.use('/api/usage', usageRouter);
   app.use('/api/google', googleWorkspaceRouter);
+  app.use('/api/google-drive', googleDriveRouter);
 
   // POST /api/entity-summaries/backfill — generate deterministic planning summaries for all entities missing them
   app.post('/api/entity-summaries/backfill', async (_req, res) => {

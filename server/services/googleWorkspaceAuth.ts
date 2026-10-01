@@ -12,6 +12,7 @@ interface OAuthStatePayload {
   exp: number;
   nonce: string;
   return_to: string;
+  purpose?: 'drive';
 }
 
 interface GoogleTokenResponse {
@@ -36,7 +37,7 @@ function requiredSecret(name: 'token' | 'state'): string {
 }
 
 function safeReturnTo(value: string | undefined): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/?google=connected';
+  if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\x00-\x1f\x7f]/.test(value)) return '/?google=connected';
   return value;
 }
 
@@ -50,11 +51,12 @@ function safeEqual(left: string, right: string): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-export function createGoogleOAuthState(returnTo = '/?google=connected', now = Date.now()): string {
+export function createGoogleOAuthState(returnTo = '/?google=connected', now = Date.now(), purpose?: 'drive'): string {
   const payload: OAuthStatePayload = {
     exp: now + 10 * 60_000,
     nonce: crypto.randomBytes(18).toString('base64url'),
     return_to: safeReturnTo(returnTo),
+    ...(purpose ? { purpose } : {}),
   };
   const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   return `${encoded}.${signState(encoded)}`;
@@ -99,18 +101,18 @@ export function googleConfiguration() {
   return { configured: missing.length === 0, missing, redirect_uri: googleRedirectUri() };
 }
 
-export function buildGoogleAuthorizationUrl(returnTo?: string): string {
+export function buildGoogleAuthorizationUrl(returnTo?: string, options?: { scopes: string[]; purpose: 'drive' }): string {
   const config = googleConfiguration();
   if (!config.configured) throw new Error(`Google sync is not configured: ${config.missing.join(', ')}`);
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,
     redirect_uri: config.redirect_uri,
     response_type: 'code',
-    scope: GOOGLE_OAUTH_SCOPES.join(' '),
+    scope: (options?.scopes ?? GOOGLE_OAUTH_SCOPES).join(' '),
     access_type: 'offline',
     include_granted_scopes: 'true',
     prompt: 'consent',
-    state: createGoogleOAuthState(returnTo),
+    state: createGoogleOAuthState(returnTo, Date.now(), options?.purpose),
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
@@ -125,6 +127,7 @@ async function parseTokenResponse(response: Response): Promise<GoogleTokenRespon
 
 export async function exchangeGoogleAuthorizationCode(code: string): Promise<GoogleTokenResponse> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -140,6 +143,7 @@ export async function exchangeGoogleAuthorizationCode(code: string): Promise<Goo
 
 export async function refreshGoogleAccessToken(encryptedRefreshToken: string): Promise<string> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({

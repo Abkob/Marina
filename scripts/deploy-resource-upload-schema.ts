@@ -39,10 +39,11 @@ try {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('marina-schema-deploy'))");
     const current = (await client.query('SELECT current_database() AS name')).rows[0];
     if (current.name !== verified.manifest.database.name) throw new Error('Backup database name does not match the target');
-    const migration = await fsp.readFile(new URL('../server/migrations/028-resource-upload-lifecycle.sql', import.meta.url), 'utf8');
-    await client.query(migration);
+    for (const file of ['028-resource-upload-lifecycle.sql', '029-google-drive-resources.sql']) {
+      await client.query(await fsp.readFile(new URL(`../server/migrations/${file}`, import.meta.url), 'utf8'));
+    }
     await client.query('COMMIT');
-    console.log(JSON.stringify({ ok: true, migration: 'M-028-resource-upload-lifecycle', backup_sha256: digest, seeded: false }));
+    console.log(JSON.stringify({ ok: true, migrations: ['M-028-resource-upload-lifecycle', 'M-029-google-drive-resources'], backup_sha256: digest, seeded: false }));
   } catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; }
   finally { client.release(); }
 } finally { await pool.end(); }

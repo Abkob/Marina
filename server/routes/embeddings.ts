@@ -11,6 +11,7 @@ import {
 import { queueEmbeddingUpsert } from '../services/embeddingLifecycle.js';
 import { rateLimit } from '../utils/rateLimit.js';
 import { ALLOW_CLOUD_RAW_TEXT, PROVIDER_MODE } from '../config/providers.js';
+import { activeResourceSql } from '../utils/archiveVisibility.js';
 
 const router = Router();
 
@@ -244,6 +245,14 @@ router.post('/search', async (req, res) => {
         AND embedding_3072 IS NOT NULL
         AND embedding_model = $2
         AND embedding_dimension = $3
+        AND (entity_type <> 'resource_chunk' OR EXISTS (
+          SELECT 1 FROM resource_chunks c JOIN resources r ON r.id=c.resource_id
+          LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id
+          LEFT JOIN resource_drive_files d ON d.resource_id=r.id AND r.file_path LIKE 'gdrive://%'
+          WHERE c.id=embeddings.entity_id AND ${activeResourceSql('r.id')}
+            AND (j.resource_id IS NULL OR j.status='ready')
+            AND (d.resource_id IS NULL OR (d.available AND j.status='ready' AND r.file_validation='valid'))
+        ))
     `;
     const params: unknown[] = [vectorStr, EMBED_MODEL, EMBED_DIMENSION];
 

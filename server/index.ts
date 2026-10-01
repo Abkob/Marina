@@ -8,6 +8,7 @@ import { scheduleObsidianVaultSync } from './services/obsidianVaultSync.js';
 import { EMBED_DIMENSION, EMBED_MODEL } from './embeddingProvider.js';
 import { processPendingResources } from './services/resourceProcessing.js';
 import { reconcileUploads } from './services/resourceUploads.js';
+import { reconcileDriveResources } from './services/googleDrive.js';
 import {
   CHAT_HOST,
   CHAT_MODEL_PRIMARY,
@@ -87,6 +88,7 @@ async function startServer() {
         workerRunning = true;
         try {
           await reconcileUploads(3);
+          await reconcileDriveResources(3);
           await processPendingResources(3);
           const reclaimed = await reclaimExpiredJobs();
           if (reclaimed > 0) console.log(`[embedding-worker] reclaimed ${reclaimed} expired lease(s)`);

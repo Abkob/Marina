@@ -9,6 +9,6 @@ export const COPILOT_FEATURES = [
   { feature: 'tasks', read: ['find_tasks', 'task_details', 'workspace_context', 'overdue_tasks'], propose: ['create_task', 'break_down_task', 'update_task'],
     meaning: 'Finishable work with estimates, status, dependencies, parent/child hierarchy, goal/milestone links, start dates and deadlines. Archived branches stay hidden.' },
   { feature: 'goals_and_milestones', read: ['workspace_context'], propose: ['create_goal', 'create_goal_with_tasks', 'update_goal', 'create_milestone'], meaning: 'Longer outcomes and intermediate deadlines, containing tasks.' },
-  { feature: 'resources', read: ['research_search', 'workspace_context'], propose: ['attach_resource'], meaning: 'Saved library content with cited evidence and links to goals/tasks/milestones; not web search.' },
+  { feature: 'resources', read: ['search_documents', 'research_search', 'workspace_context'], propose: ['attach_resource'], meaning: 'Search ready Resource Library passages, including imported Google Drive documents, with citations and source freshness. Research search narrows to registered papers. Resources link to goals/tasks/milestones; this does not search the web or unimported Drive files.' },
   { feature: 'journal_and_settings', read: ['workspace_context'], meaning: 'Journal and capacity sections expose saved facts. Journal editing, schedule preferences, integrations and focus timer controls are available in their app pages; no chat mutation tool is currently exposed for them.' },
 ] as const;

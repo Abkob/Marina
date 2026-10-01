@@ -10,6 +10,9 @@ import { uploadError, enqueueResourceJob } from './resourceUploads.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDriveReference, driveFileId, getDriveFile, DRIVE_NATIVE_TYPES } from './googleDriveClient.js';
+import { driveToken, syncDriveResource } from './googleDrive.js';
+import { EMBED_MODEL, EMBED_DIMENSION } from '../embeddingProvider.js';
 
 type Job = { id: string; resource_id: string; version: number; stage: 'extract' | 'embed'; attempts: number; lease_token: string };
 class LeaseLost extends Error {}
@@ -66,13 +69,28 @@ export async function processResourceJob(id: string, version?: number): Promise<
       file_path: string | null; original_name: string | null; mime_type: string | null; file_size: string | null;
     }>('SELECT file_path,original_name,mime_type,file_size FROM resources WHERE id=$1', [job.resource_id])).rows[0];
     if (!resource?.file_path) throw new DocumentError('missing_file', 'The stored original could not be found.');
+    if (isDriveReference(resource.file_path)) {
+      await syncDriveResource(job.resource_id);
+      await transaction(client => assertLease(client, job));
+    }
     if (job.stage === 'extract') {
       const file = await materializeStoredFile(resource.file_path, resource.original_name ?? 'resource.bin');
       try {
+        if (isDriveReference(resource.file_path)) {
+          const current = await getDriveFile(await driveToken(), driveFileId(resource.file_path));
+          const source = (await query<{ source_version: string; source_mime: string }>('SELECT source_version,source_mime FROM resource_drive_files WHERE resource_id=$1', [job.resource_id])).rows[0];
+          if (current.version !== source?.source_version) {
+            await syncDriveResource(job.resource_id);
+            throw new LeaseLost('Drive source changed while downloading');
+          }
+          // Google regenerates native PDF exports, whose byte length can vary
+          // without a source edit. Validate this bounded export's actual size.
+          if (DRIVE_NATIVE_TYPES.has(source.source_mime)) resource.file_size = String((await fs.stat(file.path)).size);
+        }
         await validateStoredContent(file.path, resource.mime_type!, Number(resource.file_size));
         await transaction(async client => {
           await assertLease(client, job);
-          await client.query("UPDATE resources SET file_validation='valid' WHERE id=$1", [job.resource_id]);
+          await client.query("UPDATE resources SET file_validation='valid',file_size=$2 WHERE id=$1", [job.resource_id, resource.file_size]);
         });
         if (resource.mime_type?.startsWith('image/')) {
           await settle(job, 'unsupported', 'ocr_required', 'Image saved. Text search needs OCR, which is not enabled.');
@@ -91,14 +109,14 @@ export async function processResourceJob(id: string, version?: number): Promise<
       const { rows: chunks } = await query<{ id: string }>(
         `SELECT c.id FROM resource_chunks c WHERE c.resource_id=$1 AND NOT EXISTS
           (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id
-           AND e.embedding_3072 IS NOT NULL AND e.is_stale=false)
-         ORDER BY c.chunk_index LIMIT 3`, [job.resource_id],
+           AND e.embedding_3072 IS NOT NULL AND e.is_stale=false AND e.embedding_model=$2 AND e.embedding_dimension=$3)
+         ORDER BY c.chunk_index LIMIT 3`, [job.resource_id, EMBED_MODEL, EMBED_DIMENSION],
       );
       for (const chunk of chunks) await embedEntity('resource_chunk', chunk.id, 'full_text', client => assertLease(client, job));
       const { rows: remaining } = await query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM resource_chunks c WHERE c.resource_id=$1 AND NOT EXISTS
           (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id
-           AND e.embedding_3072 IS NOT NULL AND e.is_stale=false)`, [job.resource_id],
+           AND e.embedding_3072 IS NOT NULL AND e.is_stale=false AND e.embedding_model=$2 AND e.embedding_dimension=$3)`, [job.resource_id, EMBED_MODEL, EMBED_DIMENSION],
       );
       await settle(job, Number(remaining[0].count) ? 'queued' : 'ready');
     }
@@ -181,8 +199,8 @@ export async function getResourceProcessing(resourceId: string) {
     `SELECT r.file_validation,r.original_name,r.mime_type,r.file_size,j.status,j.stage,j.attempts,j.error_code,j.error,j.updated_at,
        (SELECT COUNT(*)::int FROM resource_chunks WHERE resource_id=r.id) AS chunks,
        (SELECT COUNT(*)::int FROM resource_chunks c WHERE c.resource_id=r.id AND EXISTS
-         (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id AND NOT e.is_stale AND e.embedding_3072 IS NOT NULL)) AS embedded
-     FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id WHERE r.id=$1`, [resourceId],
+         (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id AND NOT e.is_stale AND e.embedding_3072 IS NOT NULL AND e.embedding_model=$2 AND e.embedding_dimension=$3)) AS embedded
+     FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id WHERE r.id=$1`, [resourceId, EMBED_MODEL, EMBED_DIMENSION],
   );
   if (!rows.length) throw uploadError('Resource not found', 404);
   const row = rows[0];

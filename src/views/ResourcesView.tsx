@@ -8,6 +8,7 @@ import { FileViewerModal } from '../components/FileViewerModal';
 import { ResourceTypeIcon } from '../components/ResourceMentionPicker';
 import { ResourceProfilePage } from './ResourceProfilePage';
 import { ResourceUploadPanel } from '../components/ResourceUploadPanel';
+import { GoogleDriveResources } from '../components/GoogleDriveResources';
 import { canPreviewResource, resourceMime } from '../utils/resourceFiles';
 import {
   createStandaloneResource, deleteResource,
@@ -389,6 +390,7 @@ export function ResourcesView() {
         </div>
 
         {/* Stats strip */}
+        <GoogleDriveResources onImported={() => invalidate.resources()} />
         <StatsStrip resources={resources} />
 
         {/* Add panel (collapsible) */}

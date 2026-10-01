@@ -7,6 +7,7 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { del, get, head, issueSignedToken, presignUrl } from '@vercel/blob';
 import { isBlobStorageConfigured } from '../runtime.js';
+import { isDriveReference } from './googleDriveClient.js';
 
 const PRIVATE_BLOB_URL = /^https:\/\/[a-z0-9-]+\.private\.blob\.vercel-storage\.com\//i;
 
@@ -34,6 +35,10 @@ export function parseFileRange(range: string | undefined, size: number): { start
 
 type StoredFile = { stream: Readable; contentType: string | null; size: number; etag: string | null; statusCode?: number; contentRange?: string };
 export async function openStoredFile(reference: string, rangeHeader?: string): Promise<StoredFile | null> {
+  if (isDriveReference(reference)) {
+    const { openDriveStoredFile } = await import('./googleDrive.js');
+    return openDriveStoredFile(reference, rangeHeader);
+  }
   if (isPrivateBlobReference(reference)) {
     if (rangeHeader) {
       const metadata = await verifyPrivateBlob(reference);
@@ -72,6 +77,8 @@ export async function openStoredFile(reference: string, rangeHeader?: string): P
 
 export async function deleteStoredFile(reference: string | null | undefined): Promise<void> {
   if (!reference) return;
+  // Removing a library entry never deletes the user's Drive original.
+  if (isDriveReference(reference)) return;
   if (isPrivateBlobReference(reference)) {
     if (isBlobStorageConfigured()) await del(reference);
     return;
@@ -82,7 +89,7 @@ export async function deleteStoredFile(reference: string | null | undefined): Pr
 }
 
 export async function materializeStoredFile(reference: string, originalName = 'upload.bin') {
-  if (!isPrivateBlobReference(reference)) {
+  if (!isPrivateBlobReference(reference) && !isDriveReference(reference)) {
     return { path: reference, cleanup: async () => undefined };
   }
   const opened = await openStoredFile(reference);

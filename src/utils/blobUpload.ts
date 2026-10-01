@@ -7,8 +7,9 @@ export { MAX_UPLOAD_BYTES, UPLOAD_ACCEPT } from '../../shared/uploadPolicy';
 export type UploadProgress = { phase: 'preparing' | 'uploading' | 'saving'; percentage?: number };
 export type UploadProgressListener = (progress: UploadProgress) => void;
 
-type UploadCapabilities = { private_blob: boolean; max_bytes: number; local_uploads?: boolean };
+type UploadCapabilities = { private_blob: boolean; max_bytes: number; local_uploads?: boolean; google_drive?: boolean; drive_reconnect_required?: boolean };
 let capabilitiesPromise: Promise<UploadCapabilities> | null = null;
+export function resetUploadCapabilities() { capabilitiesPromise = null; }
 
 async function capabilities(): Promise<UploadCapabilities> {
   capabilitiesPromise ??= apiFetch<UploadCapabilities>('/api/uploads/capabilities', {
@@ -57,7 +58,7 @@ export async function uploadToPrivateBlob(file: File, kind: 'resource' | 'note',
   });
 }
 
-type ResourceIntent = { id: string; pathname: string; state: string };
+type ResourceIntent = { id: string; pathname: string; state: string; storage_provider?: 'blob' | 'drive' };
 type UploadSession = { requestKey: string; intent?: ResourceIntent; transferred?: boolean; pending?: Promise<string> };
 const resourceSessions = new WeakMap<File, Map<string, UploadSession>>();
 
@@ -81,7 +82,8 @@ async function performResourceUpload(file: File, session: UploadSession, onProgr
   onProgress?.({ phase: 'preparing' });
   const available = await capabilities();
   validateUploadFile(file, available.max_bytes);
-  if (!available.private_blob && available.local_uploads === false) { capabilitiesPromise = null; throw new Error('Cloud file storage is unavailable. Please try again later.'); }
+  if (available.drive_reconnect_required) { resetUploadCapabilities(); throw new Error('Reconnect Google Drive in Resource Library before uploading.'); }
+  if (!available.google_drive && !available.private_blob && available.local_uploads === false) { capabilitiesPromise = null; throw new Error('Cloud file storage is unavailable. Please try again later.'); }
   const post = <T>(url: string, body: unknown) => apiFetch<T>(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
   });
@@ -97,6 +99,11 @@ async function performResourceUpload(file: File, session: UploadSession, onProgr
     const result = await post<{ id: string }>(`/api/uploads/resources/${intent.id}/complete`, {});
     return result.id;
   };
+  if (intent.storage_provider === 'drive') {
+    const { uploadDriveChunks } = await import('./driveUpload');
+    await uploadDriveChunks(file, intent.id, onProgress);
+    return complete();
+  }
   if (available.private_blob) {
     // A previous transfer may have succeeded even if its response was lost.
     if (session.transferred) return complete();

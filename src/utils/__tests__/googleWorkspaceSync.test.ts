@@ -21,6 +21,9 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('Google Workspace OAuth safety', () => {
+  it.each(['/\\attacker.example', '/\n/attacker.example', '/\t/attacker.example', '//attacker.example', 'https://attacker.example'])('keeps authorization return paths on Marina: %j', returnTo => {
+    expect(verifyGoogleOAuthState(createGoogleOAuthState(returnTo)).return_to).toBe('/?google=connected');
+  });
   it('encrypts refresh tokens with authenticated encryption', () => {
     const encrypted = encryptGoogleRefreshToken('refresh-token-secret');
     expect(encrypted).not.toContain('refresh-token-secret');

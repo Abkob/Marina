@@ -3,6 +3,7 @@ import { serve } from 'inngest/express';
 import { resourceInngest, durableProcessingConfigured, dispatchResourceEvents, reconcileResourceDispatch } from '../services/resourceDispatch.js';
 import { processResourceJob } from '../services/resourceProcessing.js';
 import { reconcileUploads } from '../services/resourceUploads.js';
+import { reconcileDriveResources } from '../services/googleDrive.js';
 
 export const processDocument = resourceInngest.createFunction({
   id: 'process-resource-stage', triggers: [{ event: 'marina/resource.process' }],
@@ -20,6 +21,7 @@ export const recoverDocuments = resourceInngest.createFunction({
   concurrency: { limit: 1 },
 }, async ({ step }) => {
   await step.run('recover-transfers', () => reconcileUploads());
+  await step.run('sync-drive-documents', () => reconcileDriveResources());
   await step.run('recover-jobs', () => reconcileResourceDispatch());
   return step.run('deliver-outbox', () => dispatchResourceEvents());
 });

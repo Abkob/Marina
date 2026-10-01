@@ -13,7 +13,7 @@ import { openStoredFile } from './fileStorage.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = path.resolve(__dirname, '..', 'schema.sql');
 const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
-const NON_PORTABLE_SECRET_TABLES = new Set(['google_sync_connections', 'google_sync_links']);
+const NON_PORTABLE_SECRET_TABLES = new Set(['google_sync_connections', 'google_sync_links', 'google_drive_connection', 'google_drive_oauth_states', 'resource_drive_uploads']);
 
 export const PORTABLE_BACKUP_FORMAT = 'marina-portable-backup' as const;
 export const PORTABLE_BACKUP_VERSION = 1;

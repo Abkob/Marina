@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({ resources: vi.fn(), retry: vi.fn(), open: vi.f
 vi.mock('../../api/hooks', () => ({ useAllResources: mocks.resources, useInvalidate: () => vi.fn() }));
 vi.mock('../../store/useAppStore', () => ({ useAppStore: () => ({ focusedResourceId: null, setFocusedResourceId: mocks.open, triggerToast: vi.fn(), showConfirm: vi.fn() }) }));
 vi.mock('../../views/ResourceProfilePage', () => ({ ResourceProfilePage: () => null }));
+vi.mock('../GoogleDriveResources', () => ({ GoogleDriveResources: () => null }));
 vi.mock('../FileViewerModal', () => ({ FileViewerModal: ({ name }: { name: string }) => <div role="dialog" aria-label={`Preview ${name}`} /> }));
 import { ResourcesView } from '../../views/ResourcesView';
 beforeEach(() => vi.clearAllMocks());

@@ -46,7 +46,7 @@ export async function embedQuery(text: string): Promise<number[]> {
   const response = await getClient().models.embedContent({
     model: EMBED_MODEL,
     contents: `task: search result | query: ${text}`,
-    config: { outputDimensionality: EMBED_DIMENSION },
+    config: { outputDimensionality: EMBED_DIMENSION, httpOptions: { timeout: 30_000 } },
   });
   return extractEmbedding(response);
 }

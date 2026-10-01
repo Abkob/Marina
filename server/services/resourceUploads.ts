@@ -14,6 +14,7 @@ export type UploadIntentInput = {
 export type UploadIntent = UploadIntentInput & {
   id: string; pathname: string; state: 'uploading' | 'completed' | 'expired' | 'deleted';
   expires_at: Date; size: number;
+  storage_provider: 'blob' | 'drive';
 };
 export const uploadError = (message: string, status = 400) => Object.assign(new Error(message), { status });
 
@@ -27,7 +28,7 @@ async function checkTarget(client: Pick<pg.PoolClient, 'query'>, input: UploadIn
   return rows.length > 0;
 }
 
-export async function createUploadIntent(input: UploadIntentInput, legacyPath?: string): Promise<UploadIntent> {
+export async function createUploadIntent(input: UploadIntentInput, legacyPath?: string, storageProvider: 'blob' | 'drive' = 'blob'): Promise<UploadIntent> {
   try { validateUploadMetadata(input.original_name, input.size, input.mime_type); }
   catch (err) { throw uploadError((err as Error).message); }
   if (!input.request_key || input.request_key.length > 200) throw uploadError('Invalid upload request key');
@@ -35,9 +36,9 @@ export async function createUploadIntent(input: UploadIntentInput, legacyPath?: 
     const id = crypto.randomUUID();
     const pathname = legacyPath ?? `marina/resource/${id}${path.extname(input.original_name).toLowerCase()}`;
     const { rows } = await client.query<UploadIntent>(
-      `INSERT INTO resource_uploads (id,request_key,pathname,original_name,mime_type,size,attach_to_id,attach_to_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (request_key) DO UPDATE SET request_key=EXCLUDED.request_key RETURNING *`,
-      [id, input.request_key, pathname, input.original_name, input.mime_type, input.size, input.attach_to_id ?? null, input.attach_to_type ?? null],
+      `INSERT INTO resource_uploads (id,request_key,pathname,original_name,mime_type,size,attach_to_id,attach_to_type,storage_provider)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (request_key) DO UPDATE SET request_key=EXCLUDED.request_key RETURNING *`,
+      [id, input.request_key, pathname, input.original_name, input.mime_type, input.size, input.attach_to_id ?? null, input.attach_to_type ?? null, storageProvider],
     );
     const intent = rows[0];
     if (intent.original_name !== input.original_name || intent.mime_type !== input.mime_type || Number(intent.size) !== input.size
@@ -73,7 +74,8 @@ export async function enqueueResourceJob(client: pg.PoolClient, resourceId: stri
 
 // Only trusted storage metadata enters this transaction. No object is deleted on
 // failure: the intent makes the uploaded bytes recoverable and safe to retry.
-async function commitUpload(id: string, stored: { reference: string; pathname?: string; size: number; contentType: string }, localValidated = false) {
+export async function commitUpload(id: string, stored: { reference: string; pathname?: string; size: number; contentType: string }, localValidated = false,
+  beforeCommit?: (client: pg.PoolClient) => Promise<void>) {
   return transaction(async client => {
     const { rows } = await client.query<UploadIntent>('SELECT * FROM resource_uploads WHERE id=$1 FOR UPDATE', [id]);
     const intent = rows[0];
@@ -100,6 +102,7 @@ async function commitUpload(id: string, stored: { reference: string; pathname?: 
        VALUES ($1,$2,'resource',$3,$4,'attached_to',NULL,$5)`,
       [crypto.randomUUID(), id, intent.attach_to_id, intent.attach_to_type, now],
     );
+    await beforeCommit?.(client);
     await enqueueResourceJob(client, id);
     await client.query("UPDATE resource_uploads SET state='completed',completed_at=NOW() WHERE id=$1", [id]);
     return { id, already_saved: false };
@@ -109,6 +112,7 @@ async function commitUpload(id: string, stored: { reference: string; pathname?: 
 export async function finalizeBlobUpload(id: string, supplied?: { url: string; pathname: string }) {
   const intent = await getUploadIntent(id);
   assertUploadOpen(intent);
+  if (intent.storage_provider === 'drive') throw uploadError('This upload must be completed in Google Drive.', 409);
   if (supplied && supplied.pathname !== intent.pathname) throw uploadError('Upload path does not match');
   // Retry of a lost success response needs neither another transfer nor HEAD.
   if (intent.state === 'completed') return { id, already_saved: true };
@@ -124,6 +128,7 @@ export async function finalizeBlobUpload(id: string, supplied?: { url: string; p
 }
 
 export async function finalizeLocalUpload(id: string, file: { path: string; size: number; mimetype: string }) {
+  if ((await getUploadIntent(id)).storage_provider === 'drive') throw uploadError('This upload uses Google Drive.', 409);
   return commitUpload(id, { reference: file.path, size: file.size, contentType: file.mimetype }, true);
 }
 
@@ -142,7 +147,6 @@ export async function registerLegacyBlob(input: Omit<UploadIntentInput, 'request
 }
 
 export async function reconcileUploads(limit = 10): Promise<number> {
-  if (!isBlobStorageConfigured()) return 0;
   // No deletion: expired intents retain their identity for inspection/recovery.
   const { rows } = await query<{ id: string }>(
     `WITH candidates AS (SELECT id FROM resource_uploads WHERE state='uploading'
@@ -152,7 +156,15 @@ export async function reconcileUploads(limit = 10): Promise<number> {
   );
   let recovered = 0;
   for (const { id } of rows) {
-    try { await finalizeBlobUpload(id); recovered++; }
+    try {
+      const intent = await getUploadIntent(id);
+      if (intent.storage_provider === 'drive') {
+        const { finalizeDriveUpload } = await import('./googleDrive.js');
+        await finalizeDriveUpload(id);
+      } else if (isBlobStorageConfigured()) await finalizeBlobUpload(id);
+      else continue;
+      recovered++;
+    }
     catch (error) {
       if ((error as { status?: number }).status === 410) {
         await query("UPDATE resource_uploads SET state='expired' WHERE id=$1 AND state='uploading'", [id]);

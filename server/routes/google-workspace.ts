@@ -40,6 +40,14 @@ oauthRouter.get('/callback', async (req, res) => {
     if (typeof req.query.state !== 'string') throw new Error('Missing Google authorization state');
     const state = verifyGoogleOAuthState(req.query.state);
     returnTo = state.return_to;
+    if (state.purpose === 'drive') {
+      const { consumeDriveAuthorization, saveDriveAuthorization } = await import('../services/googleDrive.js');
+      await consumeDriveAuthorization(state.nonce);
+      if (typeof req.query.error === 'string') throw new Error('Google Drive authorization was cancelled.');
+      if (typeof req.query.code !== 'string') throw new Error('Google did not return an authorization code');
+      await saveDriveAuthorization(await exchangeGoogleAuthorizationCode(req.query.code));
+      return res.redirect(303, callbackRedirect(returnTo, 'connected'));
+    }
     if (typeof req.query.error === 'string') throw new Error(`Google authorization was not completed: ${req.query.error}`);
     if (typeof req.query.code !== 'string') throw new Error('Google did not return an authorization code');
     if (!(await googleSyncSchemaReady())) throw new Error('Google sync tables have not been enabled yet');
