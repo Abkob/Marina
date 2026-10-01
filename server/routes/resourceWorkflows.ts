@@ -17,7 +17,9 @@ export const processDocument = resourceInngest.createFunction({
 });
 
 export const recoverDocuments = resourceInngest.createFunction({
-  id: 'recover-resource-work', triggers: [{ cron: '* * * * *' }], retries: 3,
+  // Four steps plus the run use five executions. Ten-minute recovery leaves
+  // room for uploads within Hobby's monthly allowance; uploads dispatch immediately.
+  id: 'recover-resource-work', triggers: [{ cron: '*/10 * * * *' }], retries: 3,
   concurrency: { limit: 1 },
 }, async ({ step }) => {
   await step.run('recover-transfers', () => reconcileUploads());
