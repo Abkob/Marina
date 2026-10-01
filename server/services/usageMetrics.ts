@@ -4,6 +4,7 @@ import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import { getPool, query } from '../db.js';
 import { getObsidianVaultDir } from './obsidianVaultSync.js';
+import { isVercelRuntime } from '../runtime.js';
 
 export type TableUsage = {
   table: string;
@@ -29,7 +30,7 @@ const FEATURE_TABLES: Array<{ key: string; label: string; description: string; t
   },
   {
     key: 'resources', label: 'Resources & research', description: 'Resource records, extracted chunks, research papers, and claims.',
-    tables: ['resources', 'resource_chunks', 'resource_logs', 'research_papers', 'research_claims'],
+    tables: ['resources', 'resource_chunks', 'resource_logs', 'resource_uploads', 'resource_processing_jobs', 'resource_outbox', 'research_papers', 'research_claims'],
   },
   {
     key: 'ai', label: 'AI & semantic memory', description: 'Embeddings, summaries, extracted facts, proposals, and chat history.',
@@ -99,6 +100,20 @@ async function directoryUsage(root: string): Promise<{ bytes: number; files: num
   return { bytes, files, available: true };
 }
 
+async function uploadedFileUsage() {
+  if (!isVercelRuntime) return directoryUsage(path.resolve(process.cwd(), 'server', 'uploads'));
+  const { rows } = await query<{ bytes: string; files: number; unknown: number }>(
+    `SELECT COALESCE(SUM(size),0)::text AS bytes,COUNT(*)::int AS files,
+       COUNT(*) FILTER (WHERE size IS NULL)::int AS unknown FROM (
+       SELECT file_path,MAX(size) AS size FROM (
+         SELECT file_path,file_size AS size FROM resources WHERE file_path IS NOT NULL
+         UNION ALL SELECT file_path,size FROM task_note_files WHERE file_path IS NOT NULL
+       ) references_with_sizes GROUP BY file_path
+     ) unique_files`,
+  );
+  return { bytes: Number(rows[0].bytes), files: rows[0].files, available: true, source: 'cloud', unknown: rows[0].unknown };
+}
+
 let lastCpuSample: { usage: NodeJS.CpuUsage; at: bigint } | null = null;
 
 function sampleCpu(): number | null {
@@ -139,7 +154,7 @@ export async function collectUsageMetrics() {
        ORDER BY pg_total_relation_size(relid) DESC`,
     ),
     query<{ status: string; count: string }>('SELECT status, COUNT(*)::bigint::text AS count FROM embedding_jobs GROUP BY status'),
-    directoryUsage(path.resolve(process.cwd(), 'server', 'uploads')),
+    uploadedFileUsage(),
     directoryUsage(getObsidianVaultDir()),
     directoryUsage(path.resolve(process.cwd(), 'backups')),
   ]);

@@ -185,8 +185,8 @@ async function getStoredFiles(client: pg.PoolClient): Promise<StoredFileRow[]> {
   const { rows } = await client.query<Omit<StoredFileRow, 'archive_path'>>(`
     SELECT 'resource'::text AS kind,
            id,
-           COALESCE(NULLIF(title, ''), id) AS original_name,
-           NULL::text AS mime_type,
+           COALESCE(NULLIF(to_jsonb(resources)->>'original_name', ''), NULLIF(title, ''), id) AS original_name,
+           to_jsonb(resources)->>'mime_type' AS mime_type,
            file_path
       FROM resources
      WHERE file_path IS NOT NULL

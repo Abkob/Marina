@@ -7,9 +7,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { FileViewerModal } from '../components/FileViewerModal';
 import { ResourceTypeIcon } from '../components/ResourceMentionPicker';
 import { ResourceProfilePage } from './ResourceProfilePage';
+import { ResourceUploadPanel } from '../components/ResourceUploadPanel';
+import { canPreviewResource, resourceMime } from '../utils/resourceFiles';
 import {
   createStandaloneResource, deleteResource,
-  updateResource, nextReadState, uploadResourceFile,
+  updateResource, nextReadState,
 } from '../db/queries/resources';
 import { useAllResources, useInvalidate } from '../api/hooks';
 import { useAppStore } from '../store/useAppStore';
@@ -41,17 +43,6 @@ const TYPE_ACCENTS: Record<string, string> = {
   figma: '#f97316', other: '#9ca3af',
 };
 
-const VIEWABLE = new Set(['pdf','png','jpg','jpeg','gif','webp','svg','md','txt']);
-function extOf(url: string) {
-  try { return new URL(url).pathname.split('.').pop()?.toLowerCase() ?? ''; }
-  catch { return url.split('.').pop()?.toLowerCase() ?? ''; }
-}
-function mimeOf(url: string) {
-  const e = extOf(url);
-  const m: Record<string,string> = { pdf:'application/pdf', png:'image/png', jpg:'image/jpeg',
-    jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', svg:'image/svg+xml', md:'text/markdown', txt:'text/plain' };
-  return m[e] ?? 'application/octet-stream';
-}
 
 type SortKey = 'newest' | 'oldest' | 'az' | 'type' | 'readstate';
 
@@ -131,7 +122,7 @@ function ResourceCard({
   onDelete: (r: DBResource) => void;
   onReadStateChange: (r: DBResource, state: ResourceReadState) => void;
 }) {
-  const canView = resource.url ? VIEWABLE.has(extOf(resource.url)) : false;
+  const canView = canPreviewResource(resource);
   const isLink  = resource.url?.startsWith('http');
   const tags    = parseTags(resource.tags_json ?? '[]').slice(0, 3);
   const accent  = TYPE_ACCENTS[resource.type] ?? '#9ca3af';
@@ -147,6 +138,7 @@ function ResourceCard({
       tabIndex={0}
       aria-label={`Open resource ${resource.title}`}
       onKeyDown={e => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onOpen(resource);
@@ -174,6 +166,8 @@ function ResourceCard({
             </div>
           </div>
 
+          {resource.file_validation === 'pending' && <p className="mb-1 text-xs text-gray-500">Checking file…</p>}
+          {(resource.file_validation === 'invalid' || resource.processing_status === 'failed') && <p className="mb-1 text-xs text-red-600">{resource.file_validation === 'invalid' ? 'File needs attention' : 'Indexing needs attention'}</p>}
           {resource.info && (
             <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed mb-1.5">{resource.info}</p>
           )}
@@ -199,27 +193,28 @@ function ResourceCard({
 
       {/* Hover action strip */}
       <div
-        className="flex items-center gap-1 px-4 py-2 border-t border-gray-50 opacity-0 group-hover/card:opacity-100 transition-opacity"
+        className="flex items-center gap-1 px-4 py-1 border-t border-gray-50 opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100 transition-opacity"
         onClick={e => e.stopPropagation()}
       >
         {canView && resource.url && (
           <button onClick={() => onView(resource)}
             aria-label={`Preview ${resource.title}`}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
-            <Eye size={11} /> Preview
+            className="min-h-11 min-w-11 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-[#4648d4]/40 transition-colors">
+            <Eye size={13} /> <span className="hidden sm:inline">Preview</span>
           </button>
         )}
         {isLink && resource.url && (
           <a href={resource.url} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            aria-label={`Open ${resource.title}`}
+            className="min-h-11 min-w-11 flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-[#4648d4]/40 transition-colors"
             onClick={e => e.stopPropagation()}>
-            <ExternalLink size={11} /> Open
+            <ExternalLink size={13} /> <span className="hidden sm:inline">Open</span>
           </a>
         )}
         <button onClick={() => onDelete(resource)}
           aria-label={`Delete resource ${resource.title}`}
-          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-300 hover:bg-red-50 hover:text-red-400 transition-colors">
-          <Trash2 size={11} /> Delete
+          className="min-h-11 min-w-11 ml-auto flex items-center justify-center gap-1 rounded-md px-2 py-1 text-[10px] font-mono text-gray-300 hover:bg-red-50 hover:text-red-400 focus-visible:ring-2 focus-visible:ring-red-200 transition-colors">
+          <Trash2 size={13} /> <span className="hidden sm:inline">Delete</span>
         </button>
       </div>
     </motion.div>
@@ -227,15 +222,14 @@ function ResourceCard({
 }
 
 // ─── Add panel ────────────────────────────────────────────────────────────────
-function AddPanel({ onAdded }: { onAdded: () => void }) {
+function AddPanel({ onAdded, onUploaded, onBusyChange }: { onAdded: () => void; onUploaded: () => void; onBusyChange: (busy: boolean) => void }) {
   const [tab, setTab]         = useState<'link' | 'upload'>('link');
   const [title, setTitle]     = useState('');
   const [type, setType]       = useState<ResourceType>('paper');
   const [url, setUrl]         = useState('');
   const [info, setInfo]       = useState('');
   const [busy, setBusy]       = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const { triggerToast } = useAppStore();
 
@@ -254,17 +248,6 @@ function AddPanel({ onAdded }: { onAdded: () => void }) {
     } finally { setBusy(false); }
   };
 
-  const handleUpload = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setBusy(true);
-    try {
-      await Promise.all(Array.from(files).map(f => uploadResourceFile(f)));
-      triggerToast(`${files.length} file${files.length > 1 ? 's' : ''} uploaded.`, 'success');
-      onAdded();
-    } catch { triggerToast('Upload failed.', 'error'); }
-    finally { setBusy(false); }
-  };
-
   return (
     <div className="rounded-xl border border-[#4648d4]/20 bg-[#EEF2FF]/30 p-5 mb-6">
       {/* Tabs */}
@@ -273,7 +256,7 @@ function AddPanel({ onAdded }: { onAdded: () => void }) {
           { key: 'link' as const,   icon: Link2,   label: 'Link / Text' },
           { key: 'upload' as const, icon: Upload,  label: 'Upload File' },
         ].map(({ key, icon: Icon, label }) => (
-          <button key={key} onClick={() => setTab(key)}
+          <button key={key} onClick={() => setTab(key)} disabled={uploadBusy}
             aria-pressed={tab === key}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-mono text-[10px] font-bold uppercase tracking-wide transition-all ${
               tab === key ? 'bg-[#4648d4] text-white shadow-sm' : 'text-gray-400 hover:text-gray-700'
@@ -320,42 +303,7 @@ function AddPanel({ onAdded }: { onAdded: () => void }) {
       )}
 
       {tab === 'upload' && (
-        <div>
-          <input ref={fileRef} type="file" multiple className="hidden" aria-label="Upload resource files"
-            onChange={e => handleUpload(e.currentTarget.files)} />
-          <div
-            onDragOver={e => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={e => { e.preventDefault(); setDragging(false); handleUpload(e.dataTransfer.files); }}
-            onClick={() => fileRef.current?.click()}
-            role="button"
-            tabIndex={0}
-            aria-label="Upload resource files"
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fileRef.current?.click();
-              }
-            }}
-            className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-12 cursor-pointer transition-all ${
-              dragging
-                ? 'border-[#4648d4] bg-[#EEF2FF]/60'
-                : 'border-gray-200 bg-white hover:border-[#4648d4]/40 hover:bg-[#EEF2FF]/20'
-            }`}
-          >
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${dragging ? 'bg-[#4648d4]' : 'bg-gray-100'}`}>
-              <Upload size={18} className={dragging ? 'text-white' : 'text-gray-400'} />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-semibold text-gray-700">
-                {busy ? 'Uploading…' : dragging ? 'Drop to upload' : 'Drop files here or click to browse'}
-              </p>
-              <p className="mt-0.5 font-mono text-[10px] text-gray-400">
-                PDF, images, documents, any file · max 50 MB each
-              </p>
-            </div>
-          </div>
-        </div>
+        <ResourceUploadPanel onUploaded={onUploaded} onBusyChange={value => { setUploadBusy(value); onBusyChange(value); }} />
       )}
     </div>
   );
@@ -368,9 +316,10 @@ export function ResourcesView() {
   const [readFilter, setReadFilter] = useState<ResourceReadState | 'all'>('all');
   const [sort, setSort]             = useState<SortKey>('newest');
   const [showAdd, setShowAdd]       = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
   const [viewing, setViewing]       = useState<DBResource | null>(null);
   const { showConfirm, triggerToast, focusedResourceId, setFocusedResourceId } = useAppStore();
-  const { data: resources = [] } = useAllResources();
+  const { data: resources = [], isError, isFetching, refetch } = useAllResources();
   const invalidate = useInvalidate();
 
   // All hooks must run unconditionally — early return comes after
@@ -425,6 +374,7 @@ export function ResourcesView() {
           </div>
           <button
             onClick={() => setShowAdd(v => !v)}
+            disabled={uploadBusy}
             aria-expanded={showAdd}
             aria-label={showAdd ? 'Close add resource panel' : 'Open add resource panel'}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs font-bold uppercase tracking-widest transition-all shadow-sm ${
@@ -451,7 +401,7 @@ export function ResourcesView() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <AddPanel onAdded={() => { invalidate.resources(); setShowAdd(false); }} />
+              <AddPanel onAdded={() => { invalidate.resources(); setShowAdd(false); }} onUploaded={() => invalidate.resources()} onBusyChange={setUploadBusy} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -529,7 +479,12 @@ export function ResourcesView() {
         )}
 
         {/* Grid */}
-        {filtered.length === 0 ? (
+        {isError && <div role="alert" className="mb-4 rounded-lg border border-red-100 bg-red-50/50 px-4 py-2 text-xs text-red-700">
+          Could not refresh your library. Your saved files have not been removed.
+          <button onClick={() => refetch()} className="ml-2 min-h-11 min-w-11 rounded-md underline focus-visible:ring-2 focus-visible:ring-red-300">Retry</button>
+        </div>}
+        {isFetching && resources.length === 0 ? <p role="status" className="py-8 text-center text-sm text-gray-500">Loading library…</p>
+        : isError && resources.length === 0 ? null : filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 py-16 text-center">
             <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
               <Upload size={20} className="text-gray-300" />
@@ -568,8 +523,8 @@ export function ResourcesView() {
           <FileViewerModal
             key={viewing.id}
             src={viewing.url}
-            name={viewing.title}
-            mimeType={mimeOf(viewing.url)}
+            name={viewing.original_name ?? viewing.title}
+            mimeType={resourceMime(viewing)}
             onClose={() => setViewing(null)}
           />
         )}

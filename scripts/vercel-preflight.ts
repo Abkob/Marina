@@ -28,6 +28,7 @@ if (process.argv.includes('--env')) {
   add('Session secret', value('MARINA_SESSION_SECRET').length >= 32, 'MARINA_SESSION_SECRET is at least 32 characters');
   add('Cron secret', value('CRON_SECRET').length >= 16, 'CRON_SECRET is at least 16 characters');
   add('Public app URL', /^https:\/\//i.test(value('APP_URL')), 'APP_URL uses HTTPS');
+  add('Durable resource processing', Boolean(value('INNGEST_EVENT_KEY') && value('INNGEST_SIGNING_KEY')), 'Inngest event and signing keys are required; sync /api/inngest after deployment');
 
   const googleNames = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'GOOGLE_TOKEN_ENCRYPTION_KEY', 'GOOGLE_OAUTH_STATE_SECRET'];
   const googleRequested = googleNames.some(name => Boolean(value(name)));

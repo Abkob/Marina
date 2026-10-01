@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layers, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { apiFetch, apiPost } from '../../utils/apiFetch';
+import { isProcessing, processingLabel, type ResourceProcessing } from '../../utils/resourceFiles';
 
 interface ChunkRow {
   id: string;
@@ -24,23 +25,33 @@ export function SemanticIndexPanel({ resourceId, hasFile }: { resourceId: string
   const qc = useQueryClient();
   const { triggerToast } = useAppStore();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const processing = useQuery<ResourceProcessing>({
+    queryKey: ['resource-processing', resourceId], enabled: hasFile,
+    queryFn: () => apiFetch(`/api/resources/${resourceId}/processing`),
+    refetchInterval: q => isProcessing(q.state.data?.status) ? 3000 : false,
+  });
+  const active = isProcessing(processing.data?.status);
+  useEffect(() => {
+    if (processing.data) {
+      void qc.invalidateQueries({ queryKey: ['resource-chunks', resourceId] });
+      void qc.invalidateQueries({ queryKey: ['resources'] });
+      void qc.invalidateQueries({ queryKey: ['resource', resourceId] });
+    }
+  }, [processing.data?.status, resourceId, qc]);
 
   const { data: chunks = [], refetch, isLoading } = useQuery<ChunkRow[]>({
     queryKey: ['resource-chunks', resourceId],
     queryFn: () => apiFetch<ChunkRow[]>(`/api/resources/${resourceId}/chunks`),
-    refetchInterval: (q) => {
-      // Poll while embeddings are still landing, then stop.
-      const rows = q.state.data ?? [];
-      return rows.length && rows.some(c => !c.has_embedding) ? 5000 : false;
-    },
+    refetchInterval: active ? 5000 : false,
   });
 
   const rechunk = useMutation({
-    mutationFn: () => apiPost<{ chunks: number; reused: number }>(`/api/resources/${resourceId}/rechunk`, {}),
-    onSuccess: (r) => {
+    mutationFn: () => apiPost<{ status: string }>(`/api/resources/${resourceId}/rechunk`, {}),
+    onSuccess: () => {
       refetch();
+      qc.invalidateQueries({ queryKey: ['resource-processing', resourceId] });
       qc.invalidateQueries({ queryKey: ['resource-chunks', resourceId] });
-      triggerToast(`Re-indexed: ${r.chunks} chunk${r.chunks !== 1 ? 's' : ''} (${r.reused} unchanged, kept their embeddings).`, 'success');
+      triggerToast('Processing queued. Your original file is preserved.', 'success');
     },
     onError: (e: Error) => triggerToast(e.message, 'error'),
   });
@@ -57,18 +68,22 @@ export function SemanticIndexPanel({ resourceId, hasFile }: { resourceId: string
         {hasFile && (
           <button
             onClick={() => rechunk.mutate()}
-            disabled={rechunk.isPending}
-            className="text-[9px] font-mono uppercase text-[#4648d4] hover:underline disabled:opacity-40 flex items-center gap-1"
+            disabled={rechunk.isPending || active}
+            aria-label={processing.data?.status === 'failed' ? 'Retry file processing' : 'Re-index file'}
+            className="min-h-11 min-w-11 rounded-md text-[9px] font-mono uppercase text-[#4648d4] hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#4648d4]/40 disabled:opacity-40 flex items-center justify-center gap-1"
             title="Re-run text extraction, chunking, and embedding for this file"
           >
-            <RefreshCw size={9} className={rechunk.isPending ? 'animate-spin' : ''} /> Re-index
+            <RefreshCw size={12} className={rechunk.isPending || active ? 'animate-spin' : ''} /><span className="hidden sm:inline">{processing.data?.status === 'failed' ? 'Retry' : 'Re-index'}</span>
           </button>
         )}
       </div>
 
+      {hasFile && processing.data && <p role="status" className={`mb-2 text-xs leading-relaxed ${processing.data.status === 'failed' ? 'text-red-600' : 'text-gray-500'}`}>{processingLabel(processing.data)}</p>}
+      {processing.isError && <p role="alert" className="mb-2 text-xs text-red-600">Could not load processing status. <button className="min-h-11 underline" onClick={() => processing.refetch()}>Retry</button></p>}
+
       {isLoading && <p className="text-[11px] text-gray-400 font-mono">Loading…</p>}
 
-      {!isLoading && chunks.length === 0 && (
+      {!isLoading && chunks.length === 0 && (!hasFile || processing.data?.status === 'not_started') && (
         <p className="text-[11px] text-gray-400 leading-relaxed">
           {hasFile
             ? 'Not indexed yet — hit Re-index to chunk and embed this document so search and chat can cite its pages.'
@@ -81,7 +96,7 @@ export function SemanticIndexPanel({ resourceId, hasFile }: { resourceId: string
           <p className="text-[11px] text-gray-600 mb-2">
             <b>{chunks.length}</b> chunk{chunks.length !== 1 ? 's' : ''} ·{' '}
             <span className={allGood ? 'text-emerald-600' : 'text-amber-600'}>
-              {embedded}/{chunks.length} embedded{allGood ? ' — fully searchable & citable' : ' (indexing…)'}
+              {embedded}/{chunks.length} embedded{allGood ? ' — fully searchable & citable' : active ? ' (indexing…)': ''}
             </span>
           </p>
           <div className="space-y-1 max-h-56 overflow-y-auto">

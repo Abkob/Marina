@@ -127,16 +127,16 @@ export function ResourceHeader({
           className="flex-1 font-mono text-xs text-gray-400 outline-none bg-transparent border-b border-transparent
             hover:border-gray-200 focus:border-[#4648d4] transition-colors pb-0.5 placeholder:text-gray-200"
         />
-        {resource.url?.startsWith('http') && (
+        {(resource.url?.startsWith('http') || resource.url?.startsWith('/api/resources/')) && resource.file_validation !== 'pending' && resource.file_validation !== 'invalid' && (
           <a
             href={resource.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[9px]
-              text-[#4648d4] hover:bg-[#EEF2FF] transition-colors"
-            aria-label="Open link"
+            className="min-h-11 min-w-11 shrink-0 inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 font-mono text-[9px]
+              text-[#4648d4] hover:bg-[#EEF2FF] focus-visible:ring-2 focus-visible:ring-[#4648d4]/40 transition-colors"
+            aria-label={resource.file_path ? 'Open file' : 'Open link'}
           >
-            <ExternalLink size={10} /> Open link
+            <ExternalLink size={12} /> <span className="hidden sm:inline">{resource.file_path ? 'Open file' : 'Open link'}</span>
           </a>
         )}
       </div>

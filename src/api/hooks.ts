@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DBGoal, DBTask, DBTaskNote, DBTaskNoteFile, DBNote, DBEvent, DBResource, DBMeeting, DBDeadline, DBMilestone, DBSchedulePrefs, DBWorkSession, DBJournalEntry, IngestionStatus, DBEdge } from '../db/schema';
 import { apiFetch, apiPost, apiDelete } from '../utils/apiFetch';
+import { getAllResources } from '../db/queries/resources';
 
 // Static data: don't poll — use mutation-driven invalidation instead.
 // Journal/proposal/schedule-preview use explicit intervals since they change server-side.
@@ -147,7 +148,8 @@ export function useEvents() {
 export function useAllResources() {
   return useQuery<DBResource[]>({
     queryKey: ['resources'],
-    queryFn: () => apiFetch<DBResource[]>('/api/resources'),
+    queryFn: getAllResources,
+    refetchInterval: query => query.state.data?.some(r => r.file_validation === 'pending' || ['queued', 'running'].includes(r.processing_status ?? '')) ? 5000 : false,
     staleTime: STALE_SHORT,
     placeholderData: [],
   });

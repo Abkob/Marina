@@ -213,6 +213,11 @@ export type ResourceType      = 'figma' | 'document' | 'link' | 'paper' | 'perso
 export type ResourceReadState = 'Unread' | 'Reading' | 'Done' | 'Shelved';
 
 export interface DBResource {
+  original_name?: string | null;
+  mime_type?: string | null;
+  file_size?: number | string | null;
+  file_validation?: 'pending' | 'valid' | 'invalid' | null;
+  processing_status?: string | null;
   id: string;
   title: string;
   url: string | null;

@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 const root = path.resolve(process.cwd());
 
 describe('Vercel deployment boundary', () => {
+  it('checks resource schema and worker configuration before building a deployment', () => {
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+    expect(config.buildCommand).toMatch(/^npm run vercel:resource-check && /);
+  });
   it('routes API traffic to the serverless Express entry and the SPA to Vite', () => {
     const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8')) as {
       framework: string;

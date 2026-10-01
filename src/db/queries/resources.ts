@@ -1,6 +1,6 @@
 import type { DBResource, ResourceLog, ResourceReadState, ResourceStats, ResourceType } from '../schema';
 import { apiFetch, apiPost, apiPatch, apiDelete } from '../../utils/apiFetch';
-import { normalizedUploadType, uploadToPrivateBlob } from '../../utils/blobUpload';
+import { uploadResourceDocument, type UploadProgressListener } from '../../utils/blobUpload';
 
 export type MentionSourceType = 'note' | 'task' | 'braindump' | 'goal';
 
@@ -13,7 +13,17 @@ export async function getResourcesForGoal(goalId: string): Promise<DBResource[]>
 }
 
 export async function getAllResources(): Promise<DBResource[]> {
-  return apiFetch<DBResource[]>(`${API}/resources`);
+  const resources: DBResource[] = [];
+  let before = '';
+  for (;;) {
+    const page = await apiFetch<DBResource[]>('/api/resources?limit=500' + (before ? '&before=' + encodeURIComponent(before) : ''));
+    resources.push(...page);
+    if (page.length < 500) return [...new Map(resources.map(resource => [resource.id, resource])).values()];
+    const last = page[page.length - 1];
+    const next = btoa(JSON.stringify({ created_at: last.created_at, id: last.id })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    if (next === before) throw new Error('Resource pagination did not advance');
+    before = next;
+  }
 }
 
 export async function getResourcesForTask(taskId: string): Promise<DBResource[]> {
@@ -34,24 +44,7 @@ export async function createResource(
 }
 
 export async function uploadResource(file: File, goalId: string, taskId?: string): Promise<string> {
-  const blob = await uploadToPrivateBlob(file, 'resource');
-  if (blob) {
-    const { id } = await apiPost<{ id: string }>(`${API}/resources/register-blob`, {
-      blob: { url: blob.url, pathname: blob.pathname },
-      original_name: file.name,
-      mime_type: normalizedUploadType(file),
-      size: file.size,
-      attach_to_id: taskId ?? goalId,
-      attach_to_type: taskId ? 'task' : 'goal',
-    });
-    return id;
-  }
-  const form = new FormData();
-  form.append('file', file);
-  form.append('attach_to_id', taskId ?? goalId);
-  form.append('attach_to_type', taskId ? 'task' : 'goal');
-  const { id } = await apiFetch<{ id: string }>(`${API}/resources/upload`, { method: 'POST', body: form });
-  return id;
+  return uploadResourceDocument(file, undefined, { attach_to_id: taskId ?? goalId, attach_to_type: taskId ? 'task' : 'goal' });
 }
 
 export async function detachResource(resourceId: string, targetType: 'task' | 'goal', targetId: string): Promise<void> {
@@ -197,22 +190,8 @@ export async function getResourceGraph(resourceId: string): Promise<ResourceGrap
 
 // ── File upload ───────────────────────────────────────────────────────────────
 
-export async function uploadResourceFile(file: File): Promise<string> {
-  const blob = await uploadToPrivateBlob(file, 'resource');
-  if (blob) {
-    const { id } = await apiPost<{ id: string }>(`${API}/resources/register-blob`, {
-      blob: { url: blob.url, pathname: blob.pathname },
-      original_name: file.name,
-      mime_type: normalizedUploadType(file),
-      size: file.size,
-    });
-    return id;
-  }
-  const fd = new FormData();
-  fd.append('file', file);
-  // multipart upload — must not set Content-Type manually (browser sets boundary)
-  const { id } = await apiFetch<{ id: string }>(`${API}/resources/upload`, { method: 'POST', body: fd });
-  return id;
+export async function uploadResourceFile(file: File, onProgress?: UploadProgressListener): Promise<string> {
+  return uploadResourceDocument(file, onProgress);
 }
 
 // ── Read state cycling ────────────────────────────────────────────────────────

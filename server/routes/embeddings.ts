@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { query } from '../db.js';
+import { query, transaction } from '../db.js';
+import type pg from 'pg';
 import {
   embedDocument,
   embedQuery,
@@ -139,6 +140,7 @@ export async function embedEntity(
   entityType: string,
   entityId: string,
   scope = 'full_text',
+  beforeWrite?: (client: pg.PoolClient) => Promise<void>,
 ) {
   const text = await buildEmbeddingText(entityType, entityId);
   if (!text) return;
@@ -160,7 +162,13 @@ export async function embedEntity(
       && current.embedding_model === EMBED_MODEL
       && Number(current.embedding_dimension) === EMBED_DIMENSION
       && current.has_embedding === true
-    ) return;
+    ) {
+      await transaction(async client => {
+        await beforeWrite?.(client);
+        await client.query('UPDATE embeddings SET is_stale=false WHERE id=$1', [current.id]);
+      });
+      return;
+    }
   }
 
   const vector = await embedDocument(text);
@@ -179,7 +187,9 @@ export async function embedEntity(
   //   content changed→ reused UUID, PK conflict → DO UPDATE replaces the row in place
   // Using (entity_type,entity_id,embedding_scope,content_hash) as conflict target would
   // miss the PK conflict when hash changes, causing a constraint violation error.
-  await query(
+  await transaction(async client => {
+    await beforeWrite?.(client);
+    await client.query(
     `INSERT INTO embeddings (
        id,entity_type,entity_id,embedding_scope,embedding_text,embedding_3072,
        embedding_model,embedding_dimension,content_hash,is_stale,created_at,updated_at
@@ -195,6 +205,7 @@ export async function embedEntity(
          updated_at=EXCLUDED.updated_at`,
     [id, entityType, entityId, scope, text, vectorStr, EMBED_MODEL, EMBED_DIMENSION, contentHash, now, now],
   );
+  });
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────

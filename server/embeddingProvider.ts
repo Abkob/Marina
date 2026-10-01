@@ -37,7 +37,7 @@ export async function embedDocument(text: string): Promise<number[]> {
   const response = await getClient().models.embedContent({
     model: EMBED_MODEL,
     contents: `title: ${documentTitle(text)} | text: ${text}`,
-    config: { outputDimensionality: EMBED_DIMENSION },
+    config: { outputDimensionality: EMBED_DIMENSION, httpOptions: { timeout: 45_000 } },
   });
   return extractEmbedding(response);
 }

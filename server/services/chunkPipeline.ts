@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { query, transaction } from '../db.js';
+import type pg from 'pg';
+import { DocumentError } from './uploadValidation.js';
 
 const CHUNK_MAX_CHARS = 2000;
 const SUPPORTED_TEXT_EXTS = new Set(['.txt', '.md', '.csv']);
@@ -59,13 +61,18 @@ async function extractText(filePath: string, mimeType: string): Promise<Extracte
         await parser.destroy().catch(() => {});
       }
     } catch (err) {
-      console.error('[chunk-pipeline] PDF parse error:', err);
-      return null;
+      if (/password|encrypted/i.test(`${(err as Error).name} ${(err as Error).message}`)) {
+        throw new DocumentError('encrypted_pdf', 'This PDF is password protected. Upload an unlocked copy to index its text.');
+      }
+      throw new DocumentError('corrupt_pdf', 'The PDF could not be read. The original file is preserved; try exporting a new PDF.');
     }
   }
 
   if (SUPPORTED_TEXT_EXTS.has(ext) || mimeType.startsWith('text/')) {
-    const text = await fs.readFile(filePath, 'utf8');
+    const bytes = await fs.readFile(filePath);
+    let text: string;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch { throw new DocumentError('text_encoding', 'Save this text file as UTF-8 and upload it again.'); }
     return { text, totalPages: null, pageOffsets: null };
   }
 
@@ -121,7 +128,7 @@ function splitIntoChunks(text: string): Chunk[] {
     chunks.push({ content: current.trim(), charStart: currentStart, charEnd: cursor });
   }
 
-  return chunks.filter(c => c.content.length > 20);
+  return chunks.filter(c => c.content.length > 0);
 }
 
 // Map a chunk's character range to page numbers. Prefers exact page offsets
@@ -168,6 +175,7 @@ export async function processResourceChunks(
   resourceId: string,
   filePath: string,
   mimeType: string,
+  options: { beforeCommit?: (client: pg.PoolClient) => Promise<void>; enqueueEmbeddings?: boolean } = {},
 ): Promise<{ chunks: number; reused: number } | null> {
   const extracted = await extractText(filePath, mimeType);
   if (!extracted) return null; // parse failed — keep previous generation
@@ -221,6 +229,7 @@ export async function processResourceChunks(
   const staleRows = existing.filter(r => !keptIndexes.has(r.chunk_index));
 
   await transaction(async (client) => {
+    await options.beforeCommit?.(client);
     for (const chunk of newGeneration) {
       await client.query(
         `INSERT INTO resource_chunks
@@ -231,7 +240,8 @@ export async function processResourceChunks(
         [chunk.id, resourceId, chunk.index, chunk.content, chunk.hash, chunk.pageStart, chunk.pageEnd, chunk.metadata, now],
       );
       if (!chunk.reused) {
-        await client.query(
+        await client.query("UPDATE embeddings SET is_stale=true WHERE entity_type='resource_chunk' AND entity_id=$1", [chunk.id]);
+        if (options.enqueueEmbeddings !== false) await client.query(
           `INSERT INTO embedding_jobs (id, entity_type, entity_id, chunk_id, action, priority, status, attempts, created_at)
            VALUES ($1, 'resource_chunk', $2, $3, 'upsert', 3, 'pending', 0, $4)
            ON CONFLICT DO NOTHING`,
@@ -241,7 +251,8 @@ export async function processResourceChunks(
     }
     for (const stale of staleRows) {
       await client.query('DELETE FROM resource_chunks WHERE id=$1', [stale.id]);
-      await client.query(
+      await client.query("DELETE FROM embeddings WHERE entity_type='resource_chunk' AND entity_id=$1", [stale.id]);
+      if (options.enqueueEmbeddings !== false) await client.query(
         `INSERT INTO embedding_jobs (id, entity_type, entity_id, chunk_id, action, priority, status, attempts, created_at)
          VALUES ($1, 'resource_chunk', $2, $3, 'delete', 3, 'pending', 0, $4)
          ON CONFLICT DO NOTHING`,

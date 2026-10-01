@@ -7,57 +7,32 @@ import { fileURLToPath } from 'url';
 import { query, buildUpdate, transaction } from '../db.js';
 import { generateEntitySummary } from '../services/summaryGenerator.js';
 import { queueEmbeddingUpsert, markEmbeddingStale } from '../services/embeddingLifecycle.js';
-import { processResourceChunks } from '../services/chunkPipeline.js';
+import { createUploadIntent, finalizeLocalUpload, getUploadIntent, registerLegacyBlob } from '../services/resourceUploads.js';
+import { getResourceProcessing, retryResourceProcessing } from '../services/resourceProcessing.js';
+import { wakeResourceProcessing, durableProcessingConfigured } from '../services/resourceDispatch.js';
+import { validateStoredContent } from '../services/uploadValidation.js';
+import { MAX_UPLOAD_BYTES, UPLOAD_TYPES, validateUploadMetadata } from '../../shared/uploadPolicy.js';
+import { pipeline } from 'node:stream/promises';
 import { isVercelRuntime } from '../runtime.js';
 import { z } from 'zod';
-import { deleteStoredFile, isPrivateBlobReference, materializeStoredFile, openStoredFile, verifyPrivateBlob } from '../services/fileStorage.js';
+import { deleteStoredFile, isPrivateBlobReference, openStoredFile, verifyPrivateBlob } from '../services/fileStorage.js';
 import { runInBackground } from '../utils/background.js';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = isVercelRuntime ? path.join('/tmp', 'marina-uploads') : path.join(__dir, '..', 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const ALLOWED_MIMES = new Set([
-  'application/pdf',
-  'text/plain', 'text/markdown', 'text/csv',
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
-  // SVG is intentionally excluded — it can embed scripts and execute in-origin
-]);
-const BLOCKED_EXTS = new Set([
-  '.exe', '.sh', '.bash', '.zsh', '.fish',
-  '.js', '.mjs', '.cjs', '.ts', '.py', '.rb', '.php',
-  '.bat', '.cmd', '.ps1', '.psm1',
-  '.svg', '.html', '.htm', '.xml', // active formats that execute in-browser
-]);
-
-const _storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, UPLOADS_DIR),
-  // UUID filename prevents path traversal and original-name collisions
-  filename: (_, file, cb) => cb(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`),
-});
-
 const upload = multer({
-  storage: _storage,
-  limits: { fileSize: 50 * 1024 * 1024 },
+  storage: multer.diskStorage({
+    destination: (_, __, cb) => cb(null, UPLOADS_DIR),
+    filename: (_, file, cb) => cb(null, crypto.randomUUID() + path.extname(file.originalname).toLowerCase()),
+  }),
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 5 },
   fileFilter: (_, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (BLOCKED_EXTS.has(ext)) {
-      return cb(new Error(`File type '${ext}' is not allowed`));
-    }
-    if (!ALLOWED_MIMES.has(file.mimetype) && !file.mimetype.startsWith('text/')) {
-      return cb(new Error(`MIME type '${file.mimetype}' is not allowed`));
-    }
-    cb(null, true);
+    try { validateUploadMetadata(file.originalname, 1, file.mimetype); cb(null, true); }
+    catch (error) { cb(error); }
   },
 });
-
-function typeFromFilename(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return 'document';
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'document';
-  if (ext === 'fig') return 'figma';
-  return 'other';
-}
 
 const VALID_READ_STATES = new Set(['Unread', 'Reading', 'Done', 'Shelved']);
 
@@ -69,50 +44,6 @@ const BlobRegistration = z.object({
   attach_to_id: z.string().min(1).optional(),
   attach_to_type: z.enum(['task', 'goal']).optional(),
 });
-
-// ─── Magic-byte validation ─────────────────────────────────────────────────────
-// Read the first 16 bytes of the uploaded file and confirm they match the
-// declared MIME type. This blocks polyglots and wrong-extension attacks that
-// sneak past the extension/MIME allowlists above.
-type MagicEntry = { bytes: number[]; offset?: number }[];
-const MAGIC_BYTES: Record<string, MagicEntry> = {
-  'application/pdf': [{ bytes: [0x25, 0x50, 0x44, 0x46] }],        // %PDF
-  'image/png':  [{ bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] }],
-  'image/jpeg': [{ bytes: [0xFF, 0xD8, 0xFF] }],
-  'image/gif':  [{ bytes: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] },  // GIF87a
-                 { bytes: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] }], // GIF89a
-  'image/webp': [{ bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 },   // RIFF at 0
-                 { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 }],  // WEBP at 8
-};
-
-function validateMagicBytes(filePath: string, mimeType: string): boolean {
-  const entries = MAGIC_BYTES[mimeType];
-  if (!entries) return true; // text/* types have no magic bytes — rely on extension
-  const header = Buffer.alloc(16);
-  let fd: number | null = null;
-  try {
-    fd = fs.openSync(filePath, 'r');
-    const n = fs.readSync(fd, header, 0, 16, 0);
-    const buf = header.subarray(0, n);
-    // WebP: check both signatures (RIFF at 0 AND WEBP at 8)
-    if (mimeType === 'image/webp') {
-      const riff = MAGIC_BYTES['image/webp'][0].bytes;
-      const webp = MAGIC_BYTES['image/webp'][1].bytes;
-      return buf.subarray(0, 4).equals(Buffer.from(riff)) &&
-             buf.subarray(8, 12).equals(Buffer.from(webp));
-    }
-    return entries.some(e => {
-      const sig = Buffer.from(e.bytes);
-      const off = e.offset ?? 0;
-      return buf.length >= off + sig.length &&
-             buf.subarray(off, off + sig.length).equals(sig);
-    });
-  } catch {
-    return false; // unreadable file → reject
-  } finally {
-    if (fd !== null) try { fs.closeSync(fd); } catch { /* ignore */ }
-  }
-}
 
 const router = Router();
 
@@ -156,10 +87,17 @@ router.get('/', async (req, res) => {
     return res.json(rows);
   }
   const limit  = Math.min(Math.max(1, Number(req.query.limit)  || 500), 500);
-  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0));
+  let cursor: { created_at: string; id: string } | null = null;
+  if (typeof req.query.before === 'string') {
+    try { cursor = JSON.parse(Buffer.from(req.query.before, 'base64url').toString()); }
+    catch { return res.status(400).json({ error: 'Invalid resource cursor' }); }
+    if (!cursor || typeof cursor.created_at !== 'string' || typeof cursor.id !== 'string') return res.status(400).json({ error: 'Invalid resource cursor' });
+  }
   const { rows } = await query(
-    `SELECT * FROM resources WHERE ${activeResourceSql()} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-    [limit, offset],
+    `SELECT resources.*, (SELECT status FROM resource_processing_jobs j WHERE j.resource_id=resources.id) AS processing_status
+     FROM resources WHERE ${activeResourceSql()} AND ($3::text IS NULL OR (created_at,id) < ($3,$4)) ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2`,
+    [Math.floor(limit), offset, cursor?.created_at ?? null, cursor?.id ?? null],
   );
   res.json(rows);
 });
@@ -229,137 +167,43 @@ router.post('/upload', (req, res, next) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
-  const attachToId = typeof req.body.attach_to_id === 'string' ? req.body.attach_to_id : null;
-  const attachToType = typeof req.body.attach_to_type === 'string' ? req.body.attach_to_type : 'goal';
-  if (attachToId && !(await attachmentTargetExists(attachToId, attachToType))) {
-    try { fs.unlinkSync(file.path); } catch {}
-    return res.status(400).json({ error: 'Attachment target does not exist or has an invalid type' });
-  }
-
-  // Magic-byte check: file content must match its declared MIME type
-  if (!validateMagicBytes(file.path, file.mimetype)) {
-    fs.unlinkSync(file.path);
-    return res.status(400).json({ error: 'File content does not match its declared type' });
-  }
-  const now  = new Date().toISOString();
-  const id   = crypto.randomUUID();
-  const base = path.basename(file.originalname, path.extname(file.originalname));
-  const url  = `/api/resources/serve/${file.filename}`;
-  const type = typeFromFilename(file.originalname);
-  // file_path is required by deletion and data-health orphan detection —
-  // without it uploaded files become orphans the moment the row is deleted.
-  await query(
-    'INSERT INTO resources (id,title,url,type,info,file_path,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-    [id, base, url, type, `Uploaded ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`, file.path, now],
-  );
-  if (attachToId) {
-    await query(
-      `INSERT INTO edges (id,source_id,source_type,target_id,target_type,relationship,metadata,created_at)
-       VALUES ($1,$2,'resource',$3,$4,'attached_to',NULL,$5) ON CONFLICT DO NOTHING`,
-      [crypto.randomUUID(), id, attachToId, attachToType, now],
-    );
-  }
-  res.json({ id });
-  runInBackground(generateEntitySummary('resource', id), 'resource upload summary');
-  runInBackground(queueEmbeddingUpsert('resource', id), 'resource upload embedding queue');
-  // Chunk text/PDF files for semantic search
-  runInBackground(processResourceChunks(id, file.path, file.mimetype), 'resource upload chunking');
-});
-
-// Register an authenticated direct-to-Blob upload without sending the file
-// body through the Vercel Function payload limit.
-router.post('/register-blob', async (req, res) => {
-  const body = BlobRegistration.parse(req.body);
-  const ext = path.extname(body.original_name).toLowerCase();
-  if (BLOCKED_EXTS.has(ext) || (!ALLOWED_MIMES.has(body.mime_type) && !body.mime_type.startsWith('text/'))) {
-    await deleteStoredFile(body.blob.url).catch(() => undefined);
-    return res.status(400).json({ error: 'Unsupported file type' });
-  }
-  const metadata = await verifyPrivateBlob(body.blob.url);
-  if (metadata.pathname !== body.blob.pathname || metadata.size !== body.size) {
-    return res.status(400).json({ error: 'Blob metadata does not match the completed upload' });
-  }
-  if (metadata.contentType !== body.mime_type) {
-    return res.status(400).json({ error: 'Blob content type does not match the selected file' });
-  }
-  const attachToId = body.attach_to_id ?? null;
-  const attachToType = body.attach_to_type ?? 'goal';
-  if (attachToId && !(await attachmentTargetExists(attachToId, attachToType))) {
-    return res.status(400).json({ error: 'Attachment target does not exist or has an invalid type' });
-  }
-
-  const materialized = await materializeStoredFile(body.blob.url, body.original_name);
-  if (!validateMagicBytes(materialized.path, body.mime_type)) {
-    await materialized.cleanup();
-    await deleteStoredFile(body.blob.url);
-    return res.status(400).json({ error: 'File content does not match its declared type' });
-  }
-
-  const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-  const base = path.basename(body.original_name, path.extname(body.original_name));
   try {
-    await query(
-      'INSERT INTO resources (id,title,url,type,info,file_path,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [id, base, `/api/resources/blob/${id}`, typeFromFilename(body.original_name), `Uploaded ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`, body.blob.url, now],
-    );
-    if (attachToId) {
-      await query(
-        `INSERT INTO edges (id,source_id,source_type,target_id,target_type,relationship,metadata,created_at)
-         VALUES ($1,$2,'resource',$3,$4,'attached_to',NULL,$5) ON CONFLICT DO NOTHING`,
-        [crypto.randomUUID(), id, attachToId, attachToType, now],
-      );
+    const suppliedId = typeof req.body.upload_id === 'string' ? req.body.upload_id : undefined;
+    const intent = suppliedId ? await getUploadIntent(suppliedId) : await createUploadIntent({
+      request_key: req.body.request_key ?? crypto.randomUUID(), original_name: file.originalname,
+      mime_type: file.mimetype, size: file.size,
+      ...(req.body.attach_to_id ? { attach_to_id: req.body.attach_to_id, attach_to_type: req.body.attach_to_type ?? 'goal' } : {}),
+    });
+    if (file.originalname !== intent.original_name || file.mimetype !== intent.mime_type || file.size !== Number(intent.size)) {
+      throw Object.assign(new Error('File does not match the upload intent'), { status: 400 });
     }
-  } catch (err) {
-    await materialized.cleanup();
-    await deleteStoredFile(body.blob.url);
-    throw err;
+    await validateStoredContent(file.path, file.mimetype, file.size);
+    const result = await finalizeLocalUpload(intent.id, file);
+    if (result.already_saved) await deleteStoredFile(file.path);
+    res.json(result);
+    wakeResourceProcessing();
+  } catch (error) {
+    // Do not remove a committed file if the COMMIT response was lost.
+    const references = await query('SELECT id FROM resources WHERE file_path=$1', [file.path]).catch(() => null);
+    if (references && !references.rows.length) await deleteStoredFile(file.path);
+    throw error;
   }
-
-  runInBackground(generateEntitySummary('resource', id), 'resource blob summary');
-  runInBackground(queueEmbeddingUpsert('resource', id), 'resource blob embedding queue');
-  runInBackground(
-    processResourceChunks(id, materialized.path, body.mime_type).finally(materialized.cleanup),
-    'resource blob chunking',
-  );
-  res.json({ id });
 });
 
-// POST /api/resources/:id/rechunk — re-run text extraction + chunking for an
-// uploaded file (e.g. after a parser fix). Requires a stored or recoverable file.
+router.post('/register-blob', async (req, res) => {
+  const result = await registerLegacyBlob(BlobRegistration.parse(req.body));
+  res.json(result);
+  wakeResourceProcessing();
+});
+
+router.get('/:id/processing', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ...await getResourceProcessing(req.params.id), worker_available: !isVercelRuntime || durableProcessingConfigured() });
+});
 router.post('/:id/rechunk', async (req, res) => {
-  const { rows } = await query('SELECT id, file_path, url FROM resources WHERE id=$1', [req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
-  const r = rows[0] as { id: string; file_path: string | null; url: string | null };
-
-  // Legacy uploads predate file_path persistence — recover the path from the serve URL.
-  let filePath = r.file_path;
-  if (!filePath && r.url?.startsWith('/api/resources/serve/')) {
-    const safeName = (r.url.split('/').pop() ?? '').replace(/[^a-zA-Z0-9.\-_]/g, '');
-    const resolved = path.resolve(path.join(UPLOADS_DIR, safeName));
-    if (resolved.startsWith(path.resolve(UPLOADS_DIR) + path.sep) && fs.existsSync(resolved)) {
-      filePath = resolved;
-      // Backfill the recovered path so deletion and data-health can see it
-      await query('UPDATE resources SET file_path=$1 WHERE id=$2', [filePath, r.id]);
-    }
-  }
-  if (!filePath) {
-    return res.status(409).json({ error: 'No file on disk for this resource — re-upload it to enable chunking' });
-  }
-
-  let originalName = r.url?.split('/').pop() ?? 'resource.bin';
-  let mime = path.extname(originalName).toLowerCase() === '.pdf' ? 'application/pdf' : 'text/plain';
-  if (isPrivateBlobReference(filePath)) {
-    const metadata = await verifyPrivateBlob(filePath);
-    originalName = metadata.pathname.split('/').pop() ?? originalName;
-    mime = metadata.contentType ?? mime;
-  }
-  const materialized = await materializeStoredFile(filePath, originalName);
-  const result = await processResourceChunks(r.id, materialized.path, mime).finally(materialized.cleanup);
-  if (!result) {
-    return res.status(422).json({ error: 'Extraction produced no chunks (parse failure or empty document); previous chunks were preserved' });
-  }
-  res.json({ ok: true, ...result });
+  const result = await retryResourceProcessing(req.params.id);
+  res.status(202).json(result);
+  wakeResourceProcessing();
 });
 
 // GET /api/resources/:id/chunks — chunk inspection (Testing workbench + citation viewer)
@@ -398,21 +242,33 @@ router.get('/serve/:filename', (req, res) => {
   res.sendFile(resolved);
 });
 
-// Authenticated proxy for immutable private Blob objects.
+// Authenticated streaming keeps private files on the same origin. Legacy
+// objects are served with their stored MIME; new files must pass validation.
 router.get('/blob/:id', async (req, res) => {
-  const { rows } = await query('SELECT title, file_path FROM resources WHERE id=$1', [req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  const row = rows[0] as { title: string; file_path: string | null };
-  if (!row.file_path) return res.status(404).json({ error: 'Not found' });
-  const opened = await openStoredFile(row.file_path);
+  const row = (await query('SELECT title,file_path,original_name,mime_type,file_validation FROM resources WHERE id=$1', [req.params.id])).rows[0];
+  if (!row?.file_path) return res.status(404).json({ error: 'Not found' });
+  if (row.file_validation === 'pending') return res.status(409).json({ error: 'File is still being checked. Please try again shortly.' });
+  if (row.file_validation === 'invalid') return res.status(422).json({ error: 'File content did not pass validation.' });
+  const reference = String(row.file_path);
+  const opened = await openStoredFile(reference, req.headers.range);
   if (!opened) return res.status(404).json({ error: 'Not found' });
-  const safeName = path.basename(row.title).replace(/[^\w.\- ]/g, '_');
-  res.setHeader('Content-Type', opened.contentType ?? 'application/octet-stream');
+  let name = row.original_name as string | null;
+  if (!name) name = isPrivateBlobReference(reference) ? (await verifyPrivateBlob(reference)).pathname.split('/').pop()! : path.basename(reference);
+  const safeName = name.replace(/[^a-zA-Z0-9._ -]/g, '_');
+  res.status(opened.statusCode ?? 200);
+  const contentType = row.mime_type as string || opened.contentType || 'application/octet-stream';
+  const disposition = req.query.download === '1' || !Object.values(UPLOAD_TYPES).includes(contentType) ? 'attachment' : 'inline';
+  res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', String(opened.size));
-  res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+  res.setHeader('Content-Disposition', disposition + '; filename="' + safeName + '"; filename*=UTF-8\'\'' + encodeURIComponent(name).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16)));
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  opened.stream.pipe(res);
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'");
+  res.setHeader('Accept-Ranges', 'bytes');
+  if (opened.contentRange) res.setHeader('Content-Range', opened.contentRange);
+  try { await pipeline(opened.stream, res); }
+  catch (error) { if (!res.destroyed) res.destroy(error as Error); }
 });
 
 // GET /api/resources/:id
@@ -528,6 +384,10 @@ router.delete('/:id', async (req, res) => {
   const filePath = resourceRows.length ? (resourceRows[0] as Record<string, unknown>).file_path as string | null : null;
 
   await transaction(async (client) => {
+    await client.query('SELECT id FROM resources WHERE id=$1 FOR UPDATE', [resourceId]);
+    await client.query("UPDATE resource_uploads SET state='deleted' WHERE id=$1", [resourceId]);
+    await client.query("DELETE FROM embeddings WHERE entity_type='resource_chunk' AND entity_id IN (SELECT id FROM resource_chunks WHERE resource_id=$1)", [resourceId]);
+    await client.query("DELETE FROM embedding_jobs WHERE entity_type='resource_chunk' AND entity_id=$1", [resourceId]);
     // Use explicit type predicates to prevent cross-type ID collisions from deleting unrelated edges
     await client.query(
       `DELETE FROM edges WHERE (source_id=$1 AND source_type='resource')
@@ -546,7 +406,10 @@ router.delete('/:id', async (req, res) => {
     await client.query('DELETE FROM resources WHERE id=$1', [resourceId]);
   });
   // Delete physical file after transaction commits (best-effort — DB is canonical)
-  if (filePath) await deleteStoredFile(filePath).catch(err => console.warn('[cleanup] resource file delete:', err));
+  if (filePath) {
+    const references = await query('SELECT id FROM resources WHERE file_path=$1 UNION ALL SELECT id FROM task_note_files WHERE file_path=$1', [filePath]);
+    if (!references.rows.length) await deleteStoredFile(filePath).catch(err => console.warn('[cleanup] resource file delete:', err));
+  }
   await query("DELETE FROM embeddings WHERE entity_type='resource' AND entity_id=$1", [resourceId]);
   res.json({ ok: true });
 });

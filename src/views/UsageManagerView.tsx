@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../utils/apiFetch';
 
-type DirectoryUsage = { bytes: number; files: number; available: boolean };
+type DirectoryUsage = { bytes: number; files: number; available: boolean; source?: string; unknown?: number };
 type UsageMetrics = {
   sampledAt: string;
   process: {
@@ -70,6 +70,8 @@ function DirectoryCard({ label, usage, Icon }: { label: string; usage: Directory
         <p className="text-xs font-semibold text-slate-700">{label}</p>
         <p className="mt-0.5 font-mono text-[10px] text-slate-400">
           {usage.available ? `${formatBytes(usage.bytes)} · ${usage.files.toLocaleString()} files` : 'Folder not created yet'}
+          {usage.source === 'cloud' && ' · recorded cloud files'}
+          {Boolean(usage.unknown) && ` · ${usage.unknown} sizes pending`}
         </p>
       </div>
     </div>

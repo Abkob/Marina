@@ -38,6 +38,7 @@ import { usageRouter } from './routes/usage.js';
 import { authRouter } from './routes/auth.js';
 import { cronRouter } from './routes/cron.js';
 import { uploadsRouter } from './routes/uploads.js';
+import { resourceWorkflowsRouter } from './routes/resourceWorkflows.js';
 import { googleWorkspaceOauthRouter, googleWorkspaceRouter } from './routes/google-workspace.js';
 import { EMBED_DIMENSION, EMBED_MODEL } from './embeddingProvider.js';
 import { getProviderSummary, isNvidiaChatModel } from './config/providers.js';
@@ -80,6 +81,7 @@ export function createApp(): express.Express {
   // The Blob completion callback has no browser cookie. This router performs
   // authentication internally for token issuance and lets the SDK validate callbacks.
   app.use('/api/uploads', uploadsRouter);
+  app.use('/api/inngest', resourceWorkflowsRouter);
   app.get('/api/health/live', (_req, res) => {
     res.json({ status: 'ok', runtime: runtimeCapabilities().runtime, timestamp: new Date().toISOString() });
   });
