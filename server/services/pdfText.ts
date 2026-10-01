@@ -4,10 +4,17 @@ export async function extractPdfPages(data: Uint8Array) {
   // Import the worker first so its canvas globals are available during PDF.js
   // initialization. The embedded worker survives serverless dependency tracing;
   // PDF.js's default relative worker path may be absent from a Vercel function.
-  const { getData, CanvasFactory } = await import('pdf-parse/worker');
-  const { PDFParse } = await import('pdf-parse');
-  PDFParse.setWorker(getData());
-  const parser = new PDFParse({ data, CanvasFactory });
+  let phase = 'worker-import';
+  const parser = await (async () => {
+    try {
+      const { getData, CanvasFactory } = await import('pdf-parse/worker');
+      phase = 'parser-import';
+      const { PDFParse } = await import('pdf-parse');
+      phase = 'parser-init';
+      PDFParse.setWorker(getData());
+      return new PDFParse({ data, CanvasFactory });
+    } catch (error) { reportRuntimeFailure(error, phase); throw error; }
+  })();
   try {
     return await parser.getText();
   } catch (error) {
@@ -20,8 +27,20 @@ export async function extractPdfPages(data: Uint8Array) {
     }
     // Missing workers, native dependencies, and other runtime failures are
     // retryable processing errors, not evidence of a damaged user document.
+    reportRuntimeFailure(error, 'text-extraction');
     throw error;
   } finally {
     await parser.destroy().catch(() => {});
   }
+}
+
+function reportRuntimeFailure(error: unknown, phase: string) {
+  // Never log parser messages: malformed documents can put file text in them.
+  const message = error instanceof Error ? error.message : '';
+  console.error('PDF runtime failure', {
+    phase,
+    kind: /cannot find|module not found/i.test(message) ? 'missing-dependency'
+      : /native binding|canvas|DOMMatrix/i.test(message) ? 'canvas-runtime'
+      : /worker/i.test(message) ? 'worker-runtime' : 'parser-runtime',
+  });
 }

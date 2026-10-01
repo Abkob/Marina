@@ -5,7 +5,7 @@ import { DocumentError } from '../../../server/services/uploadValidation.js';
 import { textPdf } from '../../../server/__tests__/fixtures/uploadPdf.js';
 import { encryptedPdf } from '../../../server/__tests__/fixtures/encryptedPdf.js';
 
-afterEach(() => { vi.doUnmock('pdf-parse'); vi.doUnmock('pdf-parse/worker'); vi.resetModules(); });
+afterEach(() => { vi.restoreAllMocks(); vi.doUnmock('pdf-parse'); vi.doUnmock('pdf-parse/worker'); vi.resetModules(); });
 
 describe('serverless PDF extraction', () => {
   it('extracts real PDF text and page numbers with the embedded worker', async () => {
@@ -28,14 +28,17 @@ describe('serverless PDF extraction', () => {
       .rejects.toMatchObject({ code: 'encrypted_pdf' });
   });
   it('keeps a missing worker retryable instead of blaming the uploaded PDF', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.doMock('pdf-parse/worker', () => { throw new Error('Native worker dependency unavailable'); });
     const { extractPdfPages: isolatedExtract } = await import('../../../server/services/pdfText.js');
     const error = await isolatedExtract(new Uint8Array(textPdf())).catch(value => value);
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(DocumentError);
     expect(error).not.toHaveProperty('code', 'corrupt_pdf');
+    expect(log).toHaveBeenCalledWith('PDF runtime failure', { phase: 'worker-import', kind: 'parser-runtime' });
   });
   it('releases the parser after a runtime failure and keeps it retryable', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const failure = new Error('Setting up fake worker failed');
     const destroy = vi.fn().mockResolvedValue(undefined);
     vi.doMock('pdf-parse/worker', () => ({getData: () => 'embedded-worker', CanvasFactory: class {}}));
@@ -47,5 +50,7 @@ describe('serverless PDF extraction', () => {
     const { extractPdfPages: isolatedExtract } = await import('../../../server/services/pdfText.js');
     await expect(isolatedExtract(new Uint8Array(textPdf()))).rejects.toBe(failure);
     expect(destroy).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalledWith('PDF runtime failure', { phase: 'text-extraction', kind: 'worker-runtime' });
+    expect(JSON.stringify(log.mock.calls)).not.toContain(failure.message);
   });
 });

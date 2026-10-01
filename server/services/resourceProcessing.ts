@@ -124,6 +124,13 @@ export async function processResourceJob(id: string, version?: number): Promise<
     if (error instanceof LeaseLost) return false;
     const permanent = error instanceof DocumentError;
     const code = permanent ? error.code : 'processing_error';
+    if (!permanent) {
+      const databaseCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+      // SQLSTATE is safe operational metadata; provider messages may contain
+      // private document content, URLs, or credentials and must stay out of logs.
+      console.error('Resource processing interrupted', { stage: job.stage,
+        database_code: /^[0-9A-Z]{5}$/.test(databaseCode) ? databaseCode : null });
+    }
     // Provider responses may contain private URLs or text. Persist a useful,
     // bounded message, never raw provider payloads or signed links.
     const message = permanent ? error.message : (job.stage === 'embed'
