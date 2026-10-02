@@ -26,10 +26,21 @@ describe('NVIDIA evidence contracts', () => {
     await analyzeDocumentImage('q', image, 'moonshotai/kimi-k3');
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer kimi-synthetic');
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body).toMatchObject({ temperature: 1, reasoning_effort: 'low' });
+    expect(body).toMatchObject({ temperature: 1, reasoning_effort: 'low', max_tokens: 16_384 });
     expect(body).not.toHaveProperty('reasoning_budget');
     await analyzeDocumentImage('q', image, 'meta/muse-glimmer-30b');
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer synthetic-key');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).max_tokens).toBe(4096);
+  });
+  it('polls pending Kimi vision without uploading the image twice', async () => {
+    const id = '12345678-1234-1234-1234-123456789abc';
+    fetchMock.mockResolvedValueOnce(json({ requestId: id }, 202))
+      .mockResolvedValueOnce(json({ choices: [{ message: { content: '25', reasoning_content: 'private' }, finish_reason: 'stop' }] }));
+    expect(await analyzeDocumentImage('q', image, 'moonshotai/kimi-k3')).toMatchObject({ analysis: '25' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(`https://integrate.api.nvidia.com/v1/status/${id}`);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'GET' });
+    expect(fetchMock.mock.calls[1][1]).not.toHaveProperty('body');
   });
   it('orders by logits without detaching source identities or mutating input', async () => {
     fetchMock.mockResolvedValue(json({ rankings: [{ index: 0, logit: -9 }, { index: 1, logit: -1 }] }));

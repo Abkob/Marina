@@ -1,6 +1,7 @@
 import { Ollama } from 'ollama';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
+import { NvidiaError, nvidiaResponse, readNvidiaChat, nvidiaTimeout } from './services/nvidiaTransport.js';
 import { KIMI_MODEL, supportsDocumentModel, documentModelParameters, nvidiaKeyForModel, prepareNvidiaMessages } from './config/nvidiaModels.js';
 import {
   CHAT_HOST,
@@ -31,14 +32,6 @@ export function resolveChatModel(model?: string | null): string {
 export const ollama = new Ollama({ host: CHAT_HOST });
 const gemini = process.env.GEMINI_API_KEY
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
-  : null;
-const nvidia = process.env.NVIDIA_API_KEY
-  ? new OpenAI({
-      apiKey: process.env.NVIDIA_API_KEY,
-      baseURL: NVIDIA_API_BASE,
-      timeout: Number(process.env.MARINA_NVIDIA_TIMEOUT_MS ?? 90_000),
-      maxRetries: 0,
-    })
   : null;
 
 export interface ChatMessage {
@@ -215,7 +208,7 @@ async function chatOnce(
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       abortController?.abort();
-      reject(new ChatTimeoutError(model, requestTimeoutMs));
+      reject(abortController ? nvidiaTimeout(model) : new ChatTimeoutError(model, requestTimeoutMs));
     }, requestTimeoutMs);
     timer.unref?.();
   });
@@ -225,9 +218,6 @@ async function chatOnce(
     if (isNvidiaChatModel(model)) {
       const apiKey = nvidiaKeyForModel(model);
       if (!apiKey) throw new Error('The selected NVIDIA chat model has no configured API key');
-      const client = model === KIMI_MODEL && process.env.NVIDIA_KIMI_API_KEY
-        ? new OpenAI({ apiKey, baseURL: NVIDIA_API_BASE, timeout: requestTimeoutMs, maxRetries: 0 }) : nvidia;
-      if (!client) throw new Error('NVIDIA_API_KEY is required for NVIDIA NIM chat');
       const maxTokens = opts.max_tokens ?? 16_384;
       const isNemotron3 = /nemotron-3[.-]/.test(model);
       // Extended reasoning is useful for the substantive 8K-token Copilot
@@ -268,34 +258,11 @@ async function chatOnce(
       // Kimi's hosted contract fixes the remaining sampling parameters.
       if (model === KIMI_MODEL) delete request.top_p;
       const streamedResult = (async () => {
-        const stream = await client.chat.completions.create(request, {
-          signal: abortController?.signal,
-        });
-        let content = '';
-        let reasoningChars = 0;
-        let continuationReasoning = '';
-        let finishReason: string | null = null;
-        let usage: OpenAI.CompletionUsage | undefined;
-        for await (const chunk of stream) {
-          if (chunk.usage) usage = chunk.usage;
-          if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
-          const delta = chunk.choices?.[0]?.delta as
-            | (OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & {
-                reasoning_content?: string | null;
-              })
-            | undefined;
-          if (delta?.reasoning_content) {
-            reasoningChars += delta.reasoning_content.length;
-            if (model === KIMI_MODEL) continuationReasoning += delta.reasoning_content;
-          }
-          if (delta?.content) content += delta.content;
-        }
-        return { content, reasoningChars, usage, continuationReasoning, finishReason };
+        const response = await nvidiaResponse(`${NVIDIA_API_BASE.replace(/\/$/, '')}/chat/completions`, request, apiKey, abortController!.signal, model);
+        return readNvidiaChat(response, abortController!, model);
       })();
-      const { content, reasoningChars, usage, continuationReasoning, finishReason } = await Promise.race([streamedResult, timeout]);
-      if (finishReason === 'length') throw new Error(`NVIDIA model ${model} reached its response limit. Try a narrower question.`);
+      const { content, reasoningChars, usage, continuationReasoning } = await Promise.race([streamedResult, timeout]);
       const text = content.trim();
-      if (!text) throw Object.assign(new Error(`NVIDIA returned no answer from ${model}. Try again or select another chat model.`), { status: 502, code: 'NVIDIA_EMPTY_RESPONSE' });
       opts.onAssistantMessage?.({ role: 'assistant', content,
         ...(model === KIMI_MODEL ? { reasoning_content: continuationReasoning } : {}) });
       const durationMs = Date.now() - startedAt;
@@ -388,6 +355,7 @@ async function chatOnce(
     return response.message.content;
   } catch (err) {
     console.warn(`[ollama] ${model} failed after ${Math.round((Date.now() - startedAt) / 1000)}s (prompt ${promptChars} chars): ${(err as Error).message}`);
+    if (err instanceof NvidiaError) console.warn('[nvidia] failure metadata', { code: err.code, status: err.status, request_id: err.requestId });
     throw err;
   } finally {
     if (timer) clearTimeout(timer);

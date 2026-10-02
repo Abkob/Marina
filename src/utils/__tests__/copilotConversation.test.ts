@@ -69,6 +69,23 @@ describe('model-led conversation', () => {
     expect(result.reply).toBe('Here is my actual explanation.');
     expect(execute).toHaveBeenCalledOnce(); expect(complete).toHaveBeenCalledTimes(3);
   });
+  it.each(['NVIDIA_TIMEOUT', 'NVIDIA_ENDPOINT_TIMEOUT', 'NVIDIA_RESPONSE_LIMIT'])('does not restart %s failures or silently change models', async code => {
+    const { tools, execute } = setup([]);
+    const error = Object.assign(new Error('NVIDIA request failed'), { code, status: 504, retryable: false });
+    const complete = vi.fn<typeof chat>().mockRejectedValue(error);
+    await expect(runCopilotConversation({ turns: [{ role: 'user', content: 'q' }], clock, tools, complete, model: 'moonshotai/kimi-k3' })).rejects.toBe(error);
+    expect(complete).toHaveBeenCalledOnce(); expect(execute).not.toHaveBeenCalled();
+    expect(complete.mock.calls[0][1]).toMatchObject({ model: 'moonshotai/kimi-k3', allowFallback: false });
+  });
+  it('retries a transport-classified server failure once without changing the selected model', async () => {
+    const { tools } = setup([]);
+    const complete = vi.fn<typeof chat>()
+      .mockRejectedValueOnce(Object.assign(new Error('Provider failure'), { status: 500, retryable: true }))
+      .mockResolvedValueOnce(JSON.stringify(final()));
+    expect((await runCopilotConversation({ turns: [{ role: 'user', content: 'q' }], clock, tools, complete, model: 'moonshotai/kimi-k3' })).reply).toBe(final().reply);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(complete.mock.calls.every(call => call[1]?.model === 'moonshotai/kimi-k3' && call[1]?.allowFallback === false)).toBe(true);
+  });
   it('keeps inspected-page citations and discloses OCR fallback even when model prose omits it', async () => {
     const complete = vi.fn<typeof chat>()
       .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'page', name: 'inspect_document_page', arguments: {} }] }))

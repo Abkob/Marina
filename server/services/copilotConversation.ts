@@ -174,7 +174,8 @@ export async function runCopilotConversation(options: {
       // it must never switch to a keyword interpretation or replay app writes.
       const status = Number((error as { status?: number })?.status);
       const overloaded = /service temporarily overloaded|temporarily unavailable/i.test(String((error as Error)?.message));
-      if ((!overloaded && ![429, 502, 503, 504].includes(status)) || Date.now() + 1500 >= deadlineMs) throw error;
+      const retryable = (error as { retryable?: boolean })?.retryable ?? (overloaded || [429, 502, 503, 504].includes(status));
+      if (!retryable || Date.now() + 1500 >= deadlineMs) throw error;
       await new Promise(resolve => setTimeout(resolve, 800));
       raw = await complete(messages, completionOptions);
     }
