@@ -1,11 +1,11 @@
 import { DocumentError } from './uploadValidation.js';
 
-export async function extractPdfPages(data: Uint8Array) {
+async function createParser(data: Uint8Array) {
   // Import the worker first so its canvas globals are available during PDF.js
   // initialization. The embedded worker survives serverless dependency tracing;
   // PDF.js's default relative worker path may be absent from a Vercel function.
   let phase = 'worker-import';
-  const parser = await (async () => {
+  return (async () => {
     try {
       const { getData, CanvasFactory } = await import('pdf-parse/worker');
       phase = 'parser-import';
@@ -15,6 +15,10 @@ export async function extractPdfPages(data: Uint8Array) {
       return new PDFParse({ data, CanvasFactory });
     } catch (error) { reportRuntimeFailure(error, phase); throw error; }
   })();
+}
+
+export async function extractPdfPages(data: Uint8Array) {
+  const parser = await createParser(data);
   try {
     return await parser.getText();
   } catch (error) {
@@ -32,6 +36,23 @@ export async function extractPdfPages(data: Uint8Array) {
   } finally {
     await parser.destroy().catch(() => {});
   }
+}
+
+/** Render one physical page, bounding pixel area before allocating a canvas. */
+export async function renderPdfPage(data: Uint8Array, page: number) {
+  if (!Number.isInteger(page) || page < 1) throw new Error('Choose a positive PDF page number.');
+  const parser = await createParser(data);
+  try {
+    const info = await parser.getInfo({ partial: [page], parsePageInfo: true });
+    if (page > info.total) throw new Error(`This PDF has ${info.total} pages; page ${page} does not exist.`);
+    const size = info.pages.find(p => p.pageNumber === page);
+    if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) throw new Error('This PDF page has invalid dimensions.');
+    const scale = Math.min(1600 / size.width, 2200 / size.height, 2);
+    const result = await parser.getScreenshot({ partial: [page], scale, imageBuffer: false, imageDataUrl: true });
+    const screenshot = result.pages.find(p => p.pageNumber === page);
+    if (!screenshot?.dataUrl) throw new Error('This PDF page could not be rendered.');
+    return { dataUrl: screenshot.dataUrl, total: info.total };
+  } finally { await parser.destroy().catch(() => {}); }
 }
 
 function reportRuntimeFailure(error: unknown, phase: string) {

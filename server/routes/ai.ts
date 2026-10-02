@@ -5,6 +5,7 @@ import { activeTaskSql, activeGoalSql, activeMilestoneSql, activeMeetingSql, act
 import { Router } from 'express';
 import { runCopilotConversation, type ConversationTurn } from '../services/copilotConversation.js';
 import { createCopilotTools, readCopilotClock } from '../services/copilotTools.js';
+import { evidenceModelsSchema, resolveEvidenceModels, modelRoleCatalog, type EvidenceModels } from '../services/copilotModelRoles.js';
 import { workspaceGraph, selectWorkspaceSections, type WorkspaceSection } from '../services/copilotWorkspaceGraph.js';
 import { resolvePlanTaskScope } from '../services/planTaskScope.js';
 import crypto from 'crypto';
@@ -1416,8 +1417,9 @@ async function persistActionsAsProposals(
 
 async function answerConversation(
   turns: ConversationTurn[],
-  options: { model?: string; source: string; sessionId: string | null; onTrace?: (trace: ChatCallTrace) => void; agentRunId?: string },
+  options: { model?: string; evidenceModels?: Partial<EvidenceModels>; source: string; sessionId: string | null; onTrace?: (trace: ChatCallTrace) => void; agentRunId?: string },
 ) {
+  const evidenceModels = resolveEvidenceModels(options.evidenceModels);
   const contexts = new Map<string, Awaited<ReturnType<typeof getScheduleContext>>>();
   const citations = new Map<string, ChatCitation>();
   const loadContext = async (search = '') => {
@@ -1435,6 +1437,7 @@ async function answerConversation(
       await appendAgentEvent(options.agentRunId!, 'conversation_tool', `Read-only tool: ${name}`, null, { tool: name, status });
     } : undefined,
     tools: createCopilotTools({
+      evidenceModels,
       workspace: async (search, sections) => compactContextForModel(await loadContext(search), sections ?? (search ? ['tasks', 'details'] : undefined)),
       previewSchedule: args => buildPlanPayload(args as PlanWindowParams),
       previewRoutine: args => buildSeriesPayload(args as unknown as SeriesParams),
@@ -1444,16 +1447,19 @@ async function answerConversation(
   });
   return {
     ...result,
+    evidence_models: evidenceModels,
     actions: await persistActionsAsProposals(result.actions, options.source, options.sessionId),
-    citations: [...citations.values()],
+    citations: [...citations.values(), ...result.document_citations],
   };
 }
 
 // Both chat entry points use the same model-led conversation and read-only tools.
+router.get('/model-roles', (_req, res) => res.json(modelRoleCatalog()));
 router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
   const schema = z.object({
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().min(1).max(16000) }).strict()).min(1).max(200),
     model: z.string().optional(),
+    evidence_models: evidenceModelsSchema.optional(),
   }).strict();
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Provide user/assistant messages, each no longer than 16000 characters.' });
@@ -1461,7 +1467,7 @@ router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
   try { model = resolveChatModel(parsed.data.model); }
   catch (error) { return res.status(400).json({ error: String(error) }); }
   try {
-    res.json(await answerConversation(parsed.data.messages, { model, source: 'chat', sessionId: null }));
+    res.json(await answerConversation(parsed.data.messages, { model, evidenceModels: parsed.data.evidence_models, source: 'chat', sessionId: null }));
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.' });
   }
@@ -2583,7 +2589,7 @@ router.get('/sessions/:id/messages', async (req, res) => {
 
 // POST /api/ai/sessions/:id/chat — send a message in a session (history auto-loaded)
 router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), async (req, res) => {
-  const input = z.object({ message: z.string().min(1).max(16000).refine(value => Boolean(value.trim())), model: z.string().optional() }).strict().safeParse(req.body);
+  const input = z.object({ message: z.string().min(1).max(16000).refine(value => Boolean(value.trim())), model: z.string().optional(), evidence_models: evidenceModelsSchema.optional() }).strict().safeParse(req.body);
   if (!input.success) return res.status(400).json({ error: 'A message between 1 and 16000 characters is required.' });
   const { message, model } = input.data;
   const requestStartedAt = Date.now();
@@ -2643,7 +2649,7 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
   });
   try {
     const result = await answerConversation([...history, { role: 'user', content: message }], {
-      model: selectedModel, source: 'chat_session', sessionId: req.params.id, agentRunId,
+      model: selectedModel, evidenceModels: input.data.evidence_models, source: 'chat_session', sessionId: req.params.id, agentRunId,
       onTrace: trace => modelCalls.push({ phase: 'answer', ...trace }),
     });
     const runtime = runtimeInfo();

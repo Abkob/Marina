@@ -221,7 +221,7 @@ async function chatOnce(
     if (isNvidiaChatModel(model)) {
       if (!nvidia) throw new Error('NVIDIA_API_KEY is required for NVIDIA NIM chat');
       const maxTokens = opts.max_tokens ?? 16_384;
-      const isNemotron3 = model.includes('nemotron-3-');
+      const isNemotron3 = /nemotron-3[.-]/.test(model);
       // Extended reasoning is useful for the substantive 8K-token Copilot
       // answer, but it makes tiny routing/JSON calls slow and can consume their
       // entire output allowance before the model emits the required JSON.

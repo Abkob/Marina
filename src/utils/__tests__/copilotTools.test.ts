@@ -8,6 +8,15 @@ const dependencies = () => ({ workspace: vi.fn(async () => ({})), previewSchedul
 beforeEach(() => { queryMock.mockReset(); queryMock.mockResolvedValue({ rows: [], rowCount: 0 } as never); });
 
 describe('conversation tool contracts', () => {
+  it('registers bounded resource discovery, text reading and visual inspection tools', () => {
+    const tools = createCopilotTools(dependencies());
+    expect(tools.find_resources.parameters.safeParse({ search: 'Paper', limit: 30 }).success).toBe(true);
+    expect(tools.find_resources.parameters.safeParse({ limit: 31 }).success).toBe(false);
+    expect(tools.read_document.parameters.safeParse({ resource_id: 'r', page: 3, limit: 8 }).success).toBe(true);
+    expect(tools.inspect_document_page.parameters.safeParse({ resource_id: 'r', page: 2, question: 'Read chart labels' }).success).toBe(true);
+    expect(tools.inspect_document_page.parameters.safeParse({ resource_id: 'r', page: 0, question: 'q' }).success).toBe(false);
+    expect(tools.inspect_document_page.parameters.safeParse({ resource_id: 'r', page: 1, question: 'q', url: 'https://example.com' }).success).toBe(false);
+  });
   it('lets the model request only capacity without classifying its wording', async () => {
     const deps = dependencies();
     await createCopilotTools(deps).workspace_context.execute({ sections: ['capacity'] });

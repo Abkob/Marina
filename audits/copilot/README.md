@@ -10,7 +10,7 @@ npm test -- --maxWorkers=2
 npm run lint
 ```
 
-The audit has 219 cases: 202 ordinary passing checks and 17 expected failures. The existing unit suite has 962 passing tests in the controlled two-worker run. Vitest reports expected failures as passed. **That is reproduction of a known defect, not evidence of quality.** The desired assertions are preserved in `it.fails` tests so they can become ordinary regression tests after repair. Unexpected success causes the audit to fail and signals that promotion is required.
+The audit has 219 cases: **212 ordinary passing checks and 7 expected failures** after the Nemotron document-pipeline changes. The original baseline was 202 ordinary passes and 17 expected failures; ten repaired cases are now ordinary regression tests. Vitest reports expected failures as passed. **That is reproduction of a known defect, not evidence of quality.** The desired assertions remain in `it.fails` until repaired. Unexpected success signals that promotion is required. See [the model study](../../docs/nemotron-model-study.md) for release validation and explicit implementation limits.
 
 | File | Subject |
 | --- | --- |
@@ -22,7 +22,7 @@ The audit has 219 cases: 202 ordinary passing checks and 17 expected failures. T
 | `conversation.test.ts` | Actual tool loop and proposal validation with scripted model responses; mixed source/task observations, entity-type confusion, retry and round limits |
 | `candidateIndex.ts` | Experimental helpers only; never imported by application code |
 
-Expected-failure issue IDs: IDX-01 (3 cases), IDX-02, IDX-03 (3), IDX-04, EMBED-01, RAG-01, RAG-02, RAG-03, VIS-01, VIS-02, PLAN-01, PLAN-02, CHAT-01. These are 13 distinct issues across 17 test cases.
+Remaining expected-failure issue IDs: RAG-02, RAG-03, VIS-01, VIS-02, PLAN-01, PLAN-02, CHAT-01. Native extraction still omits images; the new on-demand OCR/vision tools are separate from automatic indexing. IDX-01 (3 cases), IDX-02, IDX-03 (3), IDX-04, EMBED-01 and RAG-01 were repaired.
 
 The retrieval tests do not execute SQL or measure embedding quality. Their controlled rankings expose the behavior of the application when a candidate set has those properties. Scripted conversation tests measure software contracts, not a model's ability to choose the right tool or resist every injection.
 
@@ -48,4 +48,4 @@ node audits/copilot/ocr-experiment.mjs --module /absolute/path/to/tesseract.js
 
 First use downloads public English OCR weights into ignored `tmp/copilot-ocr/`; image recognition runs locally. Results are written there too. The recorded experiment used the bundled Tesseract.js runtime and recovered `NEBULA-731`, `Before: 25`, and `After: 45`; the native PDF parser missed all three. Worker startup took 4,057 ms and recognition took 865 ms on this machine. These single-run timings are not production performance estimates.
 
-Recognizing chart labels does not establish chart interpretation. Docling, visual language models and ColPali were researched but not benchmarked or added as application dependencies. See [the full study and implementation plan](../../docs/copilot-replacement-study.md).
+Recognizing chart labels does not establish chart interpretation. The subsequent [Nemotron study](../../docs/nemotron-model-study.md) includes live synthetic NVIDIA OCR/vision/parser/detector probes and the implemented selected-page tools. Docling and ColPali remain research candidates. The opt-in `scripts/eval-copilot-documents.ts` exercises live NVIDIA models against synthetic fixtures; unlike the deterministic audit, it requires a key and network access. Every workspace tool is replaced before evaluation, so it cannot access application rows.

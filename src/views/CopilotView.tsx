@@ -10,6 +10,7 @@ import { DayScheduleWidget, type ChatScheduleDayView } from './copilot/DaySchedu
 import { OverdueTasksWidget, type OverdueTasksView } from './copilot/OverdueTasksWidget';
 import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ModalFrame } from '../components/ModalFrame';
+import { CopilotEvidenceSettings, type EvidenceModelCatalog, type EvidenceModels } from '../components/CopilotEvidenceSettings';
 import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
 import './copilot/copilot.css';
@@ -65,6 +66,9 @@ interface ChatCitation {
   matched_via: string[];
   similarity?: number;
   topics?: string[];
+  source_url?: string;
+  page_start?: number | null;
+  page_end?: number | null;
 }
 
 interface ModelCallRuntime {
@@ -129,6 +133,9 @@ function fmtMins(mins: number): string {
 }
 
 function modelLabel(model: string) {
+  if (model.includes('nemotron-3-ultra')) return 'Nemotron 3 Ultra';
+  if (model.includes('nemotron-3-super')) return 'Nemotron 3 Super';
+  if (model.includes('nemotron-3.5-lightning')) return 'Nemotron 3.5 Lightning';
   if (model.includes('nemotron')) return 'Nemotron';
   if (model.includes('deepseek')) return 'DeepSeek';
   return model === 'AI model' ? 'Connecting…' : model;
@@ -474,7 +481,8 @@ function CitationRow({ citations }: { citations: ChatCitation[] }) {
     <div className="mt-1.5">
       <button
         onClick={() => setOpen(o => !o)}
-        className="text-[10px] font-mono text-slate-500 hover:text-slate-700 flex items-center gap-1"
+        aria-expanded={open}
+        className="min-h-11 rounded-lg px-1 text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
       >
         {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
         Sources: {citations.length} item{citations.length !== 1 ? 's' : ''} in context
@@ -484,7 +492,7 @@ function CitationRow({ citations }: { citations: ChatCitation[] }) {
           {citations.map((c, i) => (
             <div key={`${c.entity_type}-${c.entity_id}-${i}`} className="flex items-center gap-2 text-[10px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
               <span className="font-mono uppercase text-slate-500 shrink-0">{c.entity_type.replace('_', ' ')}</span>
-              <span className="text-slate-700 truncate flex-1">{c.title}</span>
+              {c.source_url && (/^https:\/\/drive\.google\.com\/file\/d\/[\w-]+\/view$/.test(c.source_url) || /^\/api\/resources\/blob\/[\w-]+$/.test(c.source_url)) ? <a href={c.source_url} target="_blank" rel="noopener noreferrer" className="flex min-h-11 min-w-0 flex-1 items-center rounded-md text-slate-700 underline decoration-slate-300 underline-offset-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"><span className="truncate">{c.title}{c.page_start ? ` · p. ${c.page_start}${c.page_end && c.page_end !== c.page_start ? `–${c.page_end}` : ''}` : ''}</span></a> : <span className="text-slate-700 truncate flex-1">{c.title}</span>}
               <span className="font-mono text-slate-500 shrink-0">
                 {c.matched_via.map(v => LANE_LABEL[v] ?? v).join(' · ')}
                 {c.similarity !== undefined && ` (${(c.similarity * 100).toFixed(0)}%)`}
@@ -947,6 +955,11 @@ export function CopilotView() {
     options: [] as Array<{ model: string; provider: string; status: string }>,
   });
   const [selectedModel, setSelectedModel] = useState('');
+  const [evidenceCatalog, setEvidenceCatalog] = useState<EvidenceModelCatalog | null>(null);
+  const [evidenceModels, setEvidenceModels] = useState<Partial<EvidenceModels>>({});
+  useEffect(() => {
+    apiFetch<EvidenceModelCatalog>('/api/ai/model-roles').then(setEvidenceCatalog).catch(() => setEvidenceCatalog(null));
+  }, [panel]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followLatestRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
@@ -1068,9 +1081,12 @@ export function CopilotView() {
       interface StoredAction extends Omit<CopilotAction, 'status'> { proposal_status?: string }
       const msgs = await apiFetch<{
         id: string; role: 'user' | 'assistant'; content: string; created_at: string;
-        metadata?: { actions?: StoredAction[]; feasibility?: FeasibilityResult | null; citations?: ChatCitation[]; plan?: ChatPlan; plan_options?: ChatPlanOptions; schedule_day_view?: ChatScheduleDayView; overdue_tasks_view?: OverdueTasksView; runtime?: ChatRuntime } | null;
+        metadata?: { evidence_models?: EvidenceModels; model?: string; actions?: StoredAction[]; feasibility?: FeasibilityResult | null; citations?: ChatCitation[]; plan?: ChatPlan; plan_options?: ChatPlanOptions; schedule_day_view?: ChatScheduleDayView; overdue_tasks_view?: OverdueTasksView; runtime?: ChatRuntime } | null;
       }[]>(`/api/ai/sessions/${sessionId}/messages`);
       setActiveSessionId(sessionId);
+      const lastModelChoice = [...msgs].reverse().find(message => message.role === 'assistant' && message.metadata)?.metadata;
+      if (lastModelChoice?.model) setSelectedModel(lastModelChoice.model);
+      setEvidenceModels(lastModelChoice?.evidence_models ?? {});
       followLatestRef.current = true;
       // Restore action cards from persisted metadata; card status reflects the
       // CURRENT durable proposal state, so applied/skipped survive reloads.
@@ -1139,6 +1155,7 @@ export function CopilotView() {
         `/api/ai/sessions/${sessionId}/chat`, {
           message: outgoing,
           model: selectedModel || undefined,
+          evidence_models: evidenceModels,
         },
       );
       const actions: CopilotAction[] = (data.actions ?? []).map(a => ({
@@ -1173,7 +1190,7 @@ export function CopilotView() {
       setIsLoading(false);
       if (!isMobile) setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [isLoading, isMobile, activeSessionId, createSession, qc, attachment, selectedModel, setActiveSessionId, setAttachment, setInput, setMessages]);
+  }, [isLoading, isMobile, activeSessionId, createSession, qc, attachment, selectedModel, evidenceModels, setActiveSessionId, setAttachment, setInput, setMessages]);
 
   const handleConfirmAction = useCallback(async (msgId: string, actionId: string) => {
     const action = messages.find(m => m.id === msgId)?.actions?.find(a => a.id === actionId);
@@ -1235,12 +1252,13 @@ export function CopilotView() {
           {panel === 'schedule' && <SchedulePreviewPanel />}
           {panel === 'settings' && <div className="space-y-5">
             <div>
-              <label htmlFor="copilot-model" className="mb-2 block text-sm font-medium">Model</label>
+              <label htmlFor="copilot-model" className="mb-2 block text-sm font-medium">Chat & reasoning</label>
               <select id="copilot-model" value={selectedModel || modelConfig.primary} onChange={event => setSelectedModel(event.target.value)} disabled={isLoading || !modelConfig.options.length} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-indigo-500">
                 {modelConfig.options.length ? modelConfig.options.map(option => <option key={option.model} value={option.model}>{modelLabel(option.model)}</option>) : <option>{modelLabel(modelConfig.primary)}</option>}
               </select>
               <p className="mt-2 text-xs text-slate-500">{selectedModelStatus === 'rate limited' ? 'This model is busy. Please try again shortly.' : 'Choose the model for your next message.'}</p>
             </div>
+            <CopilotEvidenceSettings catalog={evidenceCatalog} value={evidenceModels} disabled={isLoading} onChange={setEvidenceModels} />
             <div className="space-y-1 border-t border-slate-100 pt-3">
               <button className="copilot-tool" onClick={() => setPanel('schedule')}><Calendar size={19} /><span>Your week<span>See upcoming work and schedule suggestions</span></span><ChevronRight size={16} /></button>
               <button className="copilot-tool" onClick={() => setPanel('goals')} disabled={isLoading}><Target size={19} /><span>Goal health<span>Check progress and approaching deadlines</span></span><ChevronRight size={16} /></button>

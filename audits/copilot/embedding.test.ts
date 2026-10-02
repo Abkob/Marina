@@ -18,7 +18,7 @@ describe('Actual resource embedding input construction, provider mocked', () => 
     expect(text).toContain('Synthetic textbook'); expect(text).toContain('Chapter 3');
     expect(text).toContain('EARLY-219');
   });
-  it.fails('EMBED-01 includes a rare detail after character 600 in the semantic index', async () => {
+  it('EMBED-01 includes a rare detail after character 600 in the semantic index', async () => {
     source('a'.repeat(1200) + ' The exception is NEBULA-731.');
     await embedEntity('resource_chunk', 'chunk');
     expect(mock.embed.mock.calls[0][0]).toContain('NEBULA-731');

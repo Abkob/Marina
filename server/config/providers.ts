@@ -44,14 +44,32 @@ export const CHAT_MODEL_FALLBACK = resolveLocalFallbackModel();
 export const NVIDIA_API_BASE = process.env.NVIDIA_API_BASE ?? 'https://integrate.api.nvidia.com/v1';
 export const NVIDIA_NEMOTRON_MODEL = process.env.MARINA_NVIDIA_NEMOTRON_MODEL
   ?? 'nvidia/nemotron-3-super-120b-a12b';
+export const NVIDIA_ULTRA_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b';
+export const NVIDIA_LIGHTNING_MODEL = 'nvidia/nemotron-3.5-lightning-30b-a3b';
+export const NVIDIA_PARSE_MODEL = 'nvidia/nemotron-parse-2.0';
 export const NVIDIA_DEEPSEEK_MODEL = process.env.MARINA_NVIDIA_DEEPSEEK_MODEL
   ?? 'deepseek-ai/deepseek-v4-pro';
 export const NVIDIA_FALLBACK_MODEL = process.env.MARINA_NVIDIA_FALLBACK_MODEL
   ?? NVIDIA_DEEPSEEK_MODEL;
+// Separate evidence specialists; never mix their outputs into the Gemini vector column.
+export const NVIDIA_RERANK_MODEL = process.env.MARINA_NVIDIA_RERANK_MODEL
+  ?? 'nvidia/llama-nemotron-rerank-vl-1b-v2';
+export const NVIDIA_RERANK_URL = process.env.MARINA_NVIDIA_RERANK_URL
+  ?? 'https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking';
+export const NVIDIA_VISION_MODEL = process.env.MARINA_NVIDIA_VISION_MODEL
+  ?? 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
+export const NVIDIA_EVIDENCE_ENABLED = process.env.MARINA_NVIDIA_EVIDENCE_ENABLED !== 'false';
+export const NVIDIA_OCR_MODELS = {
+  'nvidia/nemotron-ocr-v2': 'https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2',
+  'nvidia/nemotron-ocr-v1': 'https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1',
+};
+export const NVIDIA_OCR_MODEL = 'nvidia/nemotron-ocr-v2';
 
 /** NVIDIA Build models that can be selected for an individual Copilot turn. */
 export const NVIDIA_CHAT_MODELS = [...new Set([
   NVIDIA_NEMOTRON_MODEL,
+  NVIDIA_ULTRA_MODEL,
+  NVIDIA_LIGHTNING_MODEL,
   NVIDIA_DEEPSEEK_MODEL,
   NVIDIA_FALLBACK_MODEL,
 ])];
@@ -126,6 +144,16 @@ export function getProviderSummary() {
       requires_api_key: true,
       api_key_present: Boolean(process.env.GEMINI_API_KEY),
       sends_raw_text_to_cloud: ALLOW_CLOUD_RAW_TEXT,
+    },
+    evidence: {
+      provider: 'nvidia',
+      configured: NVIDIA_EVIDENCE_ENABLED && Boolean(process.env.NVIDIA_API_KEY),
+      rerank_model: NVIDIA_RERANK_MODEL,
+      vision_model: NVIDIA_VISION_MODEL,
+      ocr_model: NVIDIA_OCR_MODEL,
+      structure_model: NVIDIA_PARSE_MODEL,
+      sends_selected_passages_and_pages_to_cloud: NVIDIA_EVIDENCE_ENABLED,
+      availability: 'shared development API; rate limits and outages may apply',
     },
   };
 }

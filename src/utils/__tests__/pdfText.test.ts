@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { extractPdfPages } from '../../../server/services/pdfText.js';
+import { extractPdfPages, renderPdfPage } from '../../../server/services/pdfText.js';
 import { DocumentError } from '../../../server/services/uploadValidation.js';
 import { textPdf } from '../../../server/__tests__/fixtures/uploadPdf.js';
 import { encryptedPdf } from '../../../server/__tests__/fixtures/encryptedPdf.js';
@@ -8,6 +8,16 @@ import { encryptedPdf } from '../../../server/__tests__/fixtures/encryptedPdf.js
 afterEach(() => { vi.restoreAllMocks(); vi.doUnmock('pdf-parse'); vi.doUnmock('pdf-parse/worker'); vi.resetModules(); });
 
 describe('serverless PDF extraction', () => {
+  it('renders a real PDF page with the embedded serverless worker', async () => {
+    const result = await renderPdfPage(new Uint8Array(textPdf('Visual evidence')), 1);
+    expect(result.total).toBe(1); expect(result.dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+  it.each([0, -1, 1.5])('rejects invalid physical page %s', async page => {
+    await expect(renderPdfPage(new Uint8Array(textPdf()), page)).rejects.toThrow('positive');
+  });
+  it('does not silently inspect page one when a requested PDF page is absent', async () => {
+    await expect(renderPdfPage(new Uint8Array(textPdf()), 2)).rejects.toThrow('does not exist');
+  });
   it('extracts real PDF text and page numbers with the embedded worker', async () => {
     const result = await extractPdfPages(new Uint8Array(textPdf('Algebra deployment check')));
     expect(result.total).toBe(1);

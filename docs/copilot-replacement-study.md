@@ -2,6 +2,8 @@
 
 Study date: 2 October 2026. Code baseline: `2e4147c4beae6ca98adca597c9f53a8aff50b943`.
 
+**Follow-up implementation:** The [Nemotron model study](nemotron-model-study.md) records the subsequent model review and document-tool changes. Ten of this baseline's expected-failure cases are now repaired (page/word boundaries, changed chunk identity, full embedding input and selected-source coverage); the audit now has 212 ordinary passes and seven remaining expected failures. Selected-page OCR/structure/vision and role choices are implemented. Automatic multimodal library indexing and the separate scheduling redesign are still pending. The findings and counts below describe the original baseline.
+
 Marina should keep Google Drive for original documents and Neon PostgreSQL for application data and searchable evidence. The next Copilot should combine structured document reading, visual evidence, explicit source selection, and a deterministic scheduling service. Changing the chat model alone would leave several confirmed failures intact.
 
 The current system has useful foundations: real uploads, durable processing jobs, lexical plus vector search, deterministic schedule calculations, and reviewed Apply proposals. Its document understanding is substantially less capable than its interface suggests. Most seriously, the embedding path includes only the first 600 characters of a chunk that can contain 2,000 characters. PDF images never enter that text path.

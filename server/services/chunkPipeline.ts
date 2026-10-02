@@ -75,48 +75,25 @@ interface Chunk {
   charEnd: number;
 }
 
-function splitIntoChunks(text: string): Chunk[] {
-  const paragraphs = text.split(/\n{2,}/);
+export function splitIntoChunks(text: string): Chunk[] {
   const chunks: Chunk[] = [];
-  let current = '';
-  let currentStart = 0;
-  let cursor = 0;
-
-  for (const para of paragraphs) {
-    const trimmed = para.trim();
-    cursor += para.length + 2; // +2 for the \n\n separator
-    if (!trimmed) continue;
-
-    if (current.length + trimmed.length + 2 <= CHUNK_MAX_CHARS) {
-      if (!current) currentStart = cursor - para.length - 2;
-      current = current ? `${current}\n\n${trimmed}` : trimmed;
-    } else {
-      if (current) {
-        chunks.push({ content: current.trim(), charStart: currentStart, charEnd: cursor - para.length - 2 });
-      }
-      if (trimmed.length > CHUNK_MAX_CHARS) {
-        const start = cursor - para.length - 2;
-        for (let i = 0; i < trimmed.length; i += CHUNK_MAX_CHARS) {
-          chunks.push({
-            content: trimmed.slice(i, i + CHUNK_MAX_CHARS),
-            charStart: start + i,
-            charEnd: start + i + CHUNK_MAX_CHARS,
-          });
-        }
-        current = '';
-        currentStart = cursor;
-      } else {
-        current = trimmed;
-        currentStart = cursor - para.length - 2;
-      }
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + CHUNK_MAX_CHARS, text.length);
+    if (end < text.length) {
+      const lastBreak = [...text.slice(start, end).matchAll(/\s+/g)].at(-1);
+      if (lastBreak && lastBreak.index! > CHUNK_MAX_CHARS / 2) end = start + lastBreak.index!;
+      else if (/[\uD800-\uDBFF]/.test(text[end - 1])) end--;
     }
+    const content = text.slice(start, end);
+    if (content.trim()) chunks.push({ content, charStart: start, charEnd: end });
+    if (end === text.length) break;
+    // Overlap on word boundaries; long unbroken tokens make forward progress.
+    let next = Math.max(start + 1, end - 150);
+    while (next < end && next > 0 && !/\s/.test(text[next - 1])) next++;
+    start = next;
   }
-
-  if (current.trim()) {
-    chunks.push({ content: current.trim(), charStart: currentStart, charEnd: cursor });
-  }
-
-  return chunks.filter(c => c.content.length > 0);
+  return chunks;
 }
 
 // Map a chunk's character range to page numbers. Prefers exact page offsets
@@ -168,16 +145,19 @@ export async function processResourceChunks(
   const extracted = await extractText(filePath, mimeType);
   if (!extracted) return null; // parse failed — keep previous generation
 
-  const rawChunks = splitIntoChunks(extracted.text);
+  const rawChunks = extracted.pageOffsets
+    ? extracted.pageOffsets.flatMap(page => splitIntoChunks(extracted.text.slice(page.start, page.end))
+      .map(chunk => ({ ...chunk, charStart: chunk.charStart + page.start, charEnd: chunk.charEnd + page.start })))
+    : splitIntoChunks(extracted.text);
   if (!rawChunks.length) return null; // nothing extractable — keep previous generation
 
   const totalChars = extracted.text.length || 1;
   const now = new Date().toISOString();
 
   const { rows: existing } = await query(
-    'SELECT id, chunk_index, content_hash FROM resource_chunks WHERE resource_id=$1 ORDER BY chunk_index ASC',
+    'SELECT id, chunk_index, content_hash, page_start, page_end FROM resource_chunks WHERE resource_id=$1 ORDER BY chunk_index ASC',
     [resourceId],
-  ) as { rows: { id: string; chunk_index: number; content_hash: string }[] };
+  ) as { rows: { id: string; chunk_index: number; content_hash: string; page_start?: number | null; page_end?: number | null }[] };
   const existingByIndex = new Map(existing.map(r => [r.chunk_index, r]));
 
   // Build the new generation up-front so the transaction only does writes.
@@ -191,10 +171,10 @@ export async function processResourceChunks(
     if (!content) continue;
     const hash = crypto.createHash('sha256').update(content).digest('hex');
     const prior = existingByIndex.get(i);
-    const reused = prior?.content_hash === hash;
     const { pageStart, pageEnd } = pageRangeFor(raw, totalChars, extracted.totalPages, extracted.pageOffsets);
+    const reused = prior?.content_hash === hash && (prior.page_start ?? null) === pageStart && (prior.page_end ?? null) === pageEnd;
     newGeneration.push({
-      id: reused ? prior!.id : (prior?.id ?? crypto.randomUUID()),
+      id: reused ? prior!.id : crypto.randomUUID(),
       index: i,
       content,
       hash,
@@ -213,11 +193,17 @@ export async function processResourceChunks(
   }
   if (!newGeneration.length) return null;
 
-  const keptIndexes = new Set(newGeneration.map(c => c.index));
-  const staleRows = existing.filter(r => !keptIndexes.has(r.chunk_index));
+  const keptIds = new Set(newGeneration.map(c => c.id));
+  const staleRows = existing.filter(r => !keptIds.has(r.id));
 
   await transaction(async (client) => {
     await options.beforeCommit?.(client);
+    // A reindex must also upgrade unchanged chunks from the former 600-character
+    // embedding input. Keep vectors usable until this resource is explicitly
+    // reprocessed; all changes here are guarded by the job lease transaction.
+    await client.query(`UPDATE embeddings e SET is_stale=true FROM resource_chunks c
+      WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id AND c.resource_id=$1
+        AND (e.embedding_text IS NULL OR e.embedding_text NOT LIKE 'Entity: Resource Chunk\nTitle:%')`, [resourceId]);
     for (const chunk of newGeneration) {
       await client.query(
         `INSERT INTO resource_chunks

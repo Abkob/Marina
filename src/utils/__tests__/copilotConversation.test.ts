@@ -17,6 +17,16 @@ function setup(outputs: unknown[], tool?: Partial<ConversationTool>) {
 }
 
 describe('model-led conversation', () => {
+  it('keeps inspected-page citations and discloses OCR fallback even when model prose omits it', async () => {
+    const complete = vi.fn<typeof chat>()
+      .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'page', name: 'inspect_document_page', arguments: {} }] }))
+      .mockResolvedValueOnce(JSON.stringify(final({ reply: 'Before: 25; after: 45.' })));
+    const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'Read the chart' }], clock, complete,
+      tools: { inspect_document_page: { description: 'Inspect page', parameters: z.object({}), execute: async () => ({ data: { resource_id: 'r', title: 'Chart', source_url: 'https://drive.google.com/file/d/file/view', page_start: 1, page_end: 1, text: 'Before 25 After 45', vision_unavailable: true } }) } } });
+    expect(result.reply).toContain('Only OCR text was read');
+    expect(result.document_citations).toHaveLength(1);
+    expect(result.document_citations[0]).toMatchObject({ page_start: 1, matched_via: ['OCR fallback'] });
+  });
   it('grounds edits in original IDs while sending compact tables and preserving full UI artifacts', async () => {
     const tasks = Array.from({ length: 10 }, (_, i) => ({ id: `task-${i}`, title: `Task ${i}`, estimated_minutes: 60, due_date: '2026-10-02', priority: 'medium' }));
     const { run, complete } = setup([toolCall(), final({ display: ['read1'], actions: [{ type: 'update_task', params: { task_id: 'task-4', due_date: '2026-10-03' } }] })], {

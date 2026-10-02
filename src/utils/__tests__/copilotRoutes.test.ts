@@ -6,7 +6,7 @@ import { runCopilotConversation } from '../../../server/services/copilotConversa
 vi.mock('../../../server/db.js', () => ({ query: vi.fn(), transaction: vi.fn() }));
 vi.mock('../../../server/services/copilotConversation.js', () => ({ runCopilotConversation: vi.fn() }));
 vi.mock('../../../server/services/agentLedger.js', () => ({ startAgentRun: vi.fn(async () => 'run-id'), appendAgentEvent: vi.fn(), setAgentIntent: vi.fn(), finishAgentRun: vi.fn() }));
-const result = { reply: 'Please clarify which deadlines.', actions: [], conversation: { mode: 'model_led' as const, needs_clarification: true, tool_calls: [], proposal_review: 'not_needed' as const, context_usage: { raw_chars: 0, sent_chars: 0, format: 'json_tables_v1' as const } } };
+const result = { reply: 'Please clarify which deadlines.', actions: [], document_citations: [], conversation: { mode: 'model_led' as const, needs_clarification: true, tool_calls: [], proposal_review: 'not_needed' as const, context_usage: { raw_chars: 0, sent_chars: 0, format: 'json_tables_v1' as const } } };
 
 // Invoke the actual Express handler without starting a network listener.
 async function request(path: string, body: unknown) {
@@ -25,6 +25,16 @@ beforeEach(() => {
 });
 
 describe('shared conversation endpoints', () => {
+  it('rejects invalid model-role selections before reading the database', async () => {
+    const response = await request('/chat', { messages: [{ role: 'user', content: 'Read my paper' }], evidence_models: { ocr: 'untrusted-model' } });
+    expect(response.status).toHaveBeenCalledWith(400); expect(query).not.toHaveBeenCalled(); expect(runCopilotConversation).not.toHaveBeenCalled();
+  });
+  it('returns selected specialist roles and source links independently of model prose', async () => {
+    const citation = { entity_type: 'resource' as const, entity_id: 'r', title: 'Paper', source_url: 'https://drive.google.com/file/d/file/view', page_start: 3, page_end: 3, matched_via: ['page inspected'] };
+    vi.mocked(runCopilotConversation).mockResolvedValue({ ...result, document_citations: [citation] });
+    const response = await request('/chat', { messages: [{ role: 'user', content: 'Read my paper' }], evidence_models: { ocr: 'off' } });
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ evidence_models: expect.objectContaining({ ocr: 'off' }), citations: [citation] }));
+  });
   it('sends formerly intercepted due-date wording to the model without applying task writes', async () => {
     const messages = [{ role: 'user', content: 'move all tasks due tomorrow to Friday' }];
     const response = await request('/chat', { messages });

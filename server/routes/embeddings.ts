@@ -111,11 +111,11 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
     const c = rows[0] as Record<string, unknown>;
     return [
       `Entity: Resource Chunk`,
-      `Resource: ${c.resource_title ?? 'Unknown'}`,
+      `Title: ${c.resource_title ?? 'Unknown'}`,
       c.heading ? `Section: ${c.heading}` : null,
       (c.page_start != null) ? `Pages: ${c.page_start}–${c.page_end ?? c.page_start}` : null,
       `Chunk: ${c.chunk_index}`,
-      `Content: ${(c.content as string).slice(0, 600)}`,
+      `Content: ${c.content as string}`,
     ].filter(Boolean).join('\n');
   }
 

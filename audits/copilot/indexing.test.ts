@@ -23,23 +23,23 @@ beforeEach(async () => {
 });
 afterEach(async () => { await fs.unlink(fixture); await fs.rmdir(directory); });
 
-describe('Known gaps: desired assertions currently fail (not quality passes)', () => {
-  it.fails.each(['isomorphism', 'NEBULA-731', 'mitochondria'])('IDX-01 preserves complete rare term %s at a boundary', async term => {
+describe('Repaired indexing regressions', () => {
+  it.each(['isomorphism', 'NEBULA-731', 'mitochondria'])('IDX-01 preserves complete rare term %s at a boundary', async term => {
     await fs.writeFile(fixture, 'a'.repeat(1997) + ' ' + term + ' is the rare concept.');
     await processResourceChunks('r', fixture, 'text/plain');
     expect(chunks().some(c => c.content.includes(term))).toBe(true);
   });
-  it.fails('IDX-02 cites only page 1 for its short final fragment', async () => {
+  it('IDX-02 cites only page 1 for its short final fragment', async () => {
     mock.pdf.mockResolvedValue({ total: 2, pages: [{ num: 1, text: 'A'.repeat(2100) }, { num: 2, text: 'B'.repeat(100) }] });
     await processResourceChunks('r', fixture, 'application/pdf');
     expect(chunks().find(c => c.content === 'A'.repeat(100))).toMatchObject({ pageStart: 1, pageEnd: 1 });
   });
-  it.fails.each([3, 5, 10])('IDX-03 maintains page provenance after %i blank lines', async lines => {
+  it.each([3, 5, 10])('IDX-03 maintains page provenance after %i blank lines', async lines => {
     mock.pdf.mockResolvedValue({ total: 2, pages: [{ num: 1, text: 'A'.repeat(1999) + '\n'.repeat(lines) }, { num: 2, text: 'B'.repeat(100) }] });
     await processResourceChunks('r', fixture, 'application/pdf');
     expect(chunks().find(c => c.content === 'B'.repeat(100))).toMatchObject({ pageStart: 2, pageEnd: 2 });
   });
-  it.fails('IDX-04 gives changed content a new immutable citation identity', async () => {
+  it('IDX-04 gives changed content a new immutable citation identity', async () => {
     mock.query.mockResolvedValue({ rows: [{ id: 'old-citation-id', chunk_index: 0, content_hash: 'old-hash' }] });
     await fs.writeFile(fixture, 'Changed content: the old citation no longer supports this statement.');
     await processResourceChunks('r', fixture, 'text/plain');

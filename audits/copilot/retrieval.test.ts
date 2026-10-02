@@ -50,7 +50,7 @@ describe('Retrieval contracts: deterministic candidates, not real embedding accu
 });
 
 describe('Known retrieval gaps: desired assertions currently fail', () => {
-  it.fails('RAG-01 represents both requested files in a two-file comparison', async () => {
+  it('RAG-01 represents both requested files in a two-file comparison', async () => {
     const rows = Array.from({ length: 24 }, (_, i) => passage(i < 12 ? 'A' : 'B', i));
     mock.query.mockImplementation(async sql => ({ rows: sql.includes('COALESCE(j.status') ? [{ id: 'A', status: 'ready' }, { id: 'B', status: 'ready' }] : rows }));
     const result = await searchDocuments('compare A and B', ['A', 'B'], 12);
