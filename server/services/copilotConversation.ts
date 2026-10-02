@@ -228,7 +228,7 @@ export async function runCopilotConversation(options: {
             if ((call.name === 'read_document' && data?.passages?.length && (typeof args.page === 'number' || typeof args.after_chunk === 'number' && args.after_chunk >= 0)
               || call.name === 'inspect_document_page' && (data?.analysis || data?.text)) && typeof args.resource_id === 'string') inspectedDocuments.add(args.resource_id);
             for (const source of documentCitations(call.name, result.data)) {
-              documentSources.set(`${source.entity_id}:${source.page_start}:${source.page_end}`, source);
+              documentSources.set(`${source.entity_id}:${source.page_start}:${source.page_end}:${source.chunk_id ?? ''}`, source);
             }
             collectIds(result.data, knownIds, entities);
             if (result.artifact) artifacts.set(call.id, result.artifact);

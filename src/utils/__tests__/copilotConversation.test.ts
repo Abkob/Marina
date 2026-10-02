@@ -96,6 +96,18 @@ describe('model-led conversation', () => {
     expect(result.document_citations).toHaveLength(1);
     expect(result.document_citations[0]).toMatchObject({ page_start: 1, matched_via: ['OCR fallback'] });
   });
+  it('retains distinct excerpts on the same page for the source card', async () => {
+    const complete = vi.fn<typeof chat>()
+      .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'page', name: 'read_document', arguments: { resource_id: 'book', page: 94 } }] }))
+      .mockResolvedValueOnce(JSON.stringify(final()));
+    const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'Explain page 94' }], clock, complete, tools: {
+      read_document: { description: 'Read page', parameters: z.object({ resource_id: z.string(), page: z.number() }), execute: async () => ({ data: {
+        resource_id: 'book', title: 'Algebra', source_url: 'https://drive.google.com/file/d/book/view',
+        passages: [{ chunk_id: 'a', page_start: 94, page_end: 94, passage: 'Modular arithmetic.' }, { chunk_id: 'b', page_start: 94, page_end: 94, passage: 'Propositional logic.' }],
+      } }) },
+    } });
+    expect(result.document_citations.map(source => source.excerpt)).toEqual(['Modular arithmetic.', 'Propositional logic.']);
+  });
   it('grounds edits in original IDs while sending compact tables and preserving full UI artifacts', async () => {
     const tasks = Array.from({ length: 10 }, (_, i) => ({ id: `task-${i}`, title: `Task ${i}`, estimated_minutes: 60, due_date: '2026-10-02', priority: 'medium' }));
     const { run, complete } = setup([toolCall(), final({ display: ['read1'], actions: [{ type: 'update_task', params: { task_id: 'task-4', due_date: '2026-10-03' } }] })], {

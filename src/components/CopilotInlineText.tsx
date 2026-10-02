@@ -1,4 +1,7 @@
-function safeHref(value: string): string | null {
+import { Fragment, type ReactNode } from 'react';
+import { Lexer, type Token } from 'marked';
+
+export function safeCopilotHref(value: string): string | null {
   if (/^\/api\/resources\/blob\/[\w-]+(?:#page=\d+)?$/.test(value)) return value;
   if (!/^https?:\/\//i.test(value) || /[\s<>\\]/.test(value)) return null;
   try {
@@ -7,14 +10,30 @@ function safeHref(value: string): string | null {
   } catch { return null; }
 }
 
-/** Small inert formatter for chat prose: never interpret HTML or executable URLs. */
+/** Tokenize Markdown, but create React nodes only: raw HTML and images stay inert. */
+export function copilotInlineTokens(tokens: Token[]): ReactNode {
+  return tokens.map((token, index) => {
+    const children = () => copilotInlineTokens('tokens' in token ? token.tokens ?? [] : []);
+    let node: ReactNode;
+    switch (token.type) {
+      case 'strong': node = <strong>{children()}</strong>; break;
+      case 'em': node = <em>{children()}</em>; break;
+      case 'del': node = <del>{children()}</del>; break;
+      case 'codespan': node = <code>{token.text}</code>; break;
+      case 'br': node = <br />; break;
+      case 'link': {
+        const href = safeCopilotHref(token.href);
+        node = href ? <a href={href} target="_blank" rel="noopener noreferrer">{children()}</a> : token.raw;
+        break;
+      }
+      case 'text': node = token.tokens ? children() : token.text; break;
+      case 'escape': node = token.text; break;
+      default: node = token.raw;
+    }
+    return <Fragment key={index}>{node}</Fragment>;
+  });
+}
+
 export function CopilotInlineText({ text }: { text: string }) {
-  return <>{text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]\n]+\]\([^\s)]+\))/g).map((part, index) => {
-    if (part.startsWith('**') && part.endsWith('**')) return <strong key={index} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>;
-    if (part.startsWith('`') && part.endsWith('`')) return <code key={index} className="bg-slate-50 px-1 py-0.5 rounded text-[11px] font-mono text-indigo-700">{part.slice(1, -1)}</code>;
-    const link = /^\[([^\]\n]+)\]\(([^\s)]+)\)$/.exec(part);
-    const href = link ? safeHref(link[2]) : null;
-    if (link && href) return <a key={index} href={href} target="_blank" rel="noopener noreferrer" className="rounded-sm text-indigo-700 underline decoration-indigo-300 underline-offset-2 break-words focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{link[1]}</a>;
-    return part;
-  })}</>;
+  return <>{copilotInlineTokens(Lexer.lexInline(text, { gfm: true, breaks: false }))}</>;
 }

@@ -12,7 +12,7 @@ describe('document citation provenance', () => {
   });
   it('retains links and physical pages from visual, OCR and structure evidence', () => {
     for (const evidence of [{ analysis: 'chart' }, { text: 'OCR' }, { text: '<table>25</table>' }]) {
-      expect(documentCitations('inspect_document_page', { ...row, ...evidence })).toEqual([{ entity_type: 'resource', entity_id: 'r', title: 'Scan', source_url: row.source_url, page_start: 3, page_end: 3, matched_via: ['page inspected'] }]);
+      expect(documentCitations('inspect_document_page', { ...row, ...evidence })).toMatchObject([{ entity_type: 'resource', entity_id: 'r', title: 'Scan', source_url: row.source_url, page_start: 3, page_end: 3, matched_via: ['page inspected'] }]);
     }
   });
   it('joins text passage pages with the original source identity', () => {
@@ -34,5 +34,19 @@ describe('document citation provenance', () => {
       { ...row, passages: [{ page_start: 1, page_end: 1 }, { page_start: 4, page_end: 4 }] }, { resource_id: 'unavailable', unavailable: true },
     ] });
     expect(result.map(citation => [citation.entity_id, citation.page_start])).toEqual([['r', 1], ['r', 4]]);
+  });
+  it('copies bounded evidence excerpts without taking text from the assistant answer or metadata', () => {
+    const text = 'Actual source passage. '.repeat(90);
+    const result = documentCitations('read_document', { ...row, reply: 'Invented summary', description: 'Metadata only', passages: [{ passage: text, chunk_id: 'chunk-1', page_start: 94, page_end: 94 }] })[0];
+    expect(result).toMatchObject({ excerpt: text.slice(0, 1200), excerpt_kind: 'text', excerpt_truncated: true, source_tool: 'read_document', chunk_id: 'chunk-1', page_start: 94 });
+    expect(JSON.stringify(result)).not.toContain('Invented summary');
+    expect(documentCitations('read_document', { ...row, description: 'Metadata only', passages: [{ page_start: 94 }] })[0].excerpt).toBeUndefined();
+  });
+  it.each([
+    [{ analysis: 'Interpreted chart' }, 'visual'],
+    [{ text: 'OCR output', vision_unavailable: true }, 'ocr'],
+    [{ text: '| cells |', evidence_type: 'model_extracted_page_structure' }, 'structure'],
+  ])('preserves the provenance of an image-derived excerpt %#', (evidence, kind) => {
+    expect(documentCitations('inspect_document_page', { ...row, ...evidence })[0]).toMatchObject({ excerpt_kind: kind, source_tool: 'inspect_document_page' });
   });
 });

@@ -42,6 +42,59 @@
 .copilot-panel .copilot-schedule-toolbar { height: auto; padding: 8px; flex-wrap: wrap; }
 .copilot-panel button { min-height: 36px; }
 .copilot-answer { overflow-wrap: anywhere; }
+.copilot-markdown { font-size: 15px; line-height: 1.7; color: #1e293b; overflow-wrap: anywhere; }
+.copilot-markdown > :first-child { margin-top: 0; }
+.copilot-markdown > :last-child { margin-bottom: 0; }
+.copilot-markdown p { margin: .65em 0; }
+.copilot-markdown :is(h2,h3,h4,h5,h6) { margin: 1.35em 0 .5em; font-weight: 650; line-height: 1.4; color: #0f172a; }
+.copilot-markdown h2 { font-size: 1.14em; }
+.copilot-markdown :is(h3,h4,h5,h6) { font-size: 1em; }
+.copilot-markdown :is(ul,ol) { margin: .75em 0; padding-left: 1.55em; }
+.copilot-markdown ul { list-style: disc; }
+.copilot-markdown ol { list-style: decimal; }
+.copilot-markdown li { padding-left: .25em; margin: .45em 0; }
+.copilot-markdown li :is(ul,ol) { margin: .35em 0; }
+.copilot-markdown li::marker { color: #64748b; }
+.copilot-markdown strong { font-weight: 650; color: #0f172a; }
+.copilot-markdown em { font-style: italic; }
+.copilot-markdown a { color: #4338ca; text-decoration: underline; text-decoration-color: #c7d2fe; text-underline-offset: 3px; border-radius: 3px; }
+.copilot-markdown code { padding: .1em .3em; border-radius: 4px; background: #f1f5f9; font: .88em ui-monospace, monospace; }
+.copilot-markdown pre { max-width: 100%; overflow-x: auto; padding: 14px; margin: 1em 0; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; white-space: pre; }
+.copilot-markdown pre code { padding: 0; background: none; }
+.copilot-markdown blockquote { padding-left: 16px; border-left: 2px solid #c7d2fe; margin: 1em 0; color: #475569; }
+.copilot-markdown hr { border-top: 1px solid #e2e8f0; margin: 1.25em 0; }
+.copilot-markdown input[type=checkbox] { margin-right: 8px; }
+.copilot-table-scroll { width: 100%; overflow-x: auto; margin: 1em 0; border: 1px solid #e2e8f0; border-radius: 10px; }
+.copilot-markdown table { border-collapse: collapse; width: 100%; font-size: .9em; }
+.copilot-markdown :is(th,td) { min-width: 110px; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+.copilot-markdown th { font-weight: 600; background: #f8fafc; }
+.copilot-sources { margin-top: 20px; }
+.copilot-sources-label { margin-bottom: 10px; font-size: 12px; color: #64748b; }
+.copilot-source-cards { display: grid; gap: 12px; }
+.copilot-source-card { min-width: 0; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 16px; background: #fcfcff; }
+.copilot-source-header { display: flex; gap: 12px; align-items: center; padding: 16px 18px 12px; }
+.copilot-source-header > svg { color: #6366f1; flex-shrink: 0; }
+.copilot-source-header > div { min-width: 0; flex: 1; }
+.copilot-source-location { font-size: 11px; color: #64748b; margin-bottom: 3px; }
+.copilot-source-header h3 { font-size: 14px; font-weight: 600; line-height: 1.5; color: #1e293b; overflow-wrap: anywhere; }
+.copilot-source-open { display: flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 44px; min-height: 44px; border-radius: 10px; color: #64748b; }
+.copilot-source-open:hover { background: #eef2ff; color: #4338ca; }
+.copilot-source-passage { padding: 0 18px 14px; }
+.copilot-source-passage + .copilot-source-passage { padding-top: 10px; border-top: 1px solid #e2e8f0; }
+.copilot-source-passage-label { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; font-size: 11px; color: #64748b; }
+.copilot-source-passage-label a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; border-radius: 6px; color: #4338ca; font-size: 12px; }
+.copilot-source-excerpt { font-size: 13px; line-height: 1.75; color: #475569; white-space: pre-wrap; overflow-wrap: anywhere; }
+.copilot-source-more { min-height: 44px; font-size: 12px; color: #64748b; text-decoration: underline; text-underline-offset: 3px; border-radius: 4px; }
+.copilot-source-note { margin-top: 7px; font-size: 11px; line-height: 1.6; color: #64748b; }
+.copilot-source-details > summary, .copilot-context-details > summary { min-height: 44px; align-content: center; cursor: pointer; font-size: 12px; color: #64748b; border-radius: 6px; }
+.copilot-source-card > .copilot-source-details { border-top: 1px solid #e2e8f0; }
+.copilot-source-card > .copilot-source-details > summary { padding: 0 18px; }
+.copilot-context-details { margin-top: 6px; }
+.copilot-context-details ul { max-height: 220px; overflow-y: auto; }
+.copilot-context-details li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 12px; color: #475569; }
+.copilot-context-details li span { min-width: 0; overflow-wrap: anywhere; }
+.copilot-context-details small { flex-shrink: 0; color: #64748b; }
+:is(.copilot-markdown,.copilot-sources) :is(a,button,summary,[tabindex]):focus-visible { outline: 2px solid #818cf8; outline-offset: 3px; }
 
 @media (max-width: 767px), (max-width: 1023px) and (max-height: 500px) {
   .app-main[data-page="Copilot"] { padding-top: 0; }
@@ -50,6 +103,14 @@
   .copilot-header .copilot-heading { min-height: 44px; }
   .copilot-message-list { padding: 20px 16px 24px; gap: 24px; }
   .copilot-avatar { display: none; }
+  .copilot-source-header { gap: 9px; padding: 12px 12px 6px; }
+  .copilot-source-header > svg { width: 17px; }
+  .copilot-source-header h3 { font-size: 13px; }
+  .copilot-source-passage { padding: 0 12px 12px; }
+  .copilot-source-card > .copilot-source-details > summary { padding: 0 12px; }
+  .copilot-source-card { border-radius: 12px; }
+  .copilot-source-excerpt { font-size: 13px; }
+  .copilot-sources { margin-top: 16px; }
   .copilot-welcome { padding: 24px 20px 32px; }
   .copilot-welcome h1 { font-size: 27px; max-width: 290px; }
   .copilot-welcome > p { font-size: 14px; }

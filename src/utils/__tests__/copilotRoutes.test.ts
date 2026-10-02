@@ -30,7 +30,7 @@ describe('shared conversation endpoints', () => {
     expect(response.status).toHaveBeenCalledWith(400); expect(query).not.toHaveBeenCalled(); expect(runCopilotConversation).not.toHaveBeenCalled();
   });
   it('returns selected specialist roles and source links independently of model prose', async () => {
-    const citation = { entity_type: 'resource' as const, entity_id: 'r', title: 'Paper', source_url: 'https://drive.google.com/file/d/file/view', page_start: 3, page_end: 3, matched_via: ['page inspected'] };
+    const citation = { entity_type: 'resource' as const, entity_id: 'r', title: 'Paper', source_url: 'https://drive.google.com/file/d/file/view', page_start: 3, page_end: 3, matched_via: ['page inspected'], excerpt: 'Original source text', excerpt_kind: 'ocr' as const, source_tool: 'inspect_document_page' };
     vi.mocked(runCopilotConversation).mockResolvedValue({ ...result, document_citations: [citation] });
     const response = await request('/chat', { messages: [{ role: 'user', content: 'Read my paper' }], evidence_models: { ocr: 'off' } });
     expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ evidence_models: expect.objectContaining({ ocr: 'off' }), citations: [citation] }));
@@ -42,6 +42,16 @@ describe('shared conversation endpoints', () => {
     expect(vi.mocked(runCopilotConversation).mock.calls[0][0].turns).toEqual(messages);
     expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ reply: result.reply, actions: [] }));
     expect(vi.mocked(query).mock.calls.every(([sql]) => sql.trimStart().startsWith('SELECT'))).toBe(true);
+  });
+  it('saves source excerpts with the assistant message so cards survive reopening the chat', async () => {
+    const citation = { entity_type: 'resource' as const, entity_id: 'r', title: 'Paper', source_url: 'https://drive.google.com/file/d/file/view', page_start: 94, page_end: 94, matched_via: ['text read'], excerpt: 'Saved evidence.', excerpt_kind: 'text' as const, source_tool: 'read_document' };
+    vi.mocked(query).mockImplementation(async (sql: string) => ({ rows: sql.includes('SELECT id, model FROM chat_sessions') ? [{ id: 'session-id', model: null }] : [], rowCount: 1 }) as never);
+    vi.mocked(runCopilotConversation).mockResolvedValue({ ...result, document_citations: [citation] });
+    const response = await request('/sessions/:id/chat', { message: 'Explain page 94' });
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ citations: [citation] }));
+    const save = vi.mocked(query).mock.calls.find(([sql]) => sql.includes('INSERT INTO chat_messages'));
+    expect(save).toBeDefined();
+    expect(JSON.parse(String(save![1]![6])).citations).toEqual([citation]);
   });
 
   it('gives session replies both user and assistant history plus the exact correction', async () => {

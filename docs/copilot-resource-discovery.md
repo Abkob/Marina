@@ -64,3 +64,36 @@ repair provider downtime or guarantee an available Kimi endpoint.
 These are bounded retrieval and conversation checks, not evidence of defect-free
 answers across an entire library. Provider latency and availability remain external
 limits, and image-only content still needs OCR/visual inspection.
+
+## Chat presentation and source excerpts
+
+Assistant replies use the existing Marked lexer with an inert React renderer.
+Paragraphs, nested lists, emphasis, headings, tables, quotations and code are
+rendered structurally; HTML, remote images and unsafe URLs cannot execute.
+Wide tables and code blocks scroll inside the answer on small screens.
+
+Successful document tools attach a bounded excerpt (at most 1,200 characters)
+to citation metadata. This text comes directly from the tool evidence, never
+from the assistant's summary. Text, OCR, visual interpretations and extracted
+page structure carry distinct labels. Chunk identity prevents multiple passages
+on the same physical page from overwriting one another. The existing message
+metadata stores these fields; no schema migration or historic-data rewrite is
+needed.
+
+Chat displays one visible card per document, prioritizing deliberate page reads
+over discovery previews. Cards show the saved title, storage location, physical
+page and an expandable excerpt. The original Drive link opens Drive; the page
+link uses Marina's authenticated original-file stream with a PDF page fragment.
+The browser's PDF viewer controls whether page fragments are supported. Extra
+passages and documents expand in place. Task/goal context stays in a separate,
+quiet disclosure, and “Sources consulted” does not claim every retrieved passage
+supports every sentence in the reply.
+
+Old replies have source links but no saved excerpt. Their cards state that the
+excerpt is unavailable instead of substituting current file content for the
+evidence used in the historical answer. New resource answers save excerpts.
+
+Rendering tests cover the reported visible-asterisk/list problem, nested Markdown,
+malicious markup and URLs, excerpt expansion, duplicate passages, unknown pages,
+Drive/page links, old replies and visual/OCR provenance. The UI is also checked
+in a local browser with synthetic desktop and mobile fixtures and 44px controls.

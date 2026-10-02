@@ -11,7 +11,8 @@ import { OverdueTasksWidget, type OverdueTasksView } from './copilot/OverdueTask
 import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ModalFrame } from '../components/ModalFrame';
 import { CopilotEvidenceSettings, type EvidenceModelCatalog, type EvidenceModels } from '../components/CopilotEvidenceSettings';
-import { CopilotInlineText } from '../components/CopilotInlineText';
+import { CopilotMarkdown } from '../components/CopilotMarkdown';
+import { CopilotSources, type ChatCitation } from '../components/CopilotSources';
 import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
 import './copilot/copilot.css';
@@ -58,18 +59,6 @@ interface FeasibilityResult {
   status: 'on_track' | 'at_risk' | 'critical';
   summary: string;
   issues?: FeasibilityIssue[];
-}
-
-interface ChatCitation {
-  entity_type: string;
-  entity_id: string;
-  title: string;
-  matched_via: string[];
-  similarity?: number;
-  topics?: string[];
-  source_url?: string;
-  page_start?: number | null;
-  page_end?: number | null;
 }
 
 interface ModelCallRuntime {
@@ -141,29 +130,6 @@ function modelLabel(model: string) {
   if (model.includes('nemotron')) return 'Nemotron';
   if (model.includes('deepseek')) return 'DeepSeek';
   return model === 'AI model' ? 'Connecting…' : model;
-}
-
-function renderMarkdown(text: string): React.ReactNode {
-  const lines = text.split('\n');
-  return lines.map((line, i) => {
-    const isH2     = line.startsWith('## ');
-    const isH3     = line.startsWith('### ');
-    const isBullet = /^[-*•]\s/.test(line);
-    const content  = line.replace(/^#{2,3}\s/, '').replace(/^[-*•]\s/, '');
-
-    const inline = (s: string) => <CopilotInlineText text={s} />;
-
-    if (isH2)    return <p key={i} className="text-base font-bold text-slate-900 mt-5 mb-2 first:mt-0">{content}</p>;
-    if (isH3)    return <p key={i} className="text-[14px] font-semibold text-slate-900 mt-4 mb-1">{content}</p>;
-    if (isBullet) return (
-      <div key={i} className="flex gap-2 my-0.5 pl-1">
-        <span className="text-indigo-700 mt-0.5 shrink-0 text-[10px]">•</span>
-        <span className="text-[15px] text-slate-800 leading-6">{inline(content)}</span>
-      </div>
-    );
-    if (!line.trim()) return <div key={i} className="h-3" />;
-    return <p key={i} className="text-[15px] text-slate-800 leading-6">{inline(line)}</p>;
-  });
 }
 
 // ── Action Card ───────────────────────────────────────────────────────────────
@@ -345,7 +311,7 @@ function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction }: {
           </div>
         ) : (
           <div className="copilot-answer py-0.5 break-words">
-            {renderMarkdown(msg.content)}
+            <CopilotMarkdown text={msg.content} />
           </div>
         )}
         {msg.plan && (
@@ -367,7 +333,7 @@ function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction }: {
             ))}
           </div>
         ) : null}
-        {msg.citations?.length ? <CitationRow citations={msg.citations} /> : null}
+        {msg.citations?.length ? <CopilotSources citations={msg.citations} /> : null}
         {msg.content && <button aria-label="Copy response" className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-50" onClick={() => { navigator.clipboard.writeText(msg.content).then(() => triggerToast('Response copied', 'success')).catch(() => triggerToast('Could not copy. Select the text to copy it.', 'error')); }}><Copy size={14} />Copy</button>}
         {msg.runtime ? <RuntimeDisclosure runtime={msg.runtime} /> : null}
       </div>
@@ -458,47 +424,6 @@ function WorkingIndicator() {
       <RefreshCw size={16} className="animate-spin text-indigo-600 shrink-0" />
       <span>Thinking…</span>
       <span aria-hidden="true" className="ml-auto text-xs tabular-nums">{formatRuntime(elapsedMs)}</span>
-    </div>
-  );
-}
-
-const LANE_LABEL: Record<string, string> = {
-  sql: 'planning window',
-  vector: 'semantic match',
-  graph: 'graph link',
-  topic: 'topic member',
-  recency: 'recent journal',
-};
-
-function CitationRow({ citations }: { citations: ChatCitation[] }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mt-1.5">
-      <button
-        onClick={() => setOpen(o => !o)}
-        aria-expanded={open}
-        className="min-h-11 rounded-lg px-1 text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-      >
-        {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-        Sources: {citations.length} item{citations.length !== 1 ? 's' : ''} in context
-      </button>
-      {open && (
-        <div className="mt-1.5 space-y-1 max-h-48 overflow-y-auto pr-1">
-          {citations.map((c, i) => (
-            <div key={`${c.entity_type}-${c.entity_id}-${i}`} className="flex items-center gap-2 text-[10px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
-              <span className="font-mono uppercase text-slate-500 shrink-0">{c.entity_type.replace('_', ' ')}</span>
-              {c.source_url && (/^https:\/\/drive\.google\.com\/file\/d\/[\w-]+\/view$/.test(c.source_url) || /^\/api\/resources\/blob\/[\w-]+$/.test(c.source_url)) ? <a href={c.source_url} target="_blank" rel="noopener noreferrer" className="flex min-h-11 min-w-0 flex-1 items-center rounded-md text-slate-700 underline decoration-slate-300 underline-offset-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"><span className="truncate">{c.title}{c.page_start ? ` · p. ${c.page_start}${c.page_end && c.page_end !== c.page_start ? `–${c.page_end}` : ''}` : ''}</span></a> : <span className="text-slate-700 truncate flex-1">{c.title}</span>}
-              <span className="font-mono text-slate-500 shrink-0">
-                {c.matched_via.map(v => LANE_LABEL[v] ?? v).join(' · ')}
-                {c.similarity !== undefined && ` (${(c.similarity * 100).toFixed(0)}%)`}
-              </span>
-              {c.topics?.length ? (
-                <span className="font-mono text-indigo-700 shrink-0" title={`Topics: ${c.topics.join(', ')}`}>#{c.topics[0]}</span>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
