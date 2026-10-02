@@ -21,6 +21,24 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const post = (signal = new AbortController().signal) => nvidiaResponse(endpoint, { model, stream: true }, 'test-key', signal, model);
 
 describe('NVIDIA HTTP invocation', () => {
+  it('measures response, first nonempty reasoning and content without counting role/heartbeat events', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(100);
+    fetchMock.mockResolvedValue(sse([event(''), event(null, null, 'private-1'), event(null, null, 'private-2'), event('answer'), event(' more', 'stop')]));
+    const timing: import('../../../server/services/nvidiaTransport.js').NvidiaTiming = { startedAt: 100 };
+    const response = await nvidiaResponse(endpoint, { model, stream: true }, 'test-key', new AbortController().signal, model, timing);
+    expect(timing.first_response_ms).toBe(0);
+    now.mockReturnValueOnce(200).mockReturnValueOnce(700).mockReturnValue(900);
+    await readNvidiaChat(response, new AbortController(), model, timing);
+    expect(timing).toEqual({ startedAt: 100, first_response_ms: 0, first_reasoning_ms: 100, first_content_ms: 600 });
+    expect(JSON.stringify(timing)).not.toContain('private');
+  });
+  it('keeps failure timing without fabricating first content for a provider timeout', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(32100);
+    fetchMock.mockResolvedValue(json({}, 504));
+    const timing: import('../../../server/services/nvidiaTransport.js').NvidiaTiming = { startedAt: 100 };
+    await expect(nvidiaResponse(endpoint, { model }, 'test-key', new AbortController().signal, model, timing)).rejects.toMatchObject({ status: 504 });
+    expect(timing).toEqual({ startedAt: 100, first_response_ms: 32000 });
+  });
   it.each(['header', 'body'])('polls a %s request ID to completion with one POST', async source => {
     fetchMock.mockResolvedValueOnce(json(source === 'body' ? { requestId: id } : {}, 202, source === 'header' ? { 'nvcf-reqid': id } : {}))
       .mockResolvedValueOnce(json({}, 202))

@@ -68,7 +68,10 @@ describe('NVIDIA model contracts', () => {
     const { chat } = await import('../../../server/ollama.js'); const onAssistantMessage = vi.fn(), onTrace = vi.fn();
     await expect(chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage, onTrace })).rejects.toMatchObject({ code: 'NVIDIA_TIMEOUT', retryable: false });
     expect(requestSignal?.aborted).toBe(true); expect(fetchMock).toHaveBeenCalledOnce();
-    expect(onAssistantMessage).not.toHaveBeenCalled(); expect(onTrace).not.toHaveBeenCalled();
+    expect(onAssistantMessage).not.toHaveBeenCalled();
+    expect(onTrace).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error', error_code: 'NVIDIA_TIMEOUT' }));
+    expect(JSON.stringify(onTrace.mock.calls)).not.toContain('partial');
+    expect(JSON.stringify(onTrace.mock.calls)).not.toContain('private');
   });
   it('sends preserved Kimi continuation unchanged in the next request', async () => {
     fetchMock.mockImplementation(async () => stream());
@@ -78,6 +81,16 @@ describe('NVIDIA model contracts', () => {
     await chat([{ role: 'user', content: 'first' }, assistant, { role: 'user', content: 'tool result' }], { model: KIMI_MODEL, allowFallback: false });
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).messages[1]).toEqual(assistant);
     expect(assistant.reasoning_content).toBe('ephemeral-private-state');
+  });
+  it('measures the converted wire prompt and counts private continuation separately', async () => {
+    fetchMock.mockResolvedValue(stream());
+    const { chat } = await import('../../../server/ollama.js');
+    const onTrace = vi.fn();
+    await chat([{ role: 'system', content: 'policy' }, { role: 'user', content: 'old question' }, { role: 'assistant', content: 'old answer' }, { role: 'user', content: 'current question' }, { role: 'assistant', content: 'tool call', reasoning_content: 'private-state' }, { role: 'user', content: 'synthetic observation' }], { model: KIMI_MODEL, allowFallback: false, onTrace });
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body).messages as Array<{ role: string; content: string }>;
+    const actualChars = sent.reduce((sum, message) => sum + message.content.length, 0);
+    expect(onTrace).toHaveBeenCalledWith(expect.objectContaining({ prompt_chars: actualChars, system_prompt_chars: 6, conversation_chars: actualChars - 6, continuation_chars: 13, first_response_ms: expect.any(Number), first_content_ms: expect.any(Number), first_reasoning_ms: expect.any(Number) }));
+    expect(JSON.stringify(onTrace.mock.calls)).not.toContain('private-state');
   });
   it('converts stored assistant history without inventing provider state, retaining current continuation', () => {
     const current = { role: 'assistant', content: '{"tool_calls":[]}', reasoning_content: 'state' };

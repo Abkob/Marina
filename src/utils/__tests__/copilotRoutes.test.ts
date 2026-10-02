@@ -5,7 +5,7 @@ import { runCopilotConversation } from '../../../server/services/copilotConversa
 
 vi.mock('../../../server/db.js', () => ({ query: vi.fn(), transaction: vi.fn() }));
 vi.mock('../../../server/services/copilotConversation.js', () => ({ runCopilotConversation: vi.fn() }));
-vi.mock('../../../server/services/agentLedger.js', () => ({ startAgentRun: vi.fn(async () => 'run-id'), appendAgentEvent: vi.fn(), setAgentIntent: vi.fn(), finishAgentRun: vi.fn() }));
+vi.mock('../../../server/services/agentLedger.js', () => ({ startAgentRun: vi.fn(async () => 'run-id'), appendAgentEvent: vi.fn(), setAgentIntent: vi.fn(), finishAgentRun: vi.fn(async () => {}) }));
 const result = { reply: 'Please clarify which deadlines.', actions: [], document_citations: [], conversation: { mode: 'model_led' as const, needs_clarification: true, tool_calls: [], proposal_review: 'not_needed' as const, context_usage: { raw_chars: 0, sent_chars: 0, format: 'json_tables_v1' as const } } };
 
 // Invoke the actual Express handler without starting a network listener.
@@ -25,6 +25,17 @@ beforeEach(() => {
 });
 
 describe('shared conversation endpoints', () => {
+  it('reports timed-out session calls and does not advertise a disabled fallback', async () => {
+    vi.mocked(query).mockImplementation(async (sql: string) => ({ rows: sql.includes('SELECT id, model FROM chat_sessions') ? [{ id: 'session-id', model: 'moonshotai/kimi-k3' }] : [], rowCount: 1 }) as never);
+    vi.mocked(runCopilotConversation).mockImplementationOnce(async options => {
+      options.onTrace?.({ model: 'moonshotai/kimi-k3', provider: 'nvidia-cloud', duration_ms: 32000, prompt_chars: 2, fallback_used: false, outcome: 'error', error_code: 'NVIDIA_ENDPOINT_TIMEOUT', first_response_ms: 32000 });
+      throw new Error('Provider timed out');
+    });
+    const response = await request('/sessions/:id/chat', { message: 'hi' });
+    expect(response.status).toHaveBeenCalledWith(502);
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Provider timed out', runtime: expect.objectContaining({ fallback_model: null, local_fallback_model: null, model_calls: [expect.objectContaining({ outcome: 'error', first_response_ms: 32000 })] }) }));
+    expect(vi.mocked(query).mock.calls.some(([sql]) => sql.includes('INSERT INTO chat_messages'))).toBe(false);
+  });
   it('rejects invalid model-role selections before reading the database', async () => {
     const response = await request('/chat', { messages: [{ role: 'user', content: 'Read my paper' }], evidence_models: { ocr: 'untrusted-model' } });
     expect(response.status).toHaveBeenCalledWith(400); expect(query).not.toHaveBeenCalled(); expect(runCopilotConversation).not.toHaveBeenCalled();

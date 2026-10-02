@@ -4,6 +4,94 @@ Investigated on **2026-10-02**, using synthetic prompts and the configured NVIDI
 credentials. No database, Drive file, uploaded resource, or production schema was
 read or modified by these probes.
 
+## Follow-up: a 41-second greeting and 29,509 prompt characters
+
+The user's successful screenshot establishes that K3 can answer intermittently;
+the failures below do not mean it is permanently unavailable. A screenshot of
+aggregate duration cannot locate time spent queuing, prefill, reasoning or
+generation, and its exact historical request cannot be reconstructed from that
+count alone.
+
+The current pre-change fresh `hi` request was **26,774 content characters**:
+9,561 policy, 2,451 feature descriptions, 9,632 tool definitions, 3,962 action
+schemas, 1,025 encoding/parameter guides, plus separators, clock and greeting.
+It ran **zero tools and retrieved zero document characters**. Document chunks
+are only added after a model-requested read. A continued chat also includes
+bounded history, and later calls include tool observations and K3 continuation.
+Character counts are not token counts.
+
+Sequential real K3 probes with `reasoning_effort: low`, `max_tokens: 16384`, SSE
+and the same key/settings showed:
+
+| Payload | Result |
+| --- | --- |
+| Bare `hi` (2 characters) | HTTP 504 in 32.3s |
+| Full app instructions + `hi` (26,774 characters) | HTTP 504 in 32.2s |
+| Bare `hi` again | HTTP 504 in 32.1s |
+| Separate bare `hi`, queue wait increased to 60s | HTTP 504 in 62.1s |
+
+Request IDs for the first three: `462ab891-9c95-401e-a04d-2151a5676002`,
+`db5ced87-2cb2-4040-a970-4de8033f48f4`,
+`5c456fa9-5272-42fb-a474-e6d7bd6696d7`. The 60s probe was
+`86d9063e-107c-43e6-9d40-f6d241012fd7`. No content events arrived.
+Increasing the queue window did not resolve these probes. This supports an
+upstream availability problem independent of retrieval, not a measured claim
+that all successful 41-second calls spend 41 seconds in a queue.
+
+The final diagnostic repeated bare/full/bare requests after the changes: all
+three still returned 504 in 32.4/32.2/32.1s. The full final prompt's request ID was
+`6f6455eb-233c-44b5-ae0f-3949a430519b`. Its error trace recorded 24,530 instruction
+characters, 2 conversation characters, 32,180ms to response headers, and no
+reasoning/content-start event. The app-side changes do not fix this provider
+availability failure.
+
+[NVIDIA's K3 API](https://docs.api.nvidia.com/nim/reference/moonshotai-kimi-k3-infer)
+supports low/high/max reasoning, defaults to max, and recommends temperature 1.
+Marina already explicitly sets low and 1. [Moonshot documents that K3 always
+reasons](https://platform.kimi.ai/docs/guide/use-reasoning-effort); a non-thinking
+K2 switch is not a K3 fix. `max_tokens` is a ceiling, not a requirement to generate
+16,384 tokens. Reducing it can truncate reasoning before the answer.
+
+The final template is **24,532 characters (8.4% smaller)**. All read tools, action
+schemas, history handling and full resource-research rules remain available on
+every turn. No greeting classifier, second routing call, canned response or
+automatic model change was introduced. The resource feature catalog now also
+advertises discovery, document reading, page inspection and saved relationships.
+
+An experimental 21,976-character version failed the real synthetic discovery
+test by skipping discovery. It was not shipped: fuller research rules and tool
+descriptions were restored. The revised test found the mismatched-title candidate,
+read physical page 37 and answered without writes in 44.6s using Super as a control.
+Earlier Super control greetings took 1.7s/2.6s bare and 7.3s with the experimental
+template; these small samples are not a final-template speed benchmark or a K3
+success. NVIDIA latency remains variable even across successful requests.
+
+Response details now report actual converted wire-content characters, system vs
+conversation/tool text, separate continuation size, provider-reported token/cache
+usage, and elapsed times to response headers, first nonempty reasoning and first
+answer content. These are cumulative observations, not isolated queue timings;
+completed JSON polling responses cannot expose per-token timing. Private reasoning
+is never displayed or persisted. Failed NVIDIA attempts produce safe timing/code
+traces, included in the session error response and agent ledger. Disabled fallback
+models are no longer advertised. The browser still waits for validated complete
+JSON before showing an answer.
+
+Reproduce prompt accounting locally, or explicitly opt into synthetic endpoint
+tests (all real tools disabled):
+
+```powershell
+node --import tsx scripts/check-copilot-latency.ts
+node --env-file=.env --import tsx scripts/check-copilot-latency.ts --live
+node --env-file=.env --import tsx scripts/check-copilot-latency.ts nvidia/nemotron-3-super-120b-a12b --live
+```
+
+Validation for this follow-up: 1,169 unit tests passed; the final resource-policy
+refinement passed all 82 focused contract/conversation checks. The integration
+run without DATABASE_URL_TEST passed 14 tests and skipped 144 database tests.
+TypeScript, frontend build, serverless entry and Vercel preflight passed. Synthetic
+desktop/mobile timing details were inspected without horizontal overflow. No
+production data or schema changes are required.
+
 ## What failed
 
 The live problem reproduced below is upstream of retrieval. A standalone

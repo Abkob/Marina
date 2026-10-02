@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ArrowUp, ArrowDown, Keyboard, SquarePen, Copy, Zap, RefreshCw, CheckCircle, X, AlertTriangle, ChevronRight, ChevronDown, Diamond, Calendar, ChevronLeft, MessageSquare, Plus, Paperclip, SlidersHorizontal, Target } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSchedulePreview, useGoals, useInvalidate, useChatSessions, useCreateChatSession, useDeleteChatSession, type ScheduleDay, type SchedulerResult, type ScheduleTaskInfo, type DayAssignment } from '../api/hooks';
-import { apiFetch, apiPost } from '../utils/apiFetch';
+import { ApiError, apiFetch, apiPost } from '../utils/apiFetch';
 import { useAppStore, type CopilotStoredMessage } from '../store/useAppStore';
 import { PlanCalendarWidget, type ChatPlan } from './copilot/PlanCalendarWidget';
 import { PlanOptionsWidget, type ChatPlanOptions } from './copilot/PlanOptionsWidget';
@@ -13,6 +13,8 @@ import { ModalFrame } from '../components/ModalFrame';
 import { CopilotEvidenceSettings, type EvidenceModelCatalog, type EvidenceModels } from '../components/CopilotEvidenceSettings';
 import { CopilotMarkdown } from '../components/CopilotMarkdown';
 import { CopilotSources, type ChatCitation } from '../components/CopilotSources';
+import { CopilotCallMetrics } from '../components/CopilotCallMetrics';
+import type { ChatCallTrace } from '../types/copilotRuntime';
 import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
 import './copilot/copilot.css';
@@ -61,13 +63,8 @@ interface FeasibilityResult {
   issues?: FeasibilityIssue[];
 }
 
-interface ModelCallRuntime {
+interface ModelCallRuntime extends ChatCallTrace {
   phase: 'intent' | 'answer';
-  model: string;
-  provider: 'gemini-cloud' | 'nvidia-cloud' | 'ollama-local' | 'ollama-cloud';
-  duration_ms: number;
-  prompt_chars: number;
-  fallback_used: boolean;
 }
 
 interface ChatRuntime {
@@ -366,13 +363,13 @@ function RuntimeDisclosure({ runtime }: { runtime: ChatRuntime }) {
   const usedModels = [...new Set(runtime.model_calls.map(call => call.model))];
   const summary = runtime.model_calls.length
     ? `${usedModels.join(' + ')} · ${runtime.model_calls.length} model call${runtime.model_calls.length === 1 ? '' : 's'} · ${formatRuntime(runtime.total_ms)}`
-    : `Deterministic · no model call · ${formatRuntime(runtime.total_ms)}`;
+    : `No model timing available · ${formatRuntime(runtime.total_ms)}`;
 
   return (
     <div className="mt-2">
       <button
         onClick={() => setOpen(value => !value)}
-        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-mono text-slate-500 transition-colors hover:border-slate-200 hover:text-slate-700"
+        className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-mono text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-indigo-500"
         aria-expanded={open}
       >
         {open ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
@@ -384,21 +381,19 @@ function RuntimeDisclosure({ runtime }: { runtime: ChatRuntime }) {
           {runtime.model_calls.length ? (
             <div className="space-y-1.5">
               {runtime.model_calls.map((call, index) => (
-                <div key={`${call.phase}-${index}`} className="grid grid-cols-[95px_1fr_auto] items-center gap-2 text-[10px]">
-                  <span className="font-medium text-slate-500">{PHASE_LABEL[call.phase]}</span>
-                  <span className="truncate font-mono text-slate-700">
+                <div key={`${call.phase}-${index}`} className="grid grid-cols-[1fr_auto] items-center gap-2 text-[10px] sm:grid-cols-[70px_minmax(0,1fr)_auto]">
+                  <span className="hidden font-medium text-slate-500 sm:block">{PHASE_LABEL[call.phase]}</span>
+                  <span className="min-w-0 break-words font-mono text-slate-700">
                     {call.model} · {PROVIDER_LABEL[call.provider]}
                     {call.fallback_used ? ' · fallback' : ''}
                   </span>
                   <span className="font-mono text-slate-500">{formatRuntime(call.duration_ms)}</span>
-                  <span />
-                  <span className="font-mono text-slate-500">{call.prompt_chars.toLocaleString()} prompt characters</span>
-                  <span />
+                  <div className="col-span-full sm:col-start-2"><CopilotCallMetrics call={call} /></div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-[10px] text-slate-500">The server handled this directly without asking a language model.</p>
+            <p className="text-[10px] text-slate-500">No model-call measurements were recorded for this response.</p>
           )}
           <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] text-slate-500">
             Total includes database retrieval, schedule checks, model calls, and response validation.
@@ -1105,7 +1100,8 @@ export function CopilotView() {
         : (err instanceof Error ? err.message : 'Request failed');
       const isApiKeyErr = errMsg.toLowerCase().includes('api key') || errMsg.toLowerCase().includes('gemini');
       if (isApiKeyErr) setApiKeyMissing(true);
-      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', error: errMsg, timestamp: new Date().toISOString() }]);
+      const runtime = err instanceof ApiError ? (err.data as { runtime?: ChatRuntime } | null)?.runtime : undefined;
+      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', error: errMsg, runtime, timestamp: new Date().toISOString() }]);
     } finally {
       setIsLoading(false);
       if (!isMobile) setTimeout(() => inputRef.current?.focus(), 50);

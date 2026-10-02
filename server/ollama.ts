@@ -1,7 +1,9 @@
 import { Ollama } from 'ollama';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import type OpenAI from 'openai';
-import { NvidiaError, nvidiaResponse, readNvidiaChat, nvidiaTimeout } from './services/nvidiaTransport.js';
+import { NvidiaError, nvidiaResponse, readNvidiaChat, nvidiaTimeout, type NvidiaTiming } from './services/nvidiaTransport.js';
+import type { ChatCallTrace } from '../src/types/copilotRuntime.js';
+export type { ChatCallTrace } from '../src/types/copilotRuntime.js';
 import { KIMI_MODEL, supportsDocumentModel, documentModelParameters, nvidiaKeyForModel, prepareNvidiaMessages } from './config/nvidiaModels.js';
 import {
   CHAT_HOST,
@@ -39,18 +41,6 @@ export interface ChatMessage {
   content: string;
   /** Ephemeral provider continuation state: never render, log or persist. */
   reasoning_content?: string;
-}
-
-export interface ChatCallTrace {
-  model: string;
-  provider: 'gemini-cloud' | 'nvidia-cloud' | 'ollama-local' | 'ollama-cloud';
-  duration_ms: number;
-  prompt_chars: number;
-  fallback_used: boolean;
-  /** Provider-reported counts only; absent when the provider supplies no usage. */
-  input_tokens?: number;
-  output_tokens?: number;
-  cached_input_tokens?: number;
 }
 
 export interface ChatOptions {
@@ -212,8 +202,21 @@ async function chatOnce(
     }, requestTimeoutMs);
     timer.unref?.();
   });
-  const promptChars = messages.reduce((s, m) => s + m.content.length, 0);
+  // Count the content actually sent after provider history conversion. Private
+  // continuation is measured separately, never copied into traces.
+  const preparedMessages: ChatMessage[] = isNvidiaChatModel(model) ? prepareNvidiaMessages(model, messages) : messages;
+  const promptChars = preparedMessages.reduce((s, m) => s + m.content.length, 0);
+  const promptStats = {
+    system_prompt_chars: preparedMessages.filter(m => m.role === 'system').reduce((sum, m) => sum + m.content.length, 0),
+    conversation_chars: preparedMessages.filter(m => m.role !== 'system').reduce((sum, m) => sum + m.content.length, 0),
+    continuation_chars: preparedMessages.reduce((sum, m) => sum + (m.reasoning_content?.length ?? 0), 0),
+  };
   const startedAt = Date.now();
+  const timing: NvidiaTiming = { startedAt };
+  const timingStats = () => {
+    const { startedAt: _startedAt, ...measurements } = timing;
+    return measurements;
+  };
   try {
     if (isNvidiaChatModel(model)) {
       const apiKey = nvidiaKeyForModel(model);
@@ -237,7 +240,7 @@ async function chatOnce(
       );
       const request = {
         model,
-        messages: prepareNvidiaMessages(model, messages),
+        messages: preparedMessages,
         temperature: opts.temperature ?? Number(process.env.MARINA_NVIDIA_TEMPERATURE ?? 1),
         top_p: Number(process.env.MARINA_NVIDIA_TOP_P ?? 0.95),
         max_tokens: maxTokens,
@@ -258,8 +261,8 @@ async function chatOnce(
       // Kimi's hosted contract fixes the remaining sampling parameters.
       if (model === KIMI_MODEL) delete request.top_p;
       const streamedResult = (async () => {
-        const response = await nvidiaResponse(`${NVIDIA_API_BASE.replace(/\/$/, '')}/chat/completions`, request, apiKey, abortController!.signal, model);
-        return readNvidiaChat(response, abortController!, model);
+        const response = await nvidiaResponse(`${NVIDIA_API_BASE.replace(/\/$/, '')}/chat/completions`, request, apiKey, abortController!.signal, model, timing);
+        return readNvidiaChat(response, abortController!, model, timing);
       })();
       const { content, reasoningChars, usage, continuationReasoning } = await Promise.race([streamedResult, timeout]);
       const text = content.trim();
@@ -271,6 +274,8 @@ async function chatOnce(
         provider: 'nvidia-cloud',
         duration_ms: durationMs,
         prompt_chars: promptChars,
+        ...promptStats,
+        ...timingStats(),
         fallback_used: model !== (opts.model ?? CHAT_MODEL),
         ...(usage ? { input_tokens: usage.prompt_tokens, output_tokens: usage.completion_tokens,
           ...(usage.prompt_tokens_details?.cached_tokens !== undefined ? { cached_input_tokens: usage.prompt_tokens_details.cached_tokens } : {}) } : {}),
@@ -354,6 +359,9 @@ async function chatOnce(
     console.log(`[ollama] ${model} ok in ${Math.round(durationMs / 1000)}s (prompt ${promptChars} chars)`);
     return response.message.content;
   } catch (err) {
+    if (err instanceof NvidiaError) opts.onTrace?.({ model, provider: 'nvidia-cloud', duration_ms: Date.now() - startedAt,
+      prompt_chars: promptChars, ...promptStats, ...timingStats(), fallback_used: model !== (opts.model ?? CHAT_MODEL),
+      outcome: 'error', error_code: err.code });
     console.warn(`[ollama] ${model} failed after ${Math.round((Date.now() - startedAt) / 1000)}s (prompt ${promptChars} chars): ${(err as Error).message}`);
     if (err instanceof NvidiaError) console.warn('[nvidia] failure metadata', { code: err.code, status: err.status, request_id: err.requestId });
     throw err;

@@ -22,14 +22,22 @@ export function nvidiaTimeout(model: string) {
   return new NvidiaError(`NVIDIA's ${model} endpoint did not finish within the request time limit. Try again or select another model.`, 'NVIDIA_TIMEOUT', 504, false);
 }
 
+export interface NvidiaTiming {
+  startedAt: number;
+  first_response_ms?: number;
+  first_reasoning_ms?: number;
+  first_content_ms?: number;
+}
+
 /** One POST, then poll the same invocation. The caller owns the total deadline. */
-export async function nvidiaResponse(url: string, body: unknown, apiKey: string, signal: AbortSignal, model: string): Promise<Response> {
+export async function nvidiaResponse(url: string, body: unknown, apiKey: string, signal: AbortSignal, model: string, timing?: NvidiaTiming): Promise<Response> {
   const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json',
     Accept: (body as { stream?: boolean } | null)?.stream ? 'text/event-stream' : 'application/json', 'NVCF-POLL-SECONDS': '30' };
   let id: string | undefined;
   try {
     signal.throwIfAborted();
     let response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' });
+    if (timing) timing.first_response_ms ??= Date.now() - timing.startedAt;
     while (response.status === 202) {
       const headerId = requestId(response);
       if (!id) {
@@ -73,11 +81,13 @@ type Completion = OpenAI.Chat.Completions.ChatCompletion;
 type PrivateMessage = { content?: string | null; reasoning_content?: string | null };
 
 /** Accept both SSE and fulfilled JSON, including JSON returned after a 202 poll. */
-export async function readNvidiaChat(response: Response, controller: AbortController, model: string) {
+export async function readNvidiaChat(response: Response, controller: AbortController, model: string, timing?: NvidiaTiming) {
   let content = '', continuationReasoning = '', finishReason: string | null = null;
   let usage: OpenAI.CompletionUsage | undefined;
   const id = requestId(response);
   const consume = (message: PrivateMessage | undefined, finish: string | null | undefined) => {
+    if (timing && message?.content) timing.first_content_ms ??= Date.now() - timing.startedAt;
+    if (timing && message?.reasoning_content) timing.first_reasoning_ms ??= Date.now() - timing.startedAt;
     if (typeof message?.content === 'string') content += message.content;
     if (typeof message?.reasoning_content === 'string') continuationReasoning += message.reasoning_content;
     if (finish) finishReason = finish;

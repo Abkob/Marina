@@ -2619,12 +2619,9 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
   const runtimeInfo = (): ChatRuntime => ({
     total_ms: Date.now() - requestStartedAt,
     primary_model: selectedModel,
-    fallback_model: NVIDIA_CONFIGURED && NVIDIA_MODEL !== selectedModel
-      ? NVIDIA_MODEL
-      : FALLBACK_MODEL || null,
-    local_fallback_model: NVIDIA_CONFIGURED && NVIDIA_MODEL !== selectedModel
-      ? FALLBACK_MODEL || null
-      : null,
+    // This model-led conversation deliberately disables automatic model switching.
+    fallback_model: null,
+    local_fallback_model: null,
     model_calls: [...modelCalls],
   });
 
@@ -2671,8 +2668,9 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
     res.json({ ...result, session_id: req.params.id, message_id: messageId, agent_run_id: agentRunId, runtime });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.';
-    await finishAgentRun(agentRunId, 'failed', null, { error: message }).catch(() => {});
-    res.status(502).json({ error: message });
+    const runtime = runtimeInfo();
+    await finishAgentRun(agentRunId, 'failed', null, { error: message, metadata: { runtime } }).catch(() => {});
+    res.status(502).json({ error: message, runtime });
   }
 });
 
