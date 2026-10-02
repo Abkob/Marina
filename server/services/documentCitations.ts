@@ -19,10 +19,12 @@ export function documentCitations(tool: string, data: unknown): DocumentCitation
   if (!data || typeof data !== 'object') return [];
   const value = data as Record<string, unknown>;
   let candidates: unknown[] = [];
-  if (tool === 'search_documents' && Array.isArray(value.evidence)) candidates = value.evidence;
+  if ((tool === 'search_documents' || tool === 'find_resources') && Array.isArray(value.evidence)) candidates = value.evidence;
+  if (tool === 'find_resources' && Array.isArray(value.previews)) candidates = [...candidates, ...value.previews.flatMap(preview =>
+    preview && typeof preview === 'object' && Array.isArray(preview.passages) ? preview.passages.map((row: unknown) => ({ ...preview, ...(row && typeof row === 'object' ? row : {}) })) : [])];
   if (tool === 'read_document' && Array.isArray(value.passages)) candidates = value.passages.map(row => ({ ...value, ...(row && typeof row === 'object' ? row : {}) }));
   if (tool === 'inspect_document_page' && [value.analysis, value.text].some(text => typeof text === 'string' && text.trim())) candidates = [value];
-  return candidates.slice(0, 20).flatMap(candidate => {
+  return candidates.slice(0, 24).flatMap(candidate => {
     const parsed = sourceSchema.safeParse(candidate);
     if (!parsed.success) return [];
     const row = parsed.data;

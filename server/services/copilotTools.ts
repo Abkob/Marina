@@ -40,9 +40,9 @@ export function createCopilotTools(dependencies: {
   const models = resolveEvidenceModels(dependencies.evidenceModels);
   return {
     find_resources: {
-      description: 'Find saved resource IDs by literal title words. Optional goal_id filters saved goal links and its tasks; task_id filters attachments/mentions on that task and descendants. Both filters intersect. No match never permits searching another goal. Includes pending and image-only files. Omit search to browse; page with next_after. No writes.',
-      parameters: z.object({ search: z.string().trim().min(1).max(300).optional(), goal_id: z.string().min(1).max(100).optional(), task_id: z.string().min(1).max(100).optional(), after: z.string().min(1).max(100).optional(), limit: z.number().int().min(1).max(30).optional() }).strict(),
-      execute: async args => ({ data: await findResources(args) }),
+      description: 'Discover resources using automatic semantic/text content retrieval alongside title/filename matches. Put the approximate document title in search and the topic or user question in query; query defaults to search. Evidence includes passages and pages from semantically ranked candidate documents even when no title matches. Opening previews from the top two candidates provide titles/contents for source resolution. Follow relevant sections with read_document without asking permission; disclose title differences. goal_id/task_id constrain both lanes to saved relationships; never broaden an empty scope. Metadata includes pending/image-only files; semantic evidence requires ready indexed text. Omit search/query to browse titles with next_after. No writes.',
+      parameters: z.object({ search: z.string().trim().min(1).max(300).optional(), query: z.string().trim().min(1).max(2000).optional(), goal_id: z.string().min(1).max(100).optional(), task_id: z.string().min(1).max(100).optional(), after: z.string().min(1).max(100).optional(), limit: z.number().int().min(1).max(30).optional() }).strict(),
+      execute: async args => ({ data: await findResources(args, models.reranker) }),
     },
     resource_context: {
       description: 'Read exact resources with their current saved goals, linked tasks, deadlines, assigned days and indexing coverage. Use for study planning and cross-resource context; relationships are saved attachments/mentions, never inferred from similarity. Empty relationships mean unlinked, not permission to assign a goal. Calendar time blocks require schedule_range. This tool does not read file contents. No writes.',

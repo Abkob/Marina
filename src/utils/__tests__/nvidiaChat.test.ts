@@ -43,6 +43,12 @@ describe('NVIDIA model contracts', () => {
     await expect(chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage: callback })).rejects.toThrow('response limit');
     expect(callback).not.toHaveBeenCalled();
   });
+  it('marks an empty reasoning-only stream as a retryable provider failure, never an answer', async () => {
+    mock.create.mockResolvedValue((async function* () { yield { choices: [{ delta: { reasoning_content: 'private' }, finish_reason: 'stop' }] }; })());
+    const { chat } = await import('../../../server/ollama.js'); const callback = vi.fn();
+    await expect(chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage: callback })).rejects.toMatchObject({ status: 502, code: 'NVIDIA_EMPTY_RESPONSE' });
+    expect(callback).not.toHaveBeenCalled();
+  });
   it('supports a dedicated Kimi key without a general NVIDIA key', async () => {
     vi.stubEnv('NVIDIA_API_KEY', ''); mock.create.mockResolvedValue(stream());
     const { chat, validateChatModels } = await import('../../../server/ollama.js');

@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mock = vi.hoisted(() => ({ query: vi.fn(), open: vi.fn(), render: vi.fn(), analyze: vi.fn(), ocr: vi.fn(), parse: vi.fn(), enabled: vi.fn() }));
+const mock = vi.hoisted(() => ({ query: vi.fn(), search: vi.fn(), open: vi.fn(), render: vi.fn(), analyze: vi.fn(), ocr: vi.fn(), parse: vi.fn(), enabled: vi.fn() }));
+vi.mock('../../../server/services/documentRag.js', () => ({ searchDocuments: mock.search }));
 vi.mock('../../../server/db.js', () => ({ query: mock.query }));
 vi.mock('../../../server/services/fileStorage.js', () => ({ openStoredFile: mock.open }));
 vi.mock('../../../server/services/pdfText.js', () => ({ renderPdfPage: mock.render }));
@@ -11,6 +12,7 @@ import { findResources, readDocument, inspectDocumentPage } from '../../../serve
 const resource = { id: 'r', title: 'Paper', status: 'ready', mime_type: 'application/pdf', file_path: 'gdrive://private-id', file_id: 'private-id', checked_at: 'yesterday', last_error: null };
 beforeEach(() => {
   vi.resetAllMocks(); mock.query.mockResolvedValue({ rows: [resource] }); mock.enabled.mockReturnValue(true);
+  mock.search.mockResolvedValue({ evidence: [], vector_degraded: false, reranking: 'disabled', coverage: { exhaustive: false } });
   mock.open.mockResolvedValue({ size: 3, stream: Readable.from([Buffer.from('pdf')]) });
   mock.render.mockResolvedValue({ dataUrl: 'data:image/png;base64,cGRm', total: 5 });
   mock.analyze.mockResolvedValue({ analysis: 'After: 45', evidence_type: 'model_interpretation_of_image' });
@@ -18,6 +20,47 @@ beforeEach(() => {
 });
 
 describe('document discovery and reading', () => {
+  it.each([{ rows: [] }, { rows: [resource] }])('searches meaning automatically regardless of literal title success: %j', async ({ rows }) => {
+    mock.query.mockResolvedValue({ rows });
+    const evidence = [{ resource_id: 'other', title: 'Geometry notes', passage: 'Distance-preserving transformations', page_start: 12, page_end: 12 }];
+    mock.search.mockResolvedValue({ evidence, vector_degraded: false, coverage: { exhaustive: false } });
+    const result = await findResources({ search: 'Intro to algebra', query: 'isometry groups', goal_id: 'g', task_id: 't' }, 'off');
+    expect(mock.search).toHaveBeenCalledWith('isometry groups', [], 8, 'off', { goal_id: 'g', task_id: 't' }, { diversifyResources: true });
+    expect(result).toMatchObject({ evidence, semantic_discovery: { candidate_resource_ids: ['other'], coverage: { exhaustive: false } } });
+    expect(result).toMatchObject({ title_matches: rows.map(row => ({ id: row.id })) });
+    expect(result.resources).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'other', title: 'Geometry notes', matched_via: ['semantic_or_text_content'] })]));
+  });
+  it('uses the approximate title as semantic query when no separate topic is supplied', async () => {
+    await findResources({ search: 'introdction algebra' });
+    expect(mock.search.mock.calls[0][0]).toBe('introdction algebra');
+  });
+  it('supports topic-only discovery and reports lexical-only degradation', async () => {
+    mock.search.mockResolvedValue({ evidence: [], vector_degraded: true });
+    expect(await findResources({ query: 'plane symmetries' })).toMatchObject({ semantic_discovery: { vector_degraded: true } });
+  });
+  it('preserves metadata and discloses a failed content search', async () => {
+    mock.search.mockRejectedValue(new Error('database temporarily unavailable'));
+    expect(await findResources({ search: 'Paper' })).toMatchObject({ resources: [{ id: 'r' }], evidence: [], semantic_discovery: { unavailable: true } });
+  });
+  it('automatically reads a candidate opening and preserves continuation when its preview budget is reached', async () => {
+    mock.search.mockResolvedValue({ evidence: [{ resource_id: 'r' }], vector_degraded: false });
+    mock.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [resource] }).mockResolvedValueOnce({ rows: [
+      { id: 'c0', chunk_index: 0, content: 'A'.repeat(2200), page_start: 1, page_end: 1 },
+      { id: 'c1', chunk_index: 1, content: 'B'.repeat(2200), page_start: 2, page_end: 2 },
+      { id: 'c2', chunk_index: 2, content: 'C'.repeat(2200), page_start: 3, page_end: 3 },
+    ] });
+    const result = await findResources({ search: 'other title', query: 'topic' });
+    expect(result).toMatchObject({ title_matches: [], resources: [{ id: 'r' }], previews: [{ resource_id: 'r', has_more: true, next_after_chunk: 1, passages: [{ chunk_id: 'c0' }, { chunk_id: 'c1' }] }] });
+  });
+  it('does not discard semantic evidence when the original becomes unavailable before its preview', async () => {
+    mock.search.mockResolvedValue({ evidence: [{ resource_id: 'gone' }], vector_degraded: false });
+    mock.query.mockResolvedValue({ rows: [] });
+    expect(await findResources({ query: 'topic' })).toMatchObject({ evidence: [{ resource_id: 'gone' }], previews: [{ resource_id: 'gone', unavailable: true }] });
+  });
+  it('does not spend an embedding call on metadata browsing or cursor continuation', async () => {
+    await findResources({}); await findResources({ search: 'Paper', after: 'q' });
+    expect(mock.search).not.toHaveBeenCalled();
+  });
   it('pages literal title queries and excludes archived/unavailable resources', async () => {
     mock.query.mockResolvedValue({ rows: [resource, { ...resource, id: 's' }] });
     const result = await findResources({ search: '50% draft_', after: 'q', limit: 1 });

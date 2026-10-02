@@ -5,6 +5,7 @@ import { activeTaskSql, activeGoalSql, activeMilestoneSql, activeMeetingSql, act
 import { Router } from 'express';
 import { runCopilotConversation, type ConversationTurn } from '../services/copilotConversation.js';
 import { createCopilotTools, readCopilotClock } from '../services/copilotTools.js';
+import { citationsForContext } from '../services/contextCitations.js';
 import { evidenceModelsSchema, resolveEvidenceModels, modelRoleCatalog, type EvidenceModels } from '../services/copilotModelRoles.js';
 import { workspaceGraph, selectWorkspaceSections, type WorkspaceSection } from '../services/copilotWorkspaceGraph.js';
 import { resolvePlanTaskScope } from '../services/planTaskScope.js';
@@ -1425,8 +1426,13 @@ async function answerConversation(
   const loadContext = async (search = '') => {
     if (!contexts.has(search)) contexts.set(search, await getScheduleContext(search || undefined));
     const result = contexts.get(search)!;
-    for (const citation of result.citations) citations.set(`${citation.entity_type}:${citation.entity_id}`, citation);
     return result.ctx;
+  };
+  const rememberContext = <T,>(data: T): T => {
+    for (const context of contexts.values()) for (const citation of citationsForContext(data, context.citations)) {
+      citations.set(`${citation.entity_type}:${citation.entity_id}`, citation);
+    }
+    return data;
   };
   const result = await runCopilotConversation({
     turns,
@@ -1438,11 +1444,11 @@ async function answerConversation(
     } : undefined,
     tools: createCopilotTools({
       evidenceModels,
-      workspace: async (search, sections) => compactContextForModel(await loadContext(search), sections ?? (search ? ['tasks', 'details'] : undefined)),
+      workspace: async (search, sections) => rememberContext(compactContextForModel(await loadContext(search), sections ?? (search ? ['tasks', 'details'] : undefined))),
       previewSchedule: args => buildPlanPayload(args as PlanWindowParams),
       previewRoutine: args => buildSeriesPayload(args as unknown as SeriesParams),
-      scheduleDay: async date => buildScheduleDayView(await loadContext(), date),
-      overdueTasks: async () => ({ tasks: (await loadContext()).overdue_tasks }),
+      scheduleDay: async date => rememberContext(buildScheduleDayView(await loadContext(), date)),
+      overdueTasks: async () => rememberContext({ tasks: (await loadContext()).overdue_tasks }),
     }),
   });
   return {

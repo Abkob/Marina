@@ -19,7 +19,7 @@ export function selectSourceCoverage<T extends { resource_id: string }>(ranked: 
 }
 /** Every returned passage belongs to a ready/visible resource and has source provenance.
  * Ranking identifies candidates, not a guarantee of relevance or exhaustive coverage. */
-export async function searchDocuments(text: string, resourceIds: string[] = [], limit = 8, rerankModel?: string, resourceScope: ResourceScope = {}) {
+export async function searchDocuments(text: string, resourceIds: string[] = [], limit = 8, rerankModel?: string, resourceScope: ResourceScope = {}, options: { diversifyResources?: boolean } = {}) {
   resourceIds = [...new Set(resourceIds)].slice(0, 20);
   const bounded = Math.max(1, Math.min(12, Math.trunc(limit) || 8));
   const scope = resourceIds.length ? 'AND r.id=ANY($2::text[])' : '';
@@ -27,17 +27,18 @@ export async function searchDocuments(text: string, resourceIds: string[] = [], 
   if (!queryText) return { evidence: [], vector_degraded: false, resources: [] };
   // Reserve candidates per selected source before the global cut, so a long book
   // cannot crowd a second selected document out of both retrieval lanes.
-  const perSource = Math.max(2, Math.floor(MAX_RERANK_PASSAGES / Math.max(1, resourceIds.length)));
+  const perSource = options.diversifyResources ? 2 : Math.max(2, Math.floor(MAX_RERANK_PASSAGES / Math.max(1, resourceIds.length)));
   const laneLimit = Math.max(24, bounded * 3);
-  const lexicalRank = "ts_rank_cd(to_tsvector('simple',c.content),plainto_tsquery('simple',$1)) DESC,c.id";
-  const laneSql = (base: string, order: string) => resourceIds.length
-    ? `SELECT * FROM (${base.replace('SELECT ', `SELECT row_number() OVER (PARTITION BY r.id ORDER BY ${order}) AS source_rank,`)} ) candidates WHERE source_rank<=${perSource} ORDER BY source_rank,resource_id LIMIT ${MAX_RERANK_PASSAGES}`
+  const lexicalScore = "ts_rank_cd(to_tsvector('simple',c.content),plainto_tsquery('simple',$1))";
+  const lexicalRank = `${lexicalScore} DESC,c.id`;
+  const laneSql = (base: string, order: string, score: string) => resourceIds.length || options.diversifyResources
+    ? `SELECT * FROM (${base.replace('SELECT ', `SELECT ${score} AS lane_score,row_number() OVER (PARTITION BY r.id ORDER BY ${order}) AS source_rank,`)} ) candidates WHERE source_rank<=${perSource} ORDER BY source_rank,lane_score DESC,resource_id LIMIT ${MAX_RERANK_PASSAGES}`
     : `${base} ORDER BY ${order} LIMIT ${laneLimit}`;
   const lexicalValues: unknown[] = resourceIds.length ? [queryText, resourceIds] : [queryText];
   const lexicalScope = resourceScopeSql(resourceScope, lexicalValues);
   const lexical = await query<Passage>(laneSql(`SELECT ${fields} ${joins}
     WHERE ${visible} ${scope} ${lexicalScope} AND to_tsvector('simple',c.content) @@ plainto_tsquery('simple',$1)
-    `, lexicalRank),
+    `, lexicalRank, lexicalScore),
   lexicalValues);
   let vector: Passage[] = []; let degraded = false;
   try {
@@ -48,7 +49,7 @@ export async function searchDocuments(text: string, resourceIds: string[] = [], 
       JOIN embeddings e ON e.entity_type='resource_chunk' AND e.entity_id=c.id
       WHERE ${visible} AND NOT e.is_stale AND e.embedding_3072 IS NOT NULL
         AND e.embedding_model=$2 AND e.embedding_dimension=$3 ${resourceIds.length ? 'AND r.id=ANY($4::text[])' : ''} ${vectorScope}
-      `, 'e.embedding_3072 <=> $1::halfvec,c.id'),
+      `, 'e.embedding_3072 <=> $1::halfvec,c.id', '-(e.embedding_3072 <=> $1::halfvec)'),
     vectorValues);
     vector = result.rows;
   } catch { degraded = true; }
@@ -61,7 +62,7 @@ export async function searchDocuments(text: string, resourceIds: string[] = [], 
     FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id WHERE r.id=ANY($1) AND ${activeResourceSql('r.id')}`, [resourceIds])).rows : [];
   const candidates = selectSourceCoverage([...merged.values()].sort((a,b) => b.score-a.score).map(entry => entry.row), resourceIds, MAX_RERANK_PASSAGES);
   const reranked = await rerankPassages(queryText, candidates, rerankModel);
-  const selected = selectSourceCoverage(reranked.rows, resourceIds, bounded);
+  const selected = selectSourceCoverage(reranked.rows, options.diversifyResources ? [...new Set(reranked.rows.map(row => row.resource_id))] : resourceIds, bounded);
   return { evidence: selected.map(row => ({
     resource_id: row.resource_id, title: row.title, chunk_id: row.chunk_id, passage: row.content.slice(0, 2400),
     page_start: row.page_start, page_end: row.page_end, source_url: row.file_id ? `https://drive.google.com/file/d/${row.file_id}/view` : `/api/resources/blob/${row.resource_id}`,

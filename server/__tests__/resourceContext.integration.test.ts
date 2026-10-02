@@ -75,6 +75,18 @@ describe.skipIf(SKIP_INTEGRATION)('resource relationships with real PostgreSQL',
     expect(await found({ goal_id: goalA })).toEqual([]);
     expect((await searchDocuments('recovery', [], 8, 'off', { task_id: child })).evidence).toEqual([]);
   });
+  it('constrains automatic semantic discovery even when the requested title is absent', async () => {
+    const a = await resource('task', child), b = await resource('goal', goalB);
+    const discover = (scope: { goal_id?: string; task_id?: string }) => findResources({ search: 'nonexistent book title', query: 'concept without lexical overlap', ...scope }, 'off');
+    const found = await discover({ goal_id: goalA });
+    expect(found).toMatchObject({ title_matches: [], resources: [{ id: a }] });
+    expect(found).toMatchObject({ semantic_discovery: { vector_degraded: false, candidate_resource_ids: [a] } });
+    expect(JSON.stringify(found)).not.toContain(b);
+    expect(await discover({ goal_id: goalB, task_id: child })).toMatchObject({ evidence: [] });
+    expect(await discover({ goal_id: 'missing' })).toMatchObject({ evidence: [] });
+    await query('UPDATE goals SET archived_at=$2 WHERE id=$1', [goalA, now]);
+    expect(await discover({ goal_id: goalA })).toMatchObject({ evidence: [] });
+  });
   it('returns current deadlines and unlinked context without inventing relationships', async () => {
     const a = await resource('task', child), loose = await resource();
     await query('UPDATE goals SET hard_deadline=$2 WHERE id=$1', [goalA, '2026-11-01']);

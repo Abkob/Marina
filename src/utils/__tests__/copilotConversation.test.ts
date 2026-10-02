@@ -17,6 +17,31 @@ function setup(outputs: unknown[], tool?: Partial<ConversationTool>) {
 }
 
 describe('model-led conversation', () => {
+  it('reopens a premature title clarification to verify a semantic candidate page within a bounded budget', async () => {
+    const complete = vi.fn<typeof chat>()
+      .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'discover', name: 'find_resources', arguments: { query: 'geometric symmetries' } }] }))
+      .mockResolvedValueOnce(JSON.stringify(final({ reply: 'Please give the exact title.', needs_clarification: true })))
+      .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'page', name: 'read_document', arguments: { resource_id: 'book', page: 37 } }] }))
+      .mockResolvedValueOnce(JSON.stringify(final({ reply: 'In Geometry notes, page 37 introduces rotations and reflections.' })));
+    const discover = vi.fn(async () => ({ data: { semantic_discovery: { candidate_resource_ids: ['book'] } } }));
+    const read = vi.fn(async () => ({ data: { passages: [{ passage: 'Rotations and reflections', page_start: 37 }] } }));
+    const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'Where is this introduced in my book?' }], clock, complete, maxToolRounds: 1, tools: {
+      find_resources: { description: 'Discover', parameters: z.object({ query: z.string() }), execute: discover },
+      read_document: { description: 'Read', parameters: z.object({ resource_id: z.string(), page: z.number() }), execute: read },
+    } });
+    expect(result.reply).toContain('page 37'); expect(result.conversation.needs_clarification).toBe(false);
+    expect(discover).toHaveBeenCalledOnce(); expect(read).toHaveBeenCalledOnce();
+    expect(new Set(complete.mock.calls.map(call => call[1]?.deadlineMs)).size).toBe(1);
+  });
+  it('never loops a research clarification indefinitely or silently chooses another source', async () => {
+    const complete = vi.fn<typeof chat>()
+      .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'discover', name: 'find_resources', arguments: {} }] }))
+      .mockResolvedValue(JSON.stringify(final({ reply: 'Both books are plausible; which one?', needs_clarification: true })));
+    const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'Which book?' }], clock, complete, tools: {
+      find_resources: { description: 'Discover', parameters: z.object({}), execute: async () => ({ data: { semantic_discovery: { candidate_resource_ids: ['a', 'b'] } } }) },
+    } });
+    expect(complete).toHaveBeenCalledTimes(3); expect(result.conversation.needs_clarification).toBe(true); expect(result.actions).toEqual([]);
+  });
   it('retains provider continuation within a tool loop without returning it to the client', async () => {
     const { tools } = setup([]);
     const complete = vi.fn<typeof chat>()
@@ -32,6 +57,17 @@ describe('model-led conversation', () => {
     const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'q' }], clock, tools, complete, model: 'moonshotai/kimi-k3' });
     expect(result.reply).toBe('Here is my actual explanation.');
     expect(JSON.stringify(result)).not.toContain('private-continuation');
+    expect(complete.mock.calls[0][1]?.max_tokens).toBe(16_384);
+  });
+  it('retries an empty provider answer once without replaying completed document reads', async () => {
+    const { tools, execute } = setup([]);
+    const complete = vi.fn<typeof chat>()
+      .mockResolvedValueOnce(JSON.stringify(toolCall()))
+      .mockRejectedValueOnce(Object.assign(new Error('Provider returned no answer'), { status: 502, code: 'NVIDIA_EMPTY_RESPONSE' }))
+      .mockResolvedValueOnce(JSON.stringify(final()));
+    const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'Read it' }], clock, tools, complete });
+    expect(result.reply).toBe('Here is my actual explanation.');
+    expect(execute).toHaveBeenCalledOnce(); expect(complete).toHaveBeenCalledTimes(3);
   });
   it('keeps inspected-page citations and discloses OCR fallback even when model prose omits it', async () => {
     const complete = vi.fn<typeof chat>()

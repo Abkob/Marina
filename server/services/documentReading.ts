@@ -5,30 +5,71 @@ import { renderPdfPage } from './pdfText.js';
 import { analyzeDocumentImage, transcribeDocumentImage, parseDocumentImage, MAX_VISION_IMAGE_BYTES, nvidiaEvidenceAvailable } from './nvidiaEvidence.js';
 import type { EvidenceModels } from './copilotModelRoles.js';
 import { resourceScopeSql, type ResourceScope } from './resourceContext.js';
+import { searchDocuments } from './documentRag.js';
 
-type Resource = { id: string; title: string; file_path: string | null; mime_type: string | null; file_id: string | null; status: string; error: string | null; checked_at: string | null; last_error: string | null };
-const resourceFields = `r.id,r.title,r.file_path,r.mime_type,d.file_id,COALESCE(j.status,'not_started') AS status,j.error,d.checked_at,d.last_error`;
+type Resource = { id: string; title: string; original_name: string | null; file_path: string | null; mime_type: string | null; file_id: string | null; status: string; error: string | null; checked_at: string | null; last_error: string | null };
+const resourceFields = `r.id,r.title,r.original_name,r.file_path,r.mime_type,d.file_id,COALESCE(j.status,'not_started') AS status,j.error,d.checked_at,d.last_error`;
 const resourceJoins = `FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id
   LEFT JOIN resource_drive_files d ON d.resource_id=r.id AND r.file_path LIKE 'gdrive://%'`;
 const visible = `${activeResourceSql('r.id')} AND (d.resource_id IS NULL OR d.available)`;
 const source = (row: Resource) => ({ resource_id: row.id, title: row.title,
   source_url: row.file_id ? `https://drive.google.com/file/d/${row.file_id}/view` : `/api/resources/blob/${row.id}`,
   last_source_check: row.last_error ? null : row.checked_at, source_check_error: row.last_error });
+const discoveredSource = (row: Resource) => ({ ...source(row), id: row.id, original_name: row.original_name, mime_type: row.mime_type, status: row.status, error: row.error });
 
-export async function findResources(args: { search?: string; after?: string; limit?: number } & ResourceScope) {
+export async function findResources(args: { search?: string; query?: string; after?: string; limit?: number } & ResourceScope, rerankModel?: string) {
   const limit = Math.min(30, Math.max(1, Math.trunc(args.limit ?? 20)));
   const values: unknown[] = [];
   const conditions = [visible];
   for (const word of args.search?.trim().split(/\s+/).filter(Boolean) ?? []) {
     values.push(`%${word.replace(/[\\%_]/g, '\\$&')}%`);
-    conditions.push(`r.title ILIKE $${values.length}`);
+    conditions.push(`(r.title ILIKE $${values.length} OR r.original_name ILIKE $${values.length})`);
   }
   if (args.after) { values.push(args.after); conditions.push(`r.id > $${values.length}`); }
   const scope = resourceScopeSql(args, values);
   values.push(limit + 1);
   const { rows } = await query<Resource>(`SELECT ${resourceFields} ${resourceJoins} WHERE ${conditions.join(' AND ')} ${scope} ORDER BY r.id LIMIT $${values.length}`, values);
-  const resources = rows.slice(0, limit).map(row => ({ ...source(row), id: row.id, mime_type: row.mime_type, status: row.status, error: row.error }));
-  return { resources, has_more: rows.length > limit, next_after: rows.length > limit ? resources.at(-1)!.id : null };
+  const resources = rows.slice(0, limit).map(discoveredSource);
+  const result = { resources, has_more: rows.length > limit, next_after: rows.length > limit ? resources.at(-1)!.id : null };
+  const semanticQuery = args.query?.trim() || args.search?.trim();
+  if (!semanticQuery || args.after) return result;
+  // Content discovery always runs, even when a literal title matched. The model
+  // receives candidate passages in this call instead of having to escape an
+  // exact-name gate itself. Ranking never establishes document identity.
+  try {
+    const found = await searchDocuments(semanticQuery, [], 8, rerankModel, { goal_id: args.goal_id, task_id: args.task_id }, { diversifyResources: true });
+    const candidateIds = [...new Set(found.evidence.map(row => row.resource_id))];
+    // A semantic hit alone can confuse neighboring concepts. Supply the opening
+    // context of the top candidates automatically, so the model can resolve the
+    // book and follow its contents without another title-lookup loop.
+    const previews = await Promise.all(candidateIds.slice(0, 2).map(async resource_id => {
+      try {
+        const read = await readDocument({ resource_id, limit: 8 });
+        let chars = 0;
+        const passages = read.passages.filter(row => { chars += row.passage.length; return chars <= 6000; });
+        const truncated = passages.length < read.passages.length;
+        return { ...read, passages, has_more: truncated || ('has_more' in read && read.has_more),
+          next_after_chunk: truncated ? passages.at(-1)?.chunk_index ?? -1 : 'next_after_chunk' in read ? read.next_after_chunk : null };
+      } catch { return { resource_id, unavailable: true }; }
+    }));
+    const candidates = new Map<string, ReturnType<typeof discoveredSource> & { matched_via: string[] }>();
+    for (const row of found.evidence) candidates.set(row.resource_id, {
+      id: row.resource_id, resource_id: row.resource_id, title: row.title, source_url: row.source_url,
+      original_name: null, mime_type: null, status: 'ready', error: null,
+      last_source_check: row.last_source_check, source_check_error: row.source_check_error, matched_via: ['semantic_or_text_content'],
+    });
+    for (const row of resources) candidates.set(row.id, { ...row, matched_via: [...(candidates.get(row.id)?.matched_via ?? []), 'title_or_filename'] });
+    // `resources: []` previously told the planner that the source was missing,
+    // even when evidence identified a candidate. Resource discovery now returns
+    // the discovered sources; literal metadata matches are a separate field.
+    return { ...result, resources: [...candidates.values()].slice(0, limit), title_matches: resources, evidence: found.evidence, previews, semantic_discovery: {
+      query: semanticQuery, vector_degraded: found.vector_degraded, reranking: found.reranking, coverage: found.coverage,
+      candidate_resource_ids: candidateIds,
+    }, hint: 'resources are discovered candidates, with matched_via identifying title or content discovery. title_matches lists literal matches separately; an empty title_matches does not mean the source is missing. previews are opening passages from the top two content candidates, often including contents. Follow relevant sections with read_document. Investigate without asking permission; answer under the actual saved title and disclose any title mismatch. Similarity is not proof of identity or topic absence. Retrieval is bounded and searches ready indexed text only. has_more/next_after page the literal metadata listing.' };
+  } catch {
+    return { ...result, evidence: [], semantic_discovery: { unavailable: true },
+      hint: 'Content discovery is temporarily unavailable. These are metadata results only, not evidence of topic absence. You may read known documents with read_document or inspect_document_page; disclose the unavailable search.' };
+  }
 }
 
 async function getResource(id: string) {

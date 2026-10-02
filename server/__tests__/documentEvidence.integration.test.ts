@@ -48,6 +48,43 @@ describe.skipIf(SKIP_INTEGRATION)('document evidence with real PostgreSQL', () =
     expect((await readDocument({ resource_id: id, page: 2 })).passages).toHaveLength(1);
     expect((await readDocument({ resource_id: id, page: 1 })).passages).toEqual([]);
   });
+  it('discovers a small semantically matching document beside a long book without a matching title', async () => {
+    const large = await resource('Encyclopedia'), small = await resource('Geometry lectures');
+    for (let i = 0; i < 26; i++) {
+      const chunk = crypto.randomUUID(), id = i === 25 ? small : large;
+      await query('INSERT INTO resource_chunks(id,resource_id,chunk_index,content,page_start,page_end,created_at) VALUES($1,$2,$3,$4,117,117,$5)', [chunk, id, i, 'Rotations and reflections preserve distances.', new Date().toISOString()]);
+      await embedding(chunk, 'Rotations and reflections preserve distances.');
+    }
+    const result = await findResources({ search: 'Introduction to algebra', query: 'isometry groups' }, 'off');
+    expect(result).toMatchObject({ title_matches: [] });
+    expect(new Set(result.resources.map(row => row.id))).toEqual(new Set([large, small]));
+    expect(result).toMatchObject({ semantic_discovery: { vector_degraded: false, coverage: { exhaustive: false } } });
+    const evidence = 'evidence' in result ? result.evidence : [];
+    expect(new Set(evidence.map(row => row.resource_id))).toEqual(new Set([large, small]));
+    expect(evidence.filter(row => row.resource_id === large).length).toBeLessThanOrEqual(2);
+    expect(evidence.find(row => row.resource_id === small)).toMatchObject({ page_start: 117, passage: 'Rotations and reflections preserve distances.' });
+  });
+  it('finds original filenames and excludes unavailable, stale and unready evidence', async () => {
+    const good = await resource('My saved book');
+    await query('UPDATE resources SET original_name=$2 WHERE id=$1', [good, 'Introduction_to_Abstract_Algebra.pdf']);
+    expect((await findResources({ search: 'Introduction Abstract Algebra' }, 'off')).resources.map(row => row.id)).toEqual([good]);
+    for (const state of ['unavailable', 'stale', 'queued']) {
+      const id = await resource(`Hidden ${state}`), chunk = crypto.randomUUID();
+      await query('INSERT INTO resource_chunks(id,resource_id,chunk_index,content,page_start,page_end,created_at) VALUES($1,$2,0,$3,1,1,$4)', [chunk, id, 'isometry groups', new Date().toISOString()]);
+      await embedding(chunk, 'isometry groups');
+      if (state === 'stale') {
+        await query('UPDATE embeddings SET is_stale=true WHERE entity_id=$1', [chunk]);
+        // No lexical overlap: this case specifically checks stale vector exclusion.
+        await query("UPDATE resource_chunks SET content='Rotations' WHERE id=$1", [chunk]);
+      }
+      if (state === 'queued') await query("UPDATE resource_processing_jobs SET status='queued' WHERE resource_id=$1", [id]);
+      if (state === 'unavailable') {
+        await query("UPDATE resources SET file_path='gdrive://hidden' WHERE id=$1", [id]);
+        await query("INSERT INTO resource_drive_files(resource_id,file_id,source_mime,source_version,available) VALUES($1,$1,'application/pdf','1',false)", [id]);
+      }
+    }
+    expect(await findResources({ search: 'absent title', query: 'isometry groups' }, 'off')).toMatchObject({ evidence: [], semantic_discovery: { vector_degraded: false } });
+  });
   it('invalidates the legacy short embedding even when the chunk is reused, then gives changed content a new ID', async () => {
     const id = await resource('Versioned source');
     const file = path.resolve('tmp', `document-version-${id}.txt`); files.push(file);

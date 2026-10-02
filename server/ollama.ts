@@ -295,7 +295,7 @@ async function chatOnce(
       const { content, reasoningChars, usage, continuationReasoning, finishReason } = await Promise.race([streamedResult, timeout]);
       if (finishReason === 'length') throw new Error(`NVIDIA model ${model} reached its response limit. Try a narrower question.`);
       const text = content.trim();
-      if (!text) throw new Error(`NVIDIA model ${model} returned an empty response`);
+      if (!text) throw Object.assign(new Error(`NVIDIA returned no answer from ${model}. Try again or select another chat model.`), { status: 502, code: 'NVIDIA_EMPTY_RESPONSE' });
       opts.onAssistantMessage?.({ role: 'assistant', content,
         ...(model === KIMI_MODEL ? { reasoning_content: continuationReasoning } : {}) });
       const durationMs = Date.now() - startedAt;

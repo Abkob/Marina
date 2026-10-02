@@ -18,6 +18,7 @@ describe('document citation provenance', () => {
   it('joins text passage pages with the original source identity', () => {
     expect(documentCitations('read_document', { ...row, passages: [{ page_start: 4, page_end: 5 }] })[0]).toMatchObject({ entity_id: 'r', page_start: 4, page_end: 5 });
     expect(documentCitations('search_documents', { evidence: [row] })).toHaveLength(1);
+    expect(documentCitations('find_resources', { resources: [{ ...row, resource_id: 'unread' }], evidence: [row] })).toEqual(documentCitations('search_documents', { evidence: [row] }));
   });
   it.each(['javascript:alert(1)', 'https://evil.test/file', 'https://drive.google.com.evil.test/file/d/id/view', '//evil.test', '/api/resources/blob/../auth'])('rejects unsafe source URL %s', source_url => {
     expect(documentCitations('inspect_document_page', { ...row, source_url, text: 'source' })).toEqual([]);
@@ -27,5 +28,11 @@ describe('document citation provenance', () => {
     expect(documentCitations('inspect_document_page', { ...row, text: '' })).toEqual([]);
     expect(documentCitations('find_resources', { resources: [row] })).toEqual([]);
     expect(documentCitations('read_document', { ...row, passages: [] })).toEqual([]);
+  });
+  it('includes only actual opening-preview passages and keeps their physical pages', () => {
+    const result = documentCitations('find_resources', { resources: [{ ...row, resource_id: 'metadata-only' }], evidence: [], previews: [
+      { ...row, passages: [{ page_start: 1, page_end: 1 }, { page_start: 4, page_end: 4 }] }, { resource_id: 'unavailable', unavailable: true },
+    ] });
+    expect(result.map(citation => [citation.entity_id, citation.page_start])).toEqual([['r', 1], ['r', 4]]);
   });
 });
