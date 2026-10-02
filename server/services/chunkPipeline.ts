@@ -5,6 +5,7 @@ import { query, transaction } from '../db.js';
 import type pg from 'pg';
 import { DocumentError } from './uploadValidation.js';
 import { extractPdfPages } from './pdfText.js';
+import { chunkDocumentElements, type DocumentElement, type ElementChunk } from './documentElements.js';
 
 const CHUNK_MAX_CHARS = 2000;
 const SUPPORTED_TEXT_EXTS = new Set(['.txt', '.md', '.csv']);
@@ -140,12 +141,12 @@ export async function processResourceChunks(
   resourceId: string,
   filePath: string,
   mimeType: string,
-  options: { beforeCommit?: (client: pg.PoolClient) => Promise<void>; enqueueEmbeddings?: boolean } = {},
+  options: { beforeCommit?: (client: pg.PoolClient) => Promise<void>; enqueueEmbeddings?: boolean; elements?: DocumentElement[]; generation?: number; totalPages?: number } = {},
 ): Promise<{ chunks: number; reused: number } | null> {
-  const extracted = await extractText(filePath, mimeType);
+  const extracted = options.elements ? { text: '', totalPages: options.totalPages ?? null, pageOffsets: null } : await extractText(filePath, mimeType);
   if (!extracted) return null; // parse failed — keep previous generation
 
-  const rawChunks = extracted.pageOffsets
+  const rawChunks = options.elements ? chunkDocumentElements(options.elements) : extracted.pageOffsets
     ? extracted.pageOffsets.flatMap(page => splitIntoChunks(extracted.text.slice(page.start, page.end))
       .map(chunk => ({ ...chunk, charStart: chunk.charStart + page.start, charEnd: chunk.charEnd + page.start })))
     : splitIntoChunks(extracted.text);
@@ -163,15 +164,16 @@ export async function processResourceChunks(
   // Build the new generation up-front so the transaction only does writes.
   const newGeneration: Array<{
     id: string; index: number; content: string; hash: string;
-    pageStart: number | null; pageEnd: number | null; metadata: string; reused: boolean;
+    pageStart: number | null; pageEnd: number | null; heading: string | null; metadata: string; reused: boolean;
   }> = [];
   for (let i = 0; i < rawChunks.length; i++) {
     const raw = rawChunks[i];
     const content = sanitizeChunkContent(raw.content);
     if (!content) continue;
-    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    const element = 'kind' in raw ? raw as ElementChunk : null;
+    const hash = crypto.createHash('sha256').update(element ? JSON.stringify([content, element.kind, element.heading ?? null, element.model ?? null]) : content).digest('hex');
     const prior = existingByIndex.get(i);
-    const { pageStart, pageEnd } = pageRangeFor(raw, totalChars, extracted.totalPages, extracted.pageOffsets);
+    const { pageStart, pageEnd } = element ? { pageStart: element.page, pageEnd: element.page } : pageRangeFor(raw, totalChars, extracted.totalPages, extracted.pageOffsets);
     const reused = prior?.content_hash === hash && (prior.page_start ?? null) === pageStart && (prior.page_end ?? null) === pageEnd;
     newGeneration.push({
       id: reused ? prior!.id : crypto.randomUUID(),
@@ -180,12 +182,15 @@ export async function processResourceChunks(
       hash,
       pageStart,
       pageEnd,
+      heading: element?.heading ?? null,
       metadata: JSON.stringify({
+        evidence_kind: element?.kind ?? 'text', heading: element?.heading ?? null,
+        ...(element ? { model: element.model, generation: options.generation, extractor_version: 'structured-pages-v1', page_mapping: 'exact' } : {}),
         char_start: raw.charStart,
         char_end: raw.charEnd,
         ...(extracted.totalPages ? {
           page_start: pageStart, page_end: pageEnd, total_pages: extracted.totalPages,
-          page_mapping: extracted.pageOffsets ? 'exact' : 'approximate',
+          page_mapping: element || extracted.pageOffsets ? 'exact' : 'approximate',
         } : {}),
       }),
       reused,
@@ -207,11 +212,11 @@ export async function processResourceChunks(
     for (const chunk of newGeneration) {
       await client.query(
         `INSERT INTO resource_chunks
-           (id, resource_id, chunk_index, content, content_hash, page_start, page_end, chunk_metadata, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           (id, resource_id, chunk_index, content, content_hash, page_start, page_end, chunk_metadata, created_at, heading)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT (id) DO UPDATE
-           SET content=$4, content_hash=$5, page_start=$6, page_end=$7, chunk_metadata=$8`,
-        [chunk.id, resourceId, chunk.index, chunk.content, chunk.hash, chunk.pageStart, chunk.pageEnd, chunk.metadata, now],
+           SET content=$4, content_hash=$5, page_start=$6, page_end=$7, chunk_metadata=$8, heading=$10`,
+        [chunk.id, resourceId, chunk.index, chunk.content, chunk.hash, chunk.pageStart, chunk.pageEnd, chunk.metadata, now, chunk.heading],
       );
       if (!chunk.reused) {
         await client.query("UPDATE embeddings SET is_stale=true WHERE entity_type='resource_chunk' AND entity_id=$1", [chunk.id]);

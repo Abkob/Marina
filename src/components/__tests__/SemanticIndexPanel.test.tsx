@@ -54,4 +54,13 @@ describe('persistent indexing feedback', () => {
     await mount(); expect(screen.getByRole('alert')).toHaveTextContent('Could not load processing status');
     expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
   });
+  it('keeps incomplete visual coverage visible after text indexing reaches ready', async () => {
+    state={status:'ready',stage:'embed',chunks:12,embedded:12,total_pages:6,visual_pages_ready:4,visual_pages_failed:2};
+    await mount(); expect(screen.getByRole('status')).toHaveTextContent('2 pages have incomplete visual evidence');
+    expect(screen.getByRole('button',{name:'Re-index file'})).toBeEnabled();
+  });
+  it('offers an explicit visual-index upgrade for a legacy text-only document',async()=>{
+    state={status:'ready',stage:'embed',chunks:12,embedded:12,mime_type:'application/pdf'};
+    await mount(); expect(screen.getByText(/Text index only/)).toBeVisible();
+  });
 });

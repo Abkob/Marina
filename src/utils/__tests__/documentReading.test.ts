@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({ query: vi.fn(), search: vi.fn(), open: vi.fn(), render: vi.fn(), analyze: vi.fn(), ocr: vi.fn(), parse: vi.fn(), enabled: vi.fn() }));
 vi.mock('../../../server/services/documentRag.js', () => ({ searchDocuments: mock.search }));
+vi.mock('../../../server/services/driveResourceAccess.js', async original => ({ ...await original<typeof import('../../../server/services/driveResourceAccess.js')>(), filterRootedDriveRows: async (rows: unknown[]) => rows }));
 vi.mock('../../../server/db.js', () => ({ query: mock.query }));
 vi.mock('../../../server/services/fileStorage.js', () => ({ openStoredFile: mock.open }));
 vi.mock('../../../server/services/pdfText.js', () => ({ renderPdfPage: mock.render }));

@@ -88,14 +88,14 @@ export function GoogleDriveResources({ onImported }: { onImported: () => void })
           })}><RefreshCw size={14} /><span className="hidden sm:inline">Sync</span></button>
           <button type="button" className={subtleButton} disabled={busy} onClick={() => void action(connect)}>Reconnect</button>
         </div>
-        <p className="mb-2 text-[11px] leading-relaxed text-gray-500">New uploads are stored in Drive. Imported files stay in their original folders. Removing a resource from Marina keeps its Drive file.</p>
+        <p className="mb-2 text-[11px] leading-relaxed text-gray-500">Only the Marina folder is browsed. Uploads use the chosen goal or task directory. Files added there in Drive are discovered when that context is selected in chat. Removing a resource keeps its Drive file.</p>
         <form className="flex gap-1" onSubmit={event => { event.preventDefault(); setSubmittedSearch(search); }}>
           <input aria-label="Search Google Drive files" value={search} onChange={event => setSearch(event.target.value)} placeholder="Find a document in Drive…" maxLength={200}
             className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-indigo-400" />
           <button type="submit" className={subtleButton}>Search</button>
         </form>
         <nav aria-label="Drive folder" className="flex flex-wrap items-center text-xs text-gray-500">
-          <button type="button" className={subtleButton} disabled={busy} onClick={() => setFolders([])}>All files</button>
+          <button type="button" className={subtleButton} disabled={busy} onClick={() => setFolders([])}>Marina</button>
           {folders.map((item, index) => <button type="button" key={item.id} className={`${subtleButton} max-w-40`} disabled={busy} onClick={() => setFolders(current => current.slice(0,index+1))}><ChevronRight size={11} /><span className="truncate">{item.name}</span></button>)}
         </nav>
         {listing.isFetching && <p role="status" className="py-2 text-xs text-gray-500">Loading Drive files…</p>}

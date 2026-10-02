@@ -19,6 +19,7 @@ describe('Copilot document cards', () => {
     expect(screen.getAllByRole('article')).toHaveLength(1);
     expect(screen.getByText(source.excerpt!)).toBeVisible();
     expect(screen.getByText('1 more passage')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '1 more passage' }));
     expect(screen.getAllByText('Cover page')).toHaveLength(1);
   });
   it('expands the saved excerpt with an accessible control and preserves its literal source text', () => {
@@ -36,6 +37,15 @@ describe('Copilot document cards', () => {
     render(<CopilotSources citations={[{ ...source, excerpt: undefined }]} />);
     expect(screen.getByText(/No excerpt was saved/)).toBeVisible();
     expect(screen.getByRole('link', { name: /in Google Drive/ })).toBeInTheDocument();
+  });
+  it('opens a named source dialog with an internal page preview and a reachable close control', () => {
+    render(<CopilotSources citations={[source]} />);
+    fireEvent.click(screen.getByRole('button',{name:'Preview page and excerpt'}));
+    const dialog=screen.getByRole('dialog',{name:source.title});
+    expect(within(dialog).getByTitle('Introduction to Algebra, Page 94')).toHaveAttribute('src','/api/resources/blob/book#page=94');
+    expect(within(dialog).getByText(source.excerpt!)).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button',{name:'Close source preview'}));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
   it('labels visual interpretations and OCR fallback instead of presenting them as quotations', () => {
     render(<CopilotSources citations={[{ ...source, excerpt_kind: 'visual' }, { ...source, entity_id: 'scan', title: 'Scan', matched_via: ['OCR fallback'], excerpt_kind: 'ocr' }]} />);

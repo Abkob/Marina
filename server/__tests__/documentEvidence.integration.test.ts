@@ -6,6 +6,7 @@ import { query } from '../db.js';
 import { SKIP_INTEGRATION, startTestServer, stopTestServer } from './setup.js';
 import { EMBED_MODEL } from '../config/providers.js';
 import { searchDocuments } from '../services/documentRag.js';
+import { searchResearchEvidence } from '../services/researchRag.js';
 import { findResources, readDocument } from '../services/documentReading.js';
 import { processResourceChunks } from '../services/chunkPipeline.js';
 const vector = `[${[1, ...Array(3071).fill(0)].join(',')}]`;
@@ -24,6 +25,16 @@ async function embedding(chunk: string, text: string) {
 }
 describe.skipIf(SKIP_INTEGRATION)('document evidence with real PostgreSQL', () => {
   beforeAll(startTestServer); afterAll(stopTestServer);
+  it('retrieves research evidence after chunk 1000 through database-ranked search', async () => {
+    const id = await resource('Long research document');
+    const now = new Date().toISOString();
+    await query('INSERT INTO research_papers(id,resource_id,created_at,updated_at) VALUES($1,$2,$3,$3)',[crypto.randomUUID(),id,now]);
+    await query(`INSERT INTO resource_chunks(id,resource_id,chunk_index,content,page_start,page_end,created_at)
+      SELECT $1||'-'||n,$1,n,CASE WHEN n=1200 THEN 'Rarequasar concluding theorem' ELSE 'Ordinary paragraph' END,n+1,n+1,$2 FROM generate_series(0,1200) n`,[id,now]);
+    const result = await searchResearchEvidence('Rarequasar');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({resource_id:id,page_start:1201,passage:'Rarequasar concluding theorem'});
+  });
   afterEach(async () => {
     await query("DELETE FROM embeddings WHERE entity_type='resource_chunk' AND entity_id IN(SELECT id FROM resource_chunks WHERE resource_id=ANY($1))", [ids]);
     await query('DELETE FROM resources WHERE id=ANY($1)', [ids]); ids.length = 0;

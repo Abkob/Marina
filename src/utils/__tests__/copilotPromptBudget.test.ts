@@ -16,10 +16,12 @@ describe('initial Copilot context', () => {
     expect(complete).toHaveBeenCalledOnce(); expect(unavailable).not.toHaveBeenCalled();
     expect(sent[1]).toEqual({ role: 'user', content });
     // Regression budget: previous system prompt was 26,772 characters.
-    expect(sent[0].content.length).toBeLessThan(26_000);
+    expect(sent[0].content.length).toBeLessThan(7000);
     const encodedTools = JSON.parse(sent[0].content.split('Read-only tools: ')[1].split('\nProposal parameter schemas: ')[0]);
-    for (const [name, tool] of Object.entries(tools)) expect(encodedTools[name]).toEqual({ description: tool.description, parameters: compactSchema(tool.parameters) });
+    expect(Object.keys(encodedTools).sort()).toEqual(['find_resources','find_tasks','load_capabilities','workspace_context']);
+    for (const name of ['find_resources','find_tasks','workspace_context']) expect(encodedTools[name].parameters).toBe(compactSchema(tools[name].parameters));
+    expect(sent[0].content).toContain('routines (habits/check-ins)');
     const encodedActions = JSON.parse(sent[0].content.split('Proposal parameter schemas: ')[1].split('\nLocal clock: ')[0]);
-    expect(Object.keys(encodedActions).sort()).toEqual(Object.keys(ActionParamsSchemas).filter(name => !['plan_schedule', 'create_block_series'].includes(name)).sort());
+    expect(Object.keys(encodedActions)).toEqual([]);
   });
 });

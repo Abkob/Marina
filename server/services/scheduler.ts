@@ -45,6 +45,8 @@ export interface SchedulerInput {
   horizon_days: number;
   /** Inject a fixed start date (YYYY-MM-DD) for deterministic tests. Defaults to local today. */
   start_date?: string;
+  /** External prerequisites whose completion was verified by the caller. */
+  completed_task_ids?: string[];
 }
 
 export interface DayAssignment {
@@ -81,6 +83,8 @@ export interface TaskScheduleDiagnostic {
   /** Work still unplaced after both the deadline attempt and recovery pass. */
   unscheduled_minutes: number;
   days: TaskScheduleDiagnosticDay[];
+  blocked_by?: string[];
+  dependency_cycle?: boolean;
 }
 
 export interface SchedulerResult {
@@ -119,33 +123,38 @@ function priorityRank(p: string): number {
   return 4;
 }
 
-// Kahn's algorithm — returns tasks in topological order (blockers first).
-// Tasks not in the input set are treated as already-complete external blockers.
-// Returns cycled IDs separately so the caller can flag them.
+// Iterative strongly-connected components distinguish cycles from their blocked
+// descendants, without overflowing the call stack for a large task graph.
 export function detectDependencyCycles(tasks: SchedulerTask[]): string[] {
-  const byId = new Map(tasks.map(t => [t.id, t]));
-  const inDegree = new Map(tasks.map(t => [t.id, 0]));
-  const edges = new Map<string, string[]>();
-  for (const t of tasks) {
-    for (const bid of t.blocker_ids) {
-      if (!byId.has(bid)) continue;
-      if (!edges.has(bid)) edges.set(bid, []);
-      edges.get(bid)!.push(t.id);
-      inDegree.set(t.id, (inDegree.get(t.id) ?? 0) + 1);
+  const edges = new Map(tasks.map(t => [t.id, [] as string[]]));
+  const reversed = new Map(tasks.map(t => [t.id, [] as string[]]));
+  for (const task of tasks) for (const id of new Set(task.blocker_ids)) {
+    if (!edges.has(id)) continue;
+    edges.get(task.id)!.push(id); reversed.get(id)!.push(task.id);
+  }
+  const seen = new Set<string>(); const order: string[] = [];
+  for (const task of tasks) {
+    if (seen.has(task.id)) continue;
+    const stack: Array<[string, boolean]> = [[task.id, false]];
+    while (stack.length) {
+      const [id, finished] = stack.pop()!;
+      if (finished) { order.push(id); continue; }
+      if (seen.has(id)) continue;
+      seen.add(id); stack.push([id, true]);
+      for (const next of edges.get(id)!) if (!seen.has(next)) stack.push([next, false]);
     }
   }
-  const queue = tasks.filter(t => (inDegree.get(t.id) ?? 0) === 0).map(t => t.id);
-  const reached = new Set<string>();
-  while (queue.length) {
-    const id = queue.shift()!;
-    reached.add(id);
-    for (const nextId of edges.get(id) ?? []) {
-      const deg = (inDegree.get(nextId) ?? 0) - 1;
-      inDegree.set(nextId, deg);
-      if (deg === 0) queue.push(nextId);
+  const assigned = new Set<string>(); const cycles = new Set<string>();
+  for (const start of order.reverse()) {
+    if (assigned.has(start)) continue;
+    const component: string[] = []; const stack = [start]; assigned.add(start);
+    while (stack.length) {
+      const id = stack.pop()!; component.push(id);
+      for (const next of reversed.get(id)!) if (!assigned.has(next)) { assigned.add(next); stack.push(next); }
     }
+    if (component.length > 1 || edges.get(start)!.includes(start)) for (const id of component) cycles.add(id);
   }
-  return tasks.filter(t => !reached.has(t.id)).map(t => t.id);
+  return tasks.filter(t => cycles.has(t.id)).map(t => t.id);
 }
 
 function topologicalSort(tasks: SchedulerTask[]): SchedulerTask[] {
@@ -269,15 +278,17 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
   // Track when each task is assigned so blocked tasks can be deferred past their blockers
   const taskAssignedDate = new Map<string, string>();
 
-  // Detect dependency cycles before scheduling — cycled tasks can still be allocated
-  // but are reported separately so callers can warn the user.
-  const cycleTaskIds = detectDependencyCycles(estimable);
+  const cycleTaskIds = detectDependencyCycles(tasks);
+  const cycleIds = new Set(cycleTaskIds);
+  const completedIds = new Set(input.completed_task_ids ?? []);
+  const unresolvedBlockers = (task: SchedulerTask) => task.blocker_ids.filter(id => !completedIds.has(id) && !taskAssignedDate.has(id));
 
   // Topological sort respects blocker ordering
   const sorted = topologicalSort(estimable);
 
-  const tasksFit: string[] = covered.map(task => task.id);
-  const tasksOverflow: string[] = [];
+  const blockedCovered = covered.filter(task => cycleIds.has(task.id) || unresolvedBlockers(task).length);
+  const tasksFit: string[] = covered.filter(task => !blockedCovered.includes(task)).map(task => task.id);
+  const tasksOverflow: string[] = blockedCovered.map(task => task.id);
   const zeroMinuteDiagnostic = (task: SchedulerTask, outcome: 'fit' | 'unestimated'): TaskScheduleDiagnostic => ({
     task_id: task.id,
     outcome,
@@ -293,7 +304,8 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     days: [],
   });
   const taskDiagnostics: TaskScheduleDiagnostic[] = [
-    ...covered.map(task => zeroMinuteDiagnostic(task, 'fit')),
+    ...covered.map(task => ({ ...zeroMinuteDiagnostic(task, 'fit'),
+      ...(blockedCovered.includes(task) ? { outcome: 'overflow' as const, blocked_by: unresolvedBlockers(task), dependency_cycle: cycleIds.has(task.id) } : {}) })),
     ...unestimated.map(task => zeroMinuteDiagnostic(task, 'unestimated')),
   ];
 
@@ -301,6 +313,17 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     // Earliest possible date: today, the task/goal timeline start, or the date
     // on which all blockers have been fully scheduled â€” whichever is latest.
     let earliestDate = task.start_date && task.start_date > todayStr ? task.start_date : todayStr;
+    const blockedBy = unresolvedBlockers(task);
+    if (cycleIds.has(task.id) || blockedBy.length) {
+      tasksOverflow.push(task.id);
+      taskDiagnostics.push({
+        ...zeroMinuteDiagnostic(task, 'fit'), outcome: 'overflow', earliest_date: earliestDate,
+        required_minutes: task.estimated_minutes, shortfall_minutes: task.estimated_minutes,
+        unscheduled_minutes: task.estimated_minutes, blocked_by: blockedBy,
+        ...(cycleIds.has(task.id) ? { dependency_cycle: true } : {}),
+      });
+      continue;
+    }
     for (const bid of task.blocker_ids) {
       const bd = taskAssignedDate.get(bid);
       if (bd && bd > earliestDate) earliestDate = bd;
@@ -398,6 +421,14 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     if (diagnostic.outcome !== 'overflow') continue;
     const task = overflowById.get(diagnostic.task_id);
     if (!task) continue;
+    if (cycleIds.has(task.id) || unresolvedBlockers(task).length) continue;
+    // Recovery may finish a prerequisite after its deadline. Dependent recovery
+    // still starts only after that completion, never before an unfinished slice.
+    for (const id of task.blocker_ids) {
+      const date = taskAssignedDate.get(id);
+      if (date && date > diagnostic.earliest_date) diagnostic.earliest_date = date;
+    }
+    diagnostic.blocked_by = [];
 
     let recoveryLeft = task.estimated_minutes;
     let recoveryAllocated = 0;
@@ -427,6 +458,7 @@ export function computeSchedule(input: SchedulerInput): SchedulerResult {
     diagnostic.recovery_allocated_minutes = recoveryAllocated;
     diagnostic.recovery_finish_date = recoveryFinishDate;
     diagnostic.unscheduled_minutes = Math.max(0, recoveryLeft);
+    if (recoveryFinishDate) taskAssignedDate.set(task.id, recoveryFinishDate);
   }
 
   const gap = totalAvailable - totalRequired;

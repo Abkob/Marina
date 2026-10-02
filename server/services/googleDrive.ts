@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import type pg from 'pg';
+import { createDriveAncestryGuard } from './driveAncestry.js';
+import { ensureResourceFolder, resourceFolderPath, type ResourceTarget } from './driveFolders.js';
 import { query, transaction } from '../db.js';
 import { buildGoogleAuthorizationUrl, googleConfiguration, verifyGoogleOAuthState, encryptGoogleRefreshToken, decryptGoogleRefreshToken, refreshGoogleAccessToken } from './googleWorkspaceAuth.js';
 import { assertUploadOpen, commitUpload, enqueueResourceJob, getUploadIntent } from './resourceUploads.js';
@@ -86,6 +88,7 @@ async function ensureFolder(client: pg.PoolClient, token: string) {
       return null;
     });
     if (folder && !folder.trashed && folder.mimeType === DRIVE_FOLDER_MIME) return folder.id;
+    throw driveError('The saved Marina root folder is unavailable. Restore that folder in Drive before uploading.', 409);
   }
   // A deterministic app-property lookup recovers folder creation after a lost response.
   const found = await (await driveRequest(token, `files?${new URLSearchParams({ q: "trashed=false and mimeType='application/vnd.google-apps.folder' and appProperties has { key='marinaResourceRoot' and value='1' }", fields: 'files(id)', pageSize: '1' })}`)).json() as { files: { id: string }[] };
@@ -97,6 +100,16 @@ async function ensureFolder(client: pg.PoolClient, token: string) {
   }
   await client.query("UPDATE google_drive_connection SET folder_id=$1,updated_at=NOW() WHERE id='primary'", [id]);
   return id;
+}
+
+export async function driveRootGuard(token: string) {
+  const root = (await driveConnection())?.folder_id;
+  if (!root) throw driveError('The Marina Drive root is not set up. Upload a resource to create it first.', 409);
+  return createDriveAncestryGuard(root, id => getDriveFile(token, id));
+}
+export async function resourceDriveFolder(target: ResourceTarget) {
+  const token = await driveToken();
+  return transaction(async client => ensureResourceFolder(client, token, await ensureFolder(client, token), target));
 }
 type DriveUpload = { file_id: string; encrypted_session: string | null };
 async function uploadRecord(id: string) {
@@ -134,8 +147,8 @@ export async function prepareDriveUpload(id: string) {
     const locked = (await client.query<DriveUpload>('SELECT * FROM resource_drive_uploads WHERE upload_id=$1 FOR UPDATE', [id])).rows[0];
     if (!locked) throw driveError('Upload no longer exists.', 404);
     if (locked.encrypted_session) return;
-    const folder = await ensureFolder(client, token);
-    const session = await createDriveSession(token, locked.file_id, folder, { ...intent, size: Number(intent.size) });
+    const folder = await ensureResourceFolder(client, token, await ensureFolder(client, token), intent);
+    const session = await createDriveSession(token, locked.file_id, folder.folder_id, { ...intent, size: Number(intent.size) });
     await client.query('UPDATE resource_drive_uploads SET encrypted_session=$2 WHERE upload_id=$1', [id, encryptGoogleRefreshToken(session)]);
   });
   record = await uploadRecord(id);
@@ -164,6 +177,7 @@ export async function finalizeDriveUpload(id: string, metadata?: DriveFile) {
     if (error.status === 404) throw driveError('File transfer has not completed yet.', 409); throw error;
   });
   if (file.trashed || file.id !== record.file_id || file.appProperties?.marinaUploadId !== id || file.name !== intent.original_name || file.mimeType !== intent.mime_type) throw driveError('Drive file does not match this upload.', 409);
+  await (await driveRootGuard(await driveToken()))(file);
   return commitUpload(id, { reference: driveReference(file.id), size: Number(file.size), contentType: file.mimeType }, false,
     async client => { await saveDriveLink(client, id, file); });
 }
@@ -172,7 +186,13 @@ async function saveDriveLink(client: pg.PoolClient, resourceId: string, file: Dr
     VALUES ($1,$2,$3,$4,$5)`, [resourceId, file.id, file.mimeType, file.version, file.modifiedTime ?? null]);
 }
 export async function browseDrive(search?: string, folder?: string, pageToken?: string) {
-  const result = await listDriveFiles(await driveToken(), search, folder, pageToken);
+  const token = await driveToken();
+  const root = (await driveConnection())?.folder_id;
+  if (!root) return { files: [], next_page_token: undefined };
+  const destination = folder || root;
+  const ancestry = await (await driveRootGuard(token))(destination);
+  if (ancestry.at(-1)?.mimeType !== DRIVE_FOLDER_MIME) throw driveError('Choose a Drive folder.');
+  const result = await listDriveFiles(token, search, destination, pageToken);
   const linked = await query<{ file_id: string; resource_id: string }>('SELECT file_id,resource_id FROM resource_drive_files WHERE file_id=ANY($1)', [result.files.map(file => file.id)]);
   return { next_page_token: result.nextPageToken, files: result.files.map(file => {
     let supported = true; try { if (file.mimeType !== DRIVE_FOLDER_MIME) driveDocument(file); } catch { supported = false; }
@@ -187,34 +207,59 @@ async function documentSize(token: string, file: DriveFile) {
   if (!opened.size) throw driveError('This Drive document exports an empty file.');
   return opened.size;
 }
-export async function importDriveFile(fileId: string) {
+export async function importDriveFile(fileId: string, target: ResourceTarget = {}) {
   const token = await driveToken();
   const file = await getDriveFile(token, fileId);
+  const ancestry = await (await driveRootGuard(token))(file);
+  // The nearest recognized folder supplies ownership for files added in Drive.
+  const owner = [...ancestry].reverse().find(item => ['goal','task'].includes(item.appProperties?.marinaEntityType ?? ''));
+  if (owner) target = { attach_to_id: owner.appProperties!.marinaEntityId, attach_to_type: owner.appProperties!.marinaEntityType as 'goal' | 'task' };
+  await transaction(client => resourceFolderPath(client, target));
   // The user may select a just-uploaded Drive file before its lost completion
   // response is recovered. Converge on that upload's existing resource ID.
   const uploadId = file.appProperties?.marinaUploadId;
   if (uploadId) {
     const pending = await query<{ id: string }>(`SELECT u.id FROM resource_uploads u JOIN resource_drive_uploads d ON d.upload_id=u.id
       WHERE u.id=$1 AND d.file_id=$2 AND (u.state='completed' OR (u.state='uploading' AND u.expires_at>NOW()))`, [uploadId, file.id]);
-    if (pending.rows.length) return finalizeDriveUpload(pending.rows[0].id, file);
+    if (pending.rows.length) {
+      const saved = await finalizeDriveUpload(pending.rows[0].id, file);
+      await transaction(client => linkDirectoryResource(client, saved.id, target));
+      return saved;
+    }
   }
   const doc = driveDocument(file);
   const size = await documentSize(token, file);
   return transaction(async client => {
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`marina-drive-file:${file.id}`]);
     const existing = (await client.query<{ resource_id: string }>('SELECT resource_id FROM resource_drive_files WHERE file_id=$1', [file.id])).rows[0];
-    if (existing) return { id: existing.resource_id, already_saved: true };
+    if (existing) {
+      await linkDirectoryResource(client, existing.resource_id, target);
+      return { id: existing.resource_id, already_saved: true };
+    }
     const id = crypto.randomUUID(); const now = new Date().toISOString();
     await client.query(`INSERT INTO resources(id,title,url,type,info,file_path,original_name,mime_type,file_size,file_validation,created_at,updated_at)
       VALUES ($1,$2,$3,'document','',$4,$5,$6,$7,'pending',$8,$8)`, [id, file.name, `/api/resources/blob/${id}`, driveReference(file.id), doc.name, doc.mime, size, now]);
     await saveDriveLink(client, id, file);
+    if (target.attach_to_id) await client.query(`INSERT INTO edges(id,source_type,source_id,target_type,target_id,relationship,created_at)
+      VALUES ($1,'resource',$2,$3,$4,'attached_to',$5)`, [crypto.randomUUID(), id, target.attach_to_type, target.attach_to_id, now]);
     await enqueueResourceJob(client, id);
     return { id, already_saved: false };
   });
 }
+/** Directory refresh adds a reference without erasing deliberate links elsewhere. */
+async function linkDirectoryResource(client: pg.PoolClient, resourceId: string, target: ResourceTarget) {
+  if (!target.attach_to_id) return;
+  await resourceFolderPath(client, target);
+  await client.query('SELECT id FROM resources WHERE id=$1 FOR UPDATE', [resourceId]);
+  await client.query(`INSERT INTO edges(id,source_type,source_id,target_type,target_id,relationship,created_at)
+    SELECT $1,'resource',$2,$3,$4,'attached_to',$5 WHERE NOT EXISTS
+    (SELECT 1 FROM edges WHERE source_type='resource' AND source_id=$2 AND target_type=$3 AND target_id=$4 AND relationship='attached_to')`,
+    [crypto.randomUUID(), resourceId, target.attach_to_type, target.attach_to_id, new Date().toISOString()]);
+}
 export async function openDriveStoredFile(reference: string, rangeHeader?: string) {
   const token = await driveToken();
   const file = await getDriveFile(token, driveFileId(reference));
+  await (await driveRootGuard(token))(file);
   const doc = driveDocument(file);
   // Native exports have no stable byte size until exported; return the whole
   // bounded PDF with HTTP 200 instead of inventing a byte range.
@@ -232,7 +277,8 @@ export async function syncDriveResource(resourceId: string) {
   if (!link) return;
   let file: DriveFile; let size: number; let doc: ReturnType<typeof driveDocument>;
   try {
-    const token = await driveToken(); file = await getDriveFile(token, link.file_id); doc = driveDocument(file);
+    const token = await driveToken(); file = await getDriveFile(token, link.file_id);
+    await (await driveRootGuard(token))(file); doc = driveDocument(file);
     if (file.version === link.source_version && link.available) {
       await query('UPDATE resource_drive_files SET checked_at=NOW(),last_error=NULL WHERE resource_id=$1', [resourceId]); return;
     }

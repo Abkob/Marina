@@ -2,6 +2,8 @@
 
 Review date: 2 October 2026. Application baseline: `6fe244b3205e852d54e815123400d668cc3a48c4`.
 
+Implementation follow-up: [3 October changes, measurements and rollout limits](copilot-implementation-2026-10-03.md). Findings below describe the reviewed baseline.
+
 This review covers prompting, tool orchestration, Google Drive ingestion, document retrieval at library scale, scheduling, and the chat interface. It follows the [original audit](copilot-replacement-study.md), [document/model work](nemotron-model-study.md), and [Kimi transport and latency investigation](nvidia-kimi-diagnostics.md). Older reports describe older code; their already-repaired findings must not be treated as current defects.
 
 The recommendation is to keep Drive, Neon and the current application, then replace the weak boundaries inside the assistant incrementally. Use a compact, model-led tool interface; one retrieval service for documents and research; versioned, structured document evidence; a deterministic scheduler; and consistent chat components. Neither a larger model, a new vector database, nor MCP alone supplies these missing behaviors.

@@ -1,6 +1,7 @@
 import pg from 'pg';
 
 const requiredColumns = {
+  resource_document_pages: ['resource_id','generation','page_number','source_hash','extractor_version','native_text','evidence','status','attempts','error','updated_at'],
   resources: ['original_name', 'mime_type', 'file_size', 'file_validation'],
   resource_uploads: ['id', 'request_key', 'pathname', 'original_name', 'mime_type', 'size', 'attach_to_id', 'attach_to_type', 'state', 'created_at', 'expires_at', 'last_checked_at', 'completed_at', 'storage_provider'],
   resource_processing_jobs: ['id', 'resource_id', 'version', 'stage', 'status', 'attempts', 'error_code', 'error', 'lease_token', 'lease_expires_at', 'next_attempt_at', 'last_dispatched_at', 'created_at', 'updated_at'],
@@ -33,7 +34,7 @@ export async function verifyResourceDeployment(
     );
     const available = new Set(rows.map(row => `${row.table_name}.${row.column_name}`));
     const absent = Object.entries(requiredColumns).flatMap(([table, columns]) => columns.map(column => `${table}.${column}`)).filter(column => !available.has(column));
-    if (absent.length) throw new Error('Resource deployment is not ready: apply migrations M-028 and M-029 after verifying a current production backup. See docs/google-drive-resources.md.');
+    if (absent.length) throw new Error('Resource deployment is not ready: apply migrations M-028, M-029 and M-030 after verifying a current production backup. See docs/google-drive-resources.md.');
   } finally {
     if (connected) await client.query('ROLLBACK').catch(() => undefined);
     await client.end();

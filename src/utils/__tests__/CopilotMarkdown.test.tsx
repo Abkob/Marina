@@ -34,4 +34,10 @@ describe('Copilot answer formatting', () => {
     expect(screen.getByRole('link')).toHaveAttribute('href', '/api/resources/blob/book#page=94');
     expect(screen.getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer');
   });
+  it('renders mathematics without allowing embedded HTML or external-image macros', () => {
+    const { container } = render(<CopilotMarkdown text={'Distance: $d(x,y)=\\sqrt{x^2+y^2}$\n\n$$\\href{javascript:alert(1)}{unsafe}$$\n\n$$\\includegraphics{https://tracking.test/pixel}$$'} />);
+    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.querySelector('img,script,iframe')).toBeNull();
+    expect([...container.querySelectorAll('a')].some(a=>a.href.startsWith('javascript:'))).toBe(false);
+  });
 });

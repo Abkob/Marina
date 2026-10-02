@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
 
 :root {
   --safe-top: env(safe-area-inset-top, 0px);

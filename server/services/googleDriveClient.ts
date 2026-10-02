@@ -6,8 +6,8 @@ export const DRIVE_CHUNK_BYTES = 2 * 1024 * 1024;
 export const DRIVE_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.readonly'];
 export const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 export const DRIVE_NATIVE_TYPES = new Set(['application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet', 'application/vnd.google-apps.presentation']);
-export type DriveFile = { id: string; name: string; mimeType: string; size?: string; version: string; modifiedTime?: string; trashed?: boolean; appProperties?: Record<string,string>; capabilities?: { canDownload?: boolean }; };
-const FIELDS = 'id,name,mimeType,size,version,modifiedTime,trashed,appProperties,capabilities(canDownload)';
+export type DriveFile = { id: string; name: string; mimeType: string; size?: string; version: string; modifiedTime?: string; trashed?: boolean; parents?: string[]; appProperties?: Record<string,string>; capabilities?: { canDownload?: boolean }; };
+const FIELDS = 'id,name,mimeType,size,version,modifiedTime,trashed,parents,appProperties,capabilities(canDownload)';
 export const driveError = (message: string, status = 400) => Object.assign(new Error(message), { status });
 export function validateDriveId(id: string) {
   if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw driveError('Invalid Drive file ID');
@@ -63,8 +63,8 @@ export function driveListQuery(search = '', folder?: string) {
   if (search.trim()) clauses.push(`name contains '${escape(search.trim().slice(0, 200))}'`);
   return clauses.join(' and ');
 }
-export async function listDriveFiles(token: string, search = '', folder?: string, pageToken?: string) {
-  const params = new URLSearchParams({ q: driveListQuery(search, folder), pageSize: '50', orderBy: 'folder,name',
+export async function listDriveFiles(token: string, search = '', folder?: string, pageToken?: string, pageSize = 50) {
+  const params = new URLSearchParams({ q: driveListQuery(search, folder), pageSize: String(Math.max(1, Math.min(50, pageSize))), orderBy: 'folder,name',
     fields: `nextPageToken,files(${FIELDS})`, supportsAllDrives: 'true', includeItemsFromAllDrives: 'true' });
   if (pageToken) params.set('pageToken', pageToken);
   return (await driveRequest(token, `files?${params}`)).json() as Promise<{ files: DriveFile[]; nextPageToken?: string }>;

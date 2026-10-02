@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Check, RotateCcw, Upload } from 'lucide-react';
 import { uploadResourceFile } from '../db/queries/resources';
 import { ApiError } from '../utils/apiFetch';
+import { ResourceContextPicker, selectionTarget, type ResourceSelection } from './ResourceContextPicker';
 import { UPLOAD_ACCEPT, validateUploadFile, type UploadProgress } from '../utils/blobUpload';
 
 type UploadItem = {
@@ -11,6 +12,7 @@ type UploadItem = {
   percentage?: number;
   error?: string;
   retryable?: boolean;
+  target?: { attach_to_id: string; attach_to_type: 'goal' | 'task' };
 };
 
 function statusLabel(item: UploadItem): string {
@@ -45,6 +47,7 @@ export function ResourceUploadPanel({ onUploaded, onBusyChange }: {
   onBusyChange: (busy: boolean) => void;
 }) {
   const [items, setItems] = useState<UploadItem[]>([]);
+  const [destination, setDestination] = useState<ResourceSelection | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const running = useRef(false);
@@ -67,7 +70,7 @@ export function ResourceUploadPanel({ onUploaded, onBusyChange }: {
           await uploadResourceFile(item.file, progress => {
             saving = progress.phase === 'saving';
             update(item.id, progress);
-          });
+          }, item.target);
           update(item.id, { phase: 'saved', percentage: 100 });
           onUploaded();
         } catch (error) {
@@ -85,7 +88,7 @@ export function ResourceUploadPanel({ onUploaded, onBusyChange }: {
   function selectFiles(files: FileList | null) {
     if (running.current || !files?.length) return;
     const selected: UploadItem[] = Array.from(files, file => {
-      const item: UploadItem = { id: crypto.randomUUID(), file, phase: 'queued' };
+      const item: UploadItem = { id: crypto.randomUUID(), file, phase: 'queued', target: selectionTarget(destination) };
       try { validateUploadFile(file); }
       catch (error) { return { ...item, phase: 'failed', error: (error as Error).message, retryable: false }; }
       return item;
@@ -99,6 +102,8 @@ export function ResourceUploadPanel({ onUploaded, onBusyChange }: {
 
   return (
     <div>
+      <ResourceContextPicker value={destination} onChange={setDestination} disabled={busy} uploads />
+      <p className="mb-3 text-xs text-slate-400">Files are saved under Marina → {destination ? `${destination.kind} / ${destination.title}` : 'Library'}.</p>
       <input ref={fileRef} type="file" multiple accept={UPLOAD_ACCEPT} disabled={busy}
         className="hidden" aria-label="Choose resource files"
         onChange={event => { selectFiles(event.currentTarget.files); event.currentTarget.value = ''; }} />

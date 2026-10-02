@@ -4,6 +4,17 @@ import { layoutPlan, type BusyInterval } from '../../../server/services/planLayo
 const task = (id: string, minutes: number) => ({ id, title: `Task ${id}`, remaining_minutes: minutes });
 
 describe('layoutPlan', () => {
+  it('never fits a dependent into time left over by an incomplete prerequisite', () => {
+    const result = layoutPlan({ dayAssignments: [{ date: '2026-07-06', task_ids: ['a', 'b'], task_minutes: { a: 30, b: 30 } }],
+      tasks: [{ ...task('a', 90) }, { ...task('b', 30), blocker_ids: ['a'] }], busy: [], workStart: 9, workEnd: 10 });
+    expect(result.blocks.map(b => b.task_id)).toEqual(['a']);
+    expect(result.unplaced).toContainEqual({ task_id: 'b', title: 'Task b', minutes: 30 });
+  });
+  it('places a dependent only after its prerequisite finishes in clock time', () => {
+    const result = layoutPlan({ dayAssignments: [{ date: '2026-07-06', task_ids: ['a', 'b'] }],
+      tasks: [task('a', 30), { ...task('b', 30), blocker_ids: ['a'] }], busy: [], workStart: 9, workEnd: 10 });
+    expect(result.blocks.map(b => [b.task_id, b.start_hour])).toEqual([['a', 9], ['b', 9.5]]);
+  });
   it('places a single task at the start of the work window', () => {
     const { blocks, unplaced } = layoutPlan({
       dayAssignments: [{ date: '2026-07-06', task_ids: ['a'] }],

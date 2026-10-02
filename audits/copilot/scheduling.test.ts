@@ -49,8 +49,8 @@ describe('Deterministic scheduler stress: 80 reproducible workloads', () => {
   });
 });
 
-describe('Known dependency gaps: desired assertions currently fail', () => {
-  it.fails('PLAN-01 never marks a dependent task feasible while its blocker cannot finish', () => {
+describe('Dependency regression contracts', () => {
+  it('PLAN-01 never marks a dependent task feasible while its blocker cannot finish', () => {
     const result = computeSchedule(input([
       task('prerequisite', 1000, { due_date: day }),
       task('dependent', 30, { blocker_ids: ['prerequisite'], due_date: day }),
@@ -58,10 +58,26 @@ describe('Known dependency gaps: desired assertions currently fail', () => {
     expect(result.tasks_overflow).toContain('prerequisite');
     expect(result.tasks_fit).not.toContain('dependent');
   });
-  it.fails('PLAN-02 excludes a dependency cycle from the feasible set', () => {
+  it('PLAN-02 excludes a dependency cycle from the feasible set', () => {
     const result = computeSchedule(input([task('A', 30, { blocker_ids: ['B'] }), task('B', 30, { blocker_ids: ['A'] })]));
     expect(result.cycle_task_ids).toEqual(expect.arrayContaining(['A', 'B']));
     expect(result.tasks_fit).toEqual([]);
+    expect(result.day_assignments).toEqual([]);
+  });
+  it('does not interpret an absent prerequisite as completed', () => {
+    const base = input([task('dependent', 30, { blocker_ids: ['outside'] })]);
+    expect(computeSchedule(base).day_assignments).toEqual([]);
+    expect(computeSchedule({ ...base, completed_task_ids: ['outside'] }).tasks_fit).toContain('dependent');
+  });
+  it('keeps recovery after a prerequisite and blocks chains behind partial work', () => {
+    const result = computeSchedule(input([
+      task('A', 1000, { due_date: day }),
+      task('B', 30, { blocker_ids: ['A'] }),
+      task('C', 30, { blocker_ids: ['B'] }),
+    ], { horizon_days: 1 }));
+    expect(result.day_assignments.flatMap(row => row.task_ids)).not.toContain('B');
+    expect(result.day_assignments.flatMap(row => row.task_ids)).not.toContain('C');
+    expect(result.task_diagnostics.find(row => row.task_id === 'B')?.blocked_by).toEqual(['A']);
   });
 });
 

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ResourceUploadPanel } from '../ResourceUploadPanel';
 import type { UploadProgressListener } from '../../utils/blobUpload';
 
@@ -10,7 +11,7 @@ vi.mock('../../db/queries/resources', () => ({ uploadResourceFile: mocks.upload 
 function setup() {
   const onUploaded = vi.fn();
   const onBusyChange = vi.fn();
-  render(<ResourceUploadPanel onUploaded={onUploaded} onBusyChange={onBusyChange} />);
+  render(<QueryClientProvider client={new QueryClient()}><ResourceUploadPanel onUploaded={onUploaded} onBusyChange={onBusyChange} /></QueryClientProvider>);
   const select = (files: File[]) => fireEvent.change(screen.getByLabelText('Choose resource files'), { target: { files } });
   return { select, onUploaded, onBusyChange };
 }

@@ -71,7 +71,7 @@ export function SemanticIndexPanel({ resourceId, hasFile }: { resourceId: string
             disabled={rechunk.isPending || active}
             aria-label={processing.data?.status === 'failed' ? 'Retry file processing' : 'Re-index file'}
             className="min-h-11 min-w-11 rounded-md text-[9px] font-mono uppercase text-[#4648d4] hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#4648d4]/40 disabled:opacity-40 flex items-center justify-center gap-1"
-            title="Re-run text extraction, chunking, and embedding for this file"
+            title="Re-index text, page structure and visual evidence for this file"
           >
             <RefreshCw size={12} className={rechunk.isPending || active ? 'animate-spin' : ''} /><span className="hidden sm:inline">{processing.data?.status === 'failed' ? 'Retry' : 'Re-index'}</span>
           </button>
@@ -79,6 +79,7 @@ export function SemanticIndexPanel({ resourceId, hasFile }: { resourceId: string
       </div>
 
       {hasFile && processing.data && <p role="status" className={`mb-2 text-xs leading-relaxed ${processing.data.status === 'failed' ? 'text-red-600' : 'text-gray-500'}`}>{processingLabel(processing.data)}</p>}
+      {hasFile && processing.data?.status === 'ready' && processing.data.mime_type === 'application/pdf' && !processing.data.total_pages && <p className="mb-2 text-xs leading-relaxed text-gray-500">Text index only. Re-index this document to make page images and diagrams searchable.</p>}
       {processing.isError && <p role="alert" className="mb-2 text-xs text-red-600">Could not load processing status. <button className="min-h-11 underline" onClick={() => processing.refetch()}>Retry</button></p>}
 
       {isLoading && <p className="text-[11px] text-gray-400 font-mono">Loading…</p>}
@@ -96,7 +97,7 @@ export function SemanticIndexPanel({ resourceId, hasFile }: { resourceId: string
           <p className="text-[11px] text-gray-600 mb-2">
             <b>{chunks.length}</b> chunk{chunks.length !== 1 ? 's' : ''} ·{' '}
             <span className={allGood ? 'text-emerald-600' : 'text-amber-600'}>
-              {embedded}/{chunks.length} embedded{allGood ? ' — fully searchable & citable' : active ? ' (indexing…)': ''}
+              {embedded}/{chunks.length} embedded{allGood ? ' — indexed passages searchable' : active ? ' (indexing…)': ''}
             </span>
           </p>
           <div className="space-y-1 max-h-56 overflow-y-auto">

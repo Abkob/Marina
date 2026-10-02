@@ -1,5 +1,7 @@
 import { useId, useState } from 'react';
-import { BookOpen, ExternalLink } from 'lucide-react';
+import { BookOpen, ExternalLink, X } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Sources, SourcesContent, SourcesTrigger } from './ai-elements/sources';
 
 export interface ChatCitation {
   entity_type: string;
@@ -16,6 +18,8 @@ export interface ChatCitation {
   excerpt_truncated?: boolean;
   source_tool?: string;
   chunk_id?: string;
+  model?: string;
+  generation?: number;
 }
 
 function sourceHref(source: ChatCitation) {
@@ -47,6 +51,20 @@ function Passage({ source }: { source: ChatCitation }) {
       {text.length > 360 && <button className="copilot-source-more" aria-expanded={expanded} aria-controls={excerptId} onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : 'Read excerpt'}</button>}
       {source.excerpt_kind === 'visual' && <p className="copilot-source-note">Model interpretation; verify details against the original.</p>}
       {source.matched_via?.includes('OCR fallback') && <p className="copilot-source-note">Only text was read; visual details were unavailable.</p>}
+      {pageHref && <Dialog.Root>
+        <Dialog.Trigger className="copilot-source-more min-h-11">Preview page and excerpt</Dialog.Trigger>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[100] bg-slate-950/25" />
+          <Dialog.Content className="fixed inset-x-0 bottom-0 z-[101] flex max-h-[92dvh] flex-col rounded-t-2xl border border-slate-200 bg-white p-4 shadow-xl sm:inset-y-3 sm:left-auto sm:right-3 sm:w-[min(640px,90vw)] sm:rounded-2xl sm:p-5">
+            <div className="flex items-start gap-3"><Dialog.Title className="min-w-0 flex-1 text-base font-semibold text-slate-800">{source.title}</Dialog.Title><Dialog.Close aria-label="Close source preview" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-400"><X size={18} /></Dialog.Close></div>
+            <Dialog.Description className="pb-3 text-xs leading-relaxed text-slate-500">{pageLabel(source)} · {excerptLabels[source.excerpt_kind ?? 'text']}. Saved excerpt; the original may have changed.{source.model ? ` Analyzed with ${source.model}.` : ''}</Dialog.Description>
+            <div className="min-h-0 overflow-y-auto"><blockquote className="whitespace-pre-wrap border-l-2 border-indigo-200 pl-3 text-sm leading-relaxed text-slate-600">{text}{source.excerpt_truncated ? '…' : ''}</blockquote>
+              <iframe loading="lazy" title={`${source.title}, ${pageLabel(source)}`} src={pageHref} className="mt-4 h-[50dvh] w-full rounded-lg border border-slate-100" />
+            </div>
+            <a href={sourceHref(source)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-11 items-center gap-2 text-xs text-indigo-600">Open original<ExternalLink size={13} /></a>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>}
     </> : <p className="copilot-source-note">No excerpt was saved with this reply. Open the source to read it.</p>}
   </div>;
 }
@@ -69,9 +87,9 @@ function ResourceCard({ sources }: { sources: ChatCitation[] }) {
       <a className="copilot-source-open" href={sourceHref(source)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${source.title}${drive ? ' in Google Drive' : ''}`} title={drive ? 'Open in Google Drive' : 'Open original'}><ExternalLink size={17} aria-hidden="true" /></a>
     </div>
     <Passage source={passages[0]} />
-    {passages.length > 1 && <details className="copilot-source-details"><summary>{passages.length - 1} more passage{passages.length > 2 ? 's' : ''}</summary>
+    {passages.length > 1 && <Sources className="copilot-source-details"><SourcesTrigger count={passages.length - 1}>{passages.length - 1} more passage{passages.length > 2 ? 's' : ''}</SourcesTrigger><SourcesContent>
       {passages.slice(1).map((row, i) => <Passage key={i} source={row} />)}
-    </details>}
+    </SourcesContent></Sources>}
   </article>;
 }
 

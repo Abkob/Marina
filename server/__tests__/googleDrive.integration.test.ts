@@ -10,15 +10,16 @@ import { getResourceProcessing, processResourceJob } from '../services/resourceP
 import { searchDocuments } from '../services/documentRag.js';
 import { deleteStoredFile } from '../services/fileStorage.js';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), generate: vi.fn(), session: vi.fn(), chunk: vi.fn(), open: vi.fn(), refresh: vi.fn(), embed: vi.fn(), embedQuery: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), request: vi.fn(), generate: vi.fn(), session: vi.fn(), chunk: vi.fn(), open: vi.fn(), refresh: vi.fn(), embed: vi.fn(), embedQuery: vi.fn() }));
 vi.mock('../services/googleDriveClient.js', async original => ({ ...await original<typeof import('../services/googleDriveClient.js')>(),
-  getDriveFile: mocks.get, generateDriveId: mocks.generate, createDriveSession: mocks.session, sendDriveChunk: mocks.chunk, openDriveContent: mocks.open }));
+  getDriveFile: (token: string, id: string) => id === 'folder' ? Promise.resolve({id, name:'Marina',version:'1',mimeType:'application/vnd.google-apps.folder'}) : mocks.get(token,id), driveRequest: mocks.request,
+  generateDriveId: mocks.generate, createDriveSession: mocks.session, sendDriveChunk: mocks.chunk, openDriveContent: mocks.open }));
 vi.mock('../services/googleWorkspaceAuth.js', async original => ({ ...await original<typeof import('../services/googleWorkspaceAuth.js')>(), refreshGoogleAccessToken: mocks.refresh }));
 vi.mock('../embeddingProvider.js', async original => ({ ...await original<typeof import('../embeddingProvider.js')>(), embedDocument: mocks.embed, embedQuery: mocks.embedQuery }));
 
 const ids: string[] = [];
 const bytes = Buffer.from('Photosynthesis converts sunlight into chemical energy in plants.');
-const metadata = (id = 'drive_file') => ({ id, name: 'biology.txt', mimeType: 'text/plain', size: String(bytes.length), version: '1' });
+const metadata = (id = 'drive_file') => ({ id, parents:['folder'], name: 'biology.txt', mimeType: 'text/plain', size: String(bytes.length), version: '1' });
 const missing = () => Object.assign(new Error('missing'), { status: 404 });
 async function intent() {
   const row = await createUploadIntent({ request_key: crypto.randomUUID(), original_name: 'biology.txt', mime_type: 'text/plain', size: bytes.length }, undefined, 'drive');
@@ -44,6 +45,7 @@ describe.skipIf(SKIP_INTEGRATION)('Drive resource persistence and retrieval (rea
   beforeEach(async () => {
     vi.resetAllMocks();
     mocks.refresh.mockResolvedValue('test-access');
+    mocks.request.mockImplementation(async () => new Response(JSON.stringify({files:[{id:'library'}]}),{status:200}));
     mocks.get.mockImplementation(async (_token, id) => id === 'folder' ? { id, mimeType: 'application/vnd.google-apps.folder' } : metadata(id));
     mocks.generate.mockResolvedValue('reserved_file');
     mocks.session.mockResolvedValue('https://www.googleapis.com/upload/drive/v3/files?upload_id=test');
@@ -73,6 +75,35 @@ describe.skipIf(SKIP_INTEGRATION)('Drive resource persistence and retrieval (rea
     const row = (await query('SELECT * FROM resources WHERE id=$1', [id])).rows[0];
     expect(row).toMatchObject({ file_path: 'gdrive://drive_file', file_validation: 'pending', url: `/api/resources/blob/${id}` });
     expect((await job(id)).status).toBe('queued'); expect(mocks.open).not.toHaveBeenCalled();
+  });
+  it('rejects imports outside the saved Marina root before creating a resource or job', async () => {
+    mocks.get.mockResolvedValue({...metadata(),parents:[]});
+    await expect(importDriveFile('outside')).rejects.toMatchObject({status:403});
+    expect((await query("SELECT resource_id FROM resource_drive_files WHERE file_id='outside'")).rows).toEqual([]);
+  });
+  it('adds a saved reference when an existing file is discovered inside a goal folder, without duplicating it', async () => {
+    const id=await imported(); const goalId=crypto.randomUUID();
+    await query('INSERT INTO goals(id,title,created_at,updated_at) VALUES($1,$2,$3,$3)',[goalId,'Synthetic folder goal',new Date().toISOString()]);
+    try {
+      mocks.get.mockImplementation(async (_token,fileId)=>fileId==='goalFolder'?{id:fileId,name:'Synthetic folder goal',mimeType:'application/vnd.google-apps.folder',parents:['folder'],appProperties:{marinaEntityType:'goal',marinaEntityId:goalId}}:{...metadata(),parents:['goalFolder']});
+      expect((await importDriveFile('drive_file')).id).toBe(id);
+      await importDriveFile('drive_file');
+      expect((await query("SELECT id FROM edges WHERE source_id=$1 AND target_id=$2 AND relationship='attached_to'",[id,goalId])).rows).toHaveLength(1);
+    } finally {await query('DELETE FROM edges WHERE target_id=$1',[goalId]);await query('DELETE FROM goals WHERE id=$1',[goalId]);}
+  });
+  it('removes a moved-outside file from retrieval even if its content version did not change', async () => {
+    const id = await imported(); await ready(id);
+    mocks.get.mockResolvedValue({...metadata(),parents:[]});
+    expect((await searchDocuments('Photosynthesis',[id])).evidence).toEqual([]);
+    await syncDriveResource(id);
+    expect((await query('SELECT available FROM resource_drive_files WHERE resource_id=$1',[id])).rows[0].available).toBe(false);
+    expect((await query('SELECT id FROM resources WHERE id=$1',[id])).rows).toHaveLength(1);
+  });
+  it('still checks the original ancestry when synchronization metadata is missing',async()=>{
+    const id=await imported(); await ready(id);
+    await query('DELETE FROM resource_drive_files WHERE resource_id=$1',[id]);
+    mocks.get.mockResolvedValue({...metadata(),parents:[]});
+    expect((await searchDocuments('Photosynthesis',[id])).evidence).toEqual([]);
   });
   it('reserves one file identity and one encrypted upload session across concurrent preparation', async () => {
     const row = await intent();
@@ -174,8 +205,8 @@ describe.skipIf(SKIP_INTEGRATION)('Drive resource persistence and retrieval (rea
     mocks.get.mockRejectedValue(Object.assign(new Error('busy'), { status: 503 }));
     await expect(syncDriveResource(id)).rejects.toMatchObject({ status: 503 });
     expect((await query('SELECT available,last_error FROM resource_drive_files WHERE resource_id=$1', [id])).rows[0]).toMatchObject({ available: true, last_error: expect.stringContaining('could not be checked') });
-    expect((await searchDocuments('photosynthesis', [id])).evidence).toHaveLength(1);
-    expect((await searchDocuments('photosynthesis', [id])).evidence[0]).toMatchObject({ last_source_check: null, source_check_error: expect.stringContaining('could not be checked') });
+    // Keep the index for recovery, but do not release content without current ancestry proof.
+    await expect(searchDocuments('photosynthesis', [id])).rejects.toMatchObject({status:503});
   });
   it('continues the recovery batch after a source check fails and makes the failure visible', async () => {
     await imported(); const other = await importDriveFile('other_file'); ids.push(other.id);

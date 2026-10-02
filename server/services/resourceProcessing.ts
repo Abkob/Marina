@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { isDriveReference, driveFileId, getDriveFile, DRIVE_NATIVE_TYPES } from './googleDriveClient.js';
 import { driveToken, syncDriveResource } from './googleDrive.js';
 import { EMBED_MODEL, EMBED_DIMENSION } from '../embeddingProvider.js';
+import { processStructuredDocument } from './structuredIngestion.js';
+import { nvidiaEvidenceAvailable } from './nvidiaEvidence.js';
 
 type Job = { id: string; resource_id: string; version: number; stage: 'extract' | 'embed'; attempts: number; lease_token: string };
 class LeaseLost extends Error {}
@@ -92,6 +94,14 @@ export async function processResourceJob(id: string, version?: number): Promise<
           await assertLease(client, job);
           await client.query("UPDATE resources SET file_validation='valid',file_size=$2 WHERE id=$1", [job.resource_id, resource.file_size]);
         });
+        if (nvidiaEvidenceAvailable() && ['application/pdf','image/png','image/jpeg','image/webp'].includes(resource.mime_type!)) {
+          const result = await processStructuredDocument({ resourceId: job.resource_id, generation: job.version,
+            filePath: file.path, mimeType: resource.mime_type!, assertLease: client => assertLease(client, job) });
+          if (result.pending) await settle(job, 'queued', null, null, 'extract', result.failed ? 30 : 0);
+          else if (result.chunks) await settle(job, 'queued', null, null, 'embed');
+          else await settle(job, 'no_text', 'no_text', 'No readable evidence was extracted. The original is available; inspect it or retry indexing.');
+          return true;
+        }
         if (resource.mime_type?.startsWith('image/')) {
           await settle(job, 'unsupported', 'ocr_required', 'Image saved. Text search needs OCR, which is not enabled.');
           return true;
@@ -212,6 +222,9 @@ export async function retryResourceProcessing(resourceId: string) {
 export async function getResourceProcessing(resourceId: string) {
   const { rows } = await query(
     `SELECT r.file_validation,r.original_name,r.mime_type,r.file_size,j.status,j.stage,j.attempts,j.error_code,j.error,j.updated_at,
+       (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version) AS total_pages,
+       (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version AND p.status='ready') AS visual_pages_ready,
+       (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version AND p.status='failed') AS visual_pages_failed,
        (SELECT COUNT(*)::int FROM resource_chunks WHERE resource_id=r.id) AS chunks,
        (SELECT COUNT(*)::int FROM resource_chunks c WHERE c.resource_id=r.id AND EXISTS
          (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id AND NOT e.is_stale AND e.embedding_3072 IS NOT NULL AND e.embedding_model=$2 AND e.embedding_dimension=$3)) AS embedded

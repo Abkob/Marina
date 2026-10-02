@@ -28,7 +28,7 @@ async function resource(targetType?: string, target?: string) {
   if (targetType && target) await link('resource', id, targetType, target);
   return id;
 }
-const found = async (scope: { goal_id?: string; task_id?: string }) => (await findResources(scope)).resources.map(row => row.id).sort();
+const found = async (scope: { goal_id?: string; task_id?: string; include_subtasks?: boolean }) => (await findResources(scope)).resources.map(row => row.id).sort();
 describe.skipIf(SKIP_INTEGRATION)('resource relationships with real PostgreSQL', () => {
   beforeAll(startTestServer, 60_000); afterAll(stopTestServer);
   beforeEach(async () => {
@@ -49,14 +49,15 @@ describe.skipIf(SKIP_INTEGRATION)('resource relationships with real PostgreSQL',
     await link('note', note, 'resource', noted, 'mentions');
     await resource('goal', goalB);
     expect(await found({ goal_id: goalA })).toEqual([direct, inherited, noted].sort());
-    expect(await found({ task_id: parent })).toEqual([inherited, noted].sort());
+    expect(await found({ task_id: parent })).toEqual([]);
+    expect(await found({ task_id: parent, include_subtasks: true })).toEqual([inherited, noted].sort());
   });
   it('honors milestone ownership and explicit child goal overrides', async () => {
     const overridden = await task(goalB, parent), milestoneTask = await task(null, parent, milestone);
     const a = await resource('task', overridden), b = await resource('task', milestoneTask);
     expect(await found({ goal_id: goalA })).toEqual([]);
     expect(await found({ goal_id: goalB })).toEqual([a,b].sort());
-    expect(await found({ task_id: parent, goal_id: goalB })).toEqual([a,b].sort());
+    expect(await found({ task_id: parent, goal_id: goalB, include_subtasks: true })).toEqual([a,b].sort());
   });
   it.each(['recovery', 'no lexical match'])('applies goal and selected-file intersection to both retrieval lanes: %s', async question => {
     const a = await resource('task', child), b = await resource('goal', goalB);
@@ -107,7 +108,7 @@ describe.skipIf(SKIP_INTEGRATION)('resource relationships with real PostgreSQL',
   it('terminates malformed parent cycles and deduplicates repeated ownership paths', async () => {
     await query('UPDATE tasks SET parent_task_id=$2 WHERE id=$1', [parent,child]);
     const a = await resource('task',child); await link('task',child,'resource',a,'mentions');
-    expect(await found({ task_id: parent })).toEqual([a]);
+    expect(await found({ task_id: parent, include_subtasks: true })).toEqual([a]);
     expect((await readResourceContext([a])).resources[0].tasks).toHaveLength(1);
   });
 });

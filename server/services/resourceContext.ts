@@ -1,7 +1,9 @@
 import { query } from '../db.js';
 import { activeGoalSql, activeResourceSql, activeTaskSql } from '../utils/archiveVisibility.js';
+import type { ResourceScope } from '../../shared/resourceScope.js';
+export type { ResourceScope } from '../../shared/resourceScope.js';
+import { filterRootedDriveRows, DRIVE_FILE_ID_SQL } from './driveResourceAccess.js';
 
-export type ResourceScope = { goal_id?: string; task_id?: string };
 
 // Normalize saved relationships; semantic similarity never invents ownership.
 // UNION terminates malformed task cycles and removes repeated mentions.
@@ -41,24 +43,31 @@ export function resourceScopeSql(scope: ResourceScope, values: unknown[], resour
     values.push(scope.task_id);
     clauses.push(`${resourceColumn} IN (${RESOURCE_RELATIONSHIPS_SQL}, selected_tasks AS (
       SELECT id FROM visible_tasks WHERE id=$${values.length}
-      UNION SELECT t.id FROM visible_tasks t JOIN selected_tasks p ON t.parent_task_id=p.id
+      ${scope.include_subtasks ? 'UNION SELECT t.id FROM visible_tasks t JOIN selected_tasks p ON t.parent_task_id=p.id' : ''}
     ) SELECT l.resource_id FROM resource_task_links l JOIN selected_tasks t ON t.id=l.task_id)`);
+  }
+  if (scope.resource_ids) {
+    values.push(scope.resource_ids);
+    clauses.push(`${resourceColumn}=ANY($${values.length}::text[])`);
   }
   return clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
 }
 
 /** Current relational context is read from SQL, independently of frozen embedding text. */
-export async function readResourceContext(resourceIds: string[]) {
+export async function readResourceContext(resourceIds: string[], scope: ResourceScope = {}) {
   const ids = [...new Set(resourceIds)].slice(0, 20);
-  const { rows: resources } = await query<{ id: string; title: string }>(`SELECT r.id,r.title,r.read_state,r.created_at,r.updated_at,
+  const values: unknown[] = [ids];
+  const filter = resourceScopeSql(scope, values);
+  const { rows } = await query<{ id: string; title: string; file_id?: string }>(`SELECT r.id,r.title,r.read_state,r.created_at,r.updated_at,${DRIVE_FILE_ID_SQL} AS file_id,
     COALESCE(j.status,'not_started') AS indexing_status,d.checked_at AS last_source_check,d.last_error AS source_check_error,
-    CASE WHEN d.file_id IS NOT NULL THEN 'https://drive.google.com/file/d/'||d.file_id||'/view'
+    CASE WHEN r.file_path LIKE 'gdrive://%' THEN 'https://drive.google.com/file/d/'||substring(r.file_path from 10)||'/view'
       WHEN r.file_path IS NOT NULL THEN '/api/resources/blob/'||r.id ELSE NULL END AS source_url,
     (SELECT COUNT(*)::int FROM resource_chunks c WHERE c.resource_id=r.id) AS indexed_passages,
     (SELECT COUNT(DISTINCT page_start)::int FROM resource_chunks c WHERE c.resource_id=r.id) AS indexed_text_pages
     FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id
     LEFT JOIN resource_drive_files d ON d.resource_id=r.id AND r.file_path LIKE 'gdrive://%'
-    WHERE r.id=ANY($1::text[]) AND ${activeResourceSql('r.id')} AND (d.resource_id IS NULL OR d.available) ORDER BY r.id`, [ids]);
+    WHERE r.id=ANY($1::text[]) AND ${activeResourceSql('r.id')} AND (d.resource_id IS NULL OR d.available) ${filter} ORDER BY r.id`, values);
+  const resources = await filterRootedDriveRows(rows);
   const visibleIds = resources.map(row => row.id);
   const [{ rows: taskRows }, { rows: goalRows }] = await Promise.all([
     query<{ resource_id: string }>(`${RESOURCE_RELATIONSHIPS_SQL} SELECT * FROM (SELECT l.resource_id,t.id,t.title,t.goal_id,t.parent_task_id,

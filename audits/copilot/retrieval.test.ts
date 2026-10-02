@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { balancedEvidence } from './candidateIndex';
 const mock = vi.hoisted(() => ({ query: vi.fn(), embed: vi.fn() }));
 vi.mock('../../server/db.js', () => ({ query: mock.query }));
+vi.mock('../../server/services/driveResourceAccess.js', async original => ({ ...await original<typeof import('../../server/services/driveResourceAccess.js')>(), filterRootedDriveRows: async (rows: unknown[]) => rows }));
 vi.mock('../../server/embeddingProvider.js', () => ({ embedQuery: mock.embed, EMBED_MODEL: 'audit', EMBED_DIMENSION: 3 }));
 import { searchDocuments } from '../../server/services/documentRag';
 import { searchResearchEvidence } from '../../server/services/researchRag';
@@ -60,10 +61,12 @@ describe('Known retrieval gaps: desired assertions currently fail', () => {
     mock.query.mockImplementation(async sql => ({ rows: sql.includes('JOIN embeddings') ? [{ ...passage(), title: 'Baking', content: 'A sourdough loaf.' }] : [] }));
     expect((await searchDocuments('quasar radio emission')).evidence).toEqual([]);
   });
-  it.fails('RAG-03 can find research evidence beyond the first 1000 candidate rows', async () => {
-    const rows = Array.from({ length: 1001 }, (_, i) => ({ paper_id: 'paper', resource_id: 'book', title: 'Book', chunk_id: `c${i}`, heading: null, content: i === 1000 ? 'isomorphism rare exception' : 'ordinary material', page_start: i + 1, page_end: i + 1 }));
-    mock.query.mockImplementation(async sql => ({ rows: sql.includes('LIMIT 1000') ? rows.slice(0, 1000) : rows }));
-    expect((await searchResearchEvidence('isomorphism')).length).toBeGreaterThan(0);
+  it('RAG-03 uses database-ranked hybrid research evidence without a first-1000-row scan', async () => {
+    mock.query.mockImplementation(async sql => ({ rows: sql.startsWith('SELECT id,resource_id FROM research_papers') ? [{ id:'paper',resource_id:'book' }]
+      : [{ ...passage('book',1001),content:'isomorphism rare exception' }] }));
+    expect((await searchResearchEvidence('isomorphism'))[0]).toMatchObject({paper_id:'paper',passage:'isomorphism rare exception'});
+    expect(mock.query.mock.calls[0][0]).toContain('EXISTS (SELECT 1 FROM research_papers');
+    expect(mock.query.mock.calls.every(([sql]) => !sql.includes('LIMIT 1000'))).toBe(true);
   });
 });
 

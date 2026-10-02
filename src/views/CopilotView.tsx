@@ -12,11 +12,14 @@ import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ModalFrame } from '../components/ModalFrame';
 import { CopilotEvidenceSettings, type EvidenceModelCatalog, type EvidenceModels } from '../components/CopilotEvidenceSettings';
 import { CopilotMarkdown } from '../components/CopilotMarkdown';
+import { ResourceContextPicker, selectionScope, selectionTarget, type ResourceSelection } from '../components/ResourceContextPicker';
+import { useResourceDirectory } from '../hooks/useResourceDirectory';
 import { CopilotSources, type ChatCitation } from '../components/CopilotSources';
 import { CopilotCallMetrics } from '../components/CopilotCallMetrics';
 import type { ChatCallTrace } from '../types/copilotRuntime';
 import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
+import { processingLabel, type ResourceProcessing } from '../utils/resourceFiles';
 import './copilot/copilot.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -863,6 +866,12 @@ export function CopilotView() {
   const [apiKeyMissing,   setApiKeyMissing]   = useState(false);
   const [panel, setPanel] = useState<'history' | 'goals' | 'schedule' | 'settings' | null>(null);
   const [uploading,  setUploading]  = useState(false);
+  const resourceSelection = useAppStore(s => s.copilotResourceSelection);
+  const setResourceSelection = useAppStore(s => s.setCopilotResourceSelection);
+  const [contextPickerOpen, setContextPickerOpen] = useState(false);
+  const directoryStatus = useResourceDirectory(resourceSelection);
+  const [attachmentStatus, setAttachmentStatus] = useState('');
+  const sessionLoadSequence = useRef(0);
   const [modelConfig, setModelConfig] = useState({
     primary: 'AI model',
     primaryStatus: 'checking',
@@ -940,11 +949,11 @@ export function CopilotView() {
   const uploadAttachment = async (file: File) => {
     setUploading(true);
     try {
-      const id = await uploadResourceFile(file);
+      const id = await uploadResourceFile(file, undefined, selectionTarget(resourceSelection));
       setAttachment({ id, title: file.name, indexing: true });
+      if (!resourceSelection) setResourceSelection({ id, title: file.name, kind: 'resource' });
       qc.invalidateQueries({ queryKey: ['resources'] });
-      triggerToast(`"${file.name}" added to your Resource Library. Tell the copilot where to file it.`, 'success');
-      setTimeout(() => setAttachment(a => a && a.id === id ? { ...a, indexing: false } : a), 20_000);
+      triggerToast(`"${file.name}" saved${resourceSelection ? ` under ${resourceSelection.title}` : ' in Marina / Library'}.`, 'success');
     } catch (e) {
       triggerToast(`Upload failed: ${(e as Error).message}`, 'error');
     } finally {
@@ -953,6 +962,24 @@ export function CopilotView() {
   };
 
   const createSession = useCreateChatSession();
+  useEffect(() => {
+    if (!attachment?.id) { setAttachmentStatus(''); return; }
+    if (!attachment.indexing) return;
+    let cancelled = false; let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const state = await apiFetch<ResourceProcessing>(`/api/resources/${attachment.id}/processing`);
+        if (cancelled) return;
+        setAttachmentStatus(processingLabel(state));
+        if (['ready','failed','no_text','unsupported'].includes(state.status)) {
+          setAttachment(current => current?.id === attachment.id ? { ...current, indexing: false } : current); return;
+        }
+      } catch { if (!cancelled) setAttachmentStatus('Could not check indexing. Retrying…'); }
+      if (!cancelled) timer = setTimeout(poll, 4000);
+    };
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [attachment?.id, attachment?.indexing, setAttachment]);
 
   const scrollToLatest = useCallback((behavior: ScrollBehavior = 'instant') => {
     const scroller = scrollRef.current;
@@ -992,13 +1019,28 @@ export function CopilotView() {
   }, [input]);
 
   const loadSession = useCallback(async (sessionId: string) => {
+    const sequence = ++sessionLoadSequence.current;
     try {
       interface StoredAction extends Omit<CopilotAction, 'status'> { proposal_status?: string }
       const msgs = await apiFetch<{
         id: string; role: 'user' | 'assistant'; content: string; created_at: string;
         metadata?: { evidence_models?: EvidenceModels; model?: string; actions?: StoredAction[]; feasibility?: FeasibilityResult | null; citations?: ChatCitation[]; plan?: ChatPlan; plan_options?: ChatPlanOptions; schedule_day_view?: ChatScheduleDayView; overdue_tasks_view?: OverdueTasksView; runtime?: ChatRuntime } | null;
       }[]>(`/api/ai/sessions/${sessionId}/messages`);
+      const savedScope = [...msgs].reverse().find(message => message.metadata && 'resource_scope' in message.metadata)?.metadata as { resource_scope?: { goal_id?: string; task_id?: string; resource_ids?: string[]; include_subtasks?: boolean } } | undefined;
+      const scope = savedScope?.resource_scope;
+      const kind = scope?.task_id ? 'task' : scope?.goal_id ? 'goal' : scope?.resource_ids?.length === 1 ? 'resource' : null;
+      const contextId = scope?.task_id ?? scope?.goal_id ?? scope?.resource_ids?.[0];
+      let restoredSelection: ResourceSelection | null = kind && contextId ? { kind, id: contextId, title: `Selected ${kind}`, include_subtasks: scope?.include_subtasks } : null;
+      if (restoredSelection) {
+        try {
+          const record = await apiFetch<{ title: string }>(`/api/${restoredSelection.kind === 'resource' ? 'resources' : restoredSelection.kind === 'goal' ? 'goals' : 'tasks'}/${encodeURIComponent(restoredSelection.id)}`);
+          restoredSelection.title = record.title;
+        } catch { /* Keep the saved boundary even when its display name is unavailable. */ }
+      }
+      if (sequence !== sessionLoadSequence.current) return;
       setActiveSessionId(sessionId);
+      setAttachment(null);
+      setResourceSelection(restoredSelection);
       const lastModelChoice = [...msgs].reverse().find(message => message.role === 'assistant' && message.metadata)?.metadata;
       if (lastModelChoice?.model) setSelectedModel(lastModelChoice.model);
       setEvidenceModels(lastModelChoice?.evidence_models ?? {});
@@ -1026,15 +1068,17 @@ export function CopilotView() {
       })));
       setPanel(null);
     } catch { /* ignore */ }
-  }, [setActiveSessionId, setMessages]);
+  }, [setActiveSessionId, setMessages, setAttachment]);
 
   useEffect(() => {
     if (activeSessionId && messages.length === 0 && !isLoading) void loadSession(activeSessionId);
   }, [activeSessionId, messages.length, isLoading, loadSession]);
 
   const startNewConversation = useCallback(() => {
+    sessionLoadSequence.current++;
     followLatestRef.current = true;
     clearCopilotConversation();
+    setResourceSelection(null);
     setPanel(null);
   }, [clearCopilotConversation]);
 
@@ -1071,6 +1115,7 @@ export function CopilotView() {
           message: outgoing,
           model: selectedModel || undefined,
           evidence_models: evidenceModels,
+          resource_scope: selectionScope(resourceSelection),
         },
       );
       const actions: CopilotAction[] = (data.actions ?? []).map(a => ({
@@ -1106,7 +1151,7 @@ export function CopilotView() {
       setIsLoading(false);
       if (!isMobile) setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [isLoading, isMobile, activeSessionId, createSession, qc, attachment, selectedModel, evidenceModels, setActiveSessionId, setAttachment, setInput, setMessages]);
+  }, [isLoading, isMobile, activeSessionId, createSession, qc, attachment, resourceSelection, selectedModel, evidenceModels, setActiveSessionId, setAttachment, setInput, setMessages]);
 
   const handleConfirmAction = useCallback(async (msgId: string, actionId: string) => {
     const action = messages.find(m => m.id === msgId)?.actions?.find(a => a.id === actionId);
@@ -1203,8 +1248,11 @@ export function CopilotView() {
       <div className="copilot-composer-wrap">
         {!atBottom && !isEmpty && <button className="copilot-latest" onClick={() => scrollToLatest('smooth')} aria-label="Jump to latest message"><ArrowDown size={17} /> Latest</button>}
         <div className="copilot-composer">
+          <ResourceContextPicker value={resourceSelection} onChange={setResourceSelection} disabled={isLoading || uploading} open={contextPickerOpen} onOpenChange={setContextPickerOpen} />
+          {directoryStatus.message && <p role={directoryStatus.error ? 'alert' : 'status'} className={`px-3 pb-1 text-[11px] ${directoryStatus.error ? 'text-amber-700' : 'text-slate-400'}`}>{directoryStatus.message} {directoryStatus.url && <a href={directoryStatus.url} target="_blank" rel="noopener noreferrer" className="underline">Open folder</a>}</p>}
           {attachment && <div className="copilot-attachment"><Paperclip size={16} /><span className="truncate">{attachment.title}</span><button aria-label="Remove attached file" className="copilot-icon-button" onClick={() => setAttachment(null)}><X size={17} /></button></div>}
-          <textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !isMobile && !event.nativeEvent.isComposing) { event.preventDefault(); void send(input); } }} aria-label="Message Copilot" placeholder="Message Marina…" rows={1} />
+          {attachmentStatus && <p role="status" className="px-3 text-[11px] text-slate-500">{attachmentStatus}</p>}
+          <textarea ref={inputRef} value={input} onChange={event => { const value = event.target.value; if (/(^|\s)@$/.test(value)) { setContextPickerOpen(true); setInput(value.slice(0,-1)); } else setInput(value); }} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !isMobile && !event.nativeEvent.isComposing) { event.preventDefault(); void send(input); } }} aria-label="Message Copilot" placeholder="Message Marina… @ to choose resources" rows={1} />
           <div className="copilot-composer-tools">
             <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file); event.target.value = ''; }} />
             <button className="copilot-icon-button" onClick={() => fileRef.current?.click()} disabled={uploading || isLoading} aria-label="Attach a file" title="Attach a file">{uploading ? <RefreshCw size={20} className="animate-spin" /> : <Plus size={22} />}</button>

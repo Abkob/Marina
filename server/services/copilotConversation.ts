@@ -3,12 +3,11 @@ import { chat, parseJSON, CHAT_MODEL, type ChatMessage, type ChatOptions } from 
 import { ActionParamsSchemas, validateModelActions, type ValidatedAction } from './actionValidation.js';
 import { assertSafeAIContext } from '../utils/contextSafety.js';
 import { reviewCopilotProposal } from './copilotProposalReview.js';
-import { CONTEXT_WIRE_GUIDE, ContextObservations, packContext } from './copilotContextWire.js';
-import { CONTRACT_GUIDE, compactSchema } from './copilotContracts.js';
-import { COPILOT_FEATURES } from './copilotFeatures.js';
+import { ContextObservations, packContext } from './copilotContextWire.js';
 import { documentCitations, documentEvidenceWarning, type DocumentCitation } from './documentCitations.js';
 import { KIMI_MODEL } from '../config/nvidiaModels.js';
-import { COPILOT_CONVERSATION_POLICY } from './copilotPolicy.js';
+import { conversationCapabilities } from './copilotCapabilities.js';
+import type { ResourceScope } from '../../shared/resourceScope.js';
 
 export interface ConversationTool {
   description: string;
@@ -83,6 +82,7 @@ export async function runCopilotConversation(options: {
   turns: ConversationTurn[];
   clock: { today: string; time: string; timezone: string };
   tools: Record<string, ConversationTool>;
+  resourceScope?: ResourceScope;
   model?: string;
   onTrace?: ChatOptions['onTrace'];
   onTool?: (name: string, status: 'completed' | 'failed') => Promise<void> | void;
@@ -94,14 +94,9 @@ export async function runCopilotConversation(options: {
   const evidenceWarnings = new Set<string>();
   const withEvidenceWarnings = (reply: string) => evidenceWarnings.size ? `${reply}\n\n${[...evidenceWarnings].join('\n\n')}` : reply;
   const complete = options.complete ?? chat;
-  const toolSchemas = Object.fromEntries(Object.entries(options.tools).map(([name, tool]) => [name, {
-    description: tool.description,
-    parameters: compactSchema(tool.parameters),
-  }]));
-  const actionSchemas = Object.fromEntries(Object.entries(ActionParamsSchemas)
-    .filter(([name]) => name !== 'plan_schedule' && name !== 'create_block_series')
-    .map(([name, schema]) => [name, compactSchema(schema)]));
-  const messages: ChatMessage[] = [{ role: 'system', content: `${COPILOT_CONVERSATION_POLICY}\n\nApp features: ${JSON.stringify(COPILOT_FEATURES)}\n${CONTRACT_GUIDE}\n${CONTEXT_WIRE_GUIDE}\nRead-only tools: ${JSON.stringify(toolSchemas)}\nProposal parameter schemas: ${JSON.stringify(actionSchemas)}\nLocal clock: ${JSON.stringify(options.clock)}` }, ...conversationHistory(options.turns)];
+  const capabilities = conversationCapabilities(options.tools);
+  if (options.resourceScope && Object.keys(options.resourceScope).length) capabilities.activateForTool('find_resources');
+  const messages: ChatMessage[] = [{ role: 'system', content: capabilities.prompt(options.clock, options.resourceScope) }, ...conversationHistory(options.turns)];
   const maxRounds = options.maxToolRounds ?? 3;
   const deadlineMs = Date.now() + 180_000;
   const knownIds = new Set<string>();
@@ -162,13 +157,14 @@ export async function runCopilotConversation(options: {
       for (const call of envelope.tool_calls) {
         let observation: unknown;
         try {
-          const tool = options.tools[call.name];
+          const tool = capabilities.tools[call.name];
           if (!tool) {
             if (ActionParamsSchemas[call.name]) throw new Error(`${call.name} is a proposal type, not a callable read tool. Nothing was changed. Read current facts using workspace_context or schedule_range, then put this type and its params in the FINAL actions array. Available read tools: ${Object.keys(options.tools).join(', ')}.`);
             throw new Error(`Unknown tool ${call.name}. Available read tools: ${Object.keys(options.tools).join(', ')}.`);
           }
           if (seenCallIds.has(call.id)) throw new Error('Tool call IDs must be unique. Use the result already returned.');
           const args = tool.parameters.parse(call.arguments) as Record<string, unknown>;
+          capabilities.activateForTool(call.name);
           const signature = `${call.name}:${JSON.stringify(args)}`;
           if (executed.has(signature)) {
             const previous = executed.get(signature)!;
@@ -176,6 +172,7 @@ export async function runCopilotConversation(options: {
             if (previous.artifact) artifacts.set(call.id, previous.artifact);
           } else {
             const result = await tool.execute(args);
+            messages[0] = { role: 'system', content: capabilities.prompt(options.clock, options.resourceScope) };
             // Check forbidden facts BEFORE field names become table columns.
             // The wire budget applies after lossless encoding, not before it.
             assertSafeAIContext(result.data, 500_000);

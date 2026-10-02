@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { ResourceSelection } from '../../shared/resourceScope';
 
 export type Tab = 'Copilot' | 'Brain Dump' | 'Goals' | 'Work' | 'Time' | 'Resources' | 'Gantt' | 'Journal' | 'Graph' | 'Topics' | 'Schedule' | 'Usage' | 'Settings' | 'Testing';
 
@@ -76,6 +77,7 @@ interface AppStore {
   copilotDraft: string;
   copilotMessages: CopilotStoredMessage[];
   copilotAttachment: CopilotAttachmentState | null;
+  copilotResourceSelection: ResourceSelection | null;
 
   // ─── Modals ───────────────────────────────────────────────────────────────
   newGoalModalOpen:     boolean;
@@ -116,6 +118,7 @@ interface AppStore {
   setCopilotDraft:           (draft: string) => void;
   setCopilotMessages:        (messages: StoreUpdater<CopilotStoredMessage[]>) => void;
   setCopilotAttachment:      (attachment: StoreUpdater<CopilotAttachmentState | null>) => void;
+  setCopilotResourceSelection: (selection: ResourceSelection | null) => void;
   clearCopilotConversation:  () => void;
 
   // ─── Toast ────────────────────────────────────────────────────────────────
@@ -177,6 +180,7 @@ export const useAppStore = create<AppStore>()(
       copilotDraft: '',
       copilotMessages: [],
       copilotAttachment: null,
+      copilotResourceSelection: null,
 
       newGoalModalOpen:     false,
       newNoteModalOpen:     false,
@@ -225,6 +229,7 @@ export const useAppStore = create<AppStore>()(
       setDeadlineSpotlight:  (deadlineId) => set({ spotlightDeadlineId: deadlineId, spotlightTaskId: null }),
       clearSpotlight:        () => set({ spotlightTaskId: null, spotlightDeadlineId: null }),
       setCopilotActiveSessionId: (id) => set({ copilotActiveSessionId: id }),
+      setCopilotResourceSelection: (selection) => set({ copilotResourceSelection: selection }),
       setCopilotDraft:           (draft) => set({ copilotDraft: draft }),
       setCopilotMessages:        (messages) => set((s) => ({
         copilotMessages: typeof messages === 'function' ? messages(s.copilotMessages) : messages,
@@ -237,6 +242,7 @@ export const useAppStore = create<AppStore>()(
         copilotDraft: '',
         copilotMessages: [],
         copilotAttachment: null,
+        copilotResourceSelection: null,
       }),
 
       // ─── Toast ────────────────────────────────────────────────────────────
@@ -290,6 +296,7 @@ export const useAppStore = create<AppStore>()(
         copilotActiveSessionId: state.copilotActiveSessionId,
         copilotDraft:           state.copilotDraft,
         copilotAttachment:      state.copilotAttachment,
+        copilotResourceSelection: state.copilotResourceSelection,
       }),
     }
   )

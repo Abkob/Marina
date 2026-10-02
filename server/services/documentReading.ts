@@ -6,9 +6,14 @@ import { analyzeDocumentImage, transcribeDocumentImage, parseDocumentImage, MAX_
 import type { EvidenceModels } from './copilotModelRoles.js';
 import { resourceScopeSql, type ResourceScope } from './resourceContext.js';
 import { searchDocuments } from './documentRag.js';
+import { filterRootedDriveRows, DRIVE_FILE_ID_SQL } from './driveResourceAccess.js';
+import { chunkEvidence } from './chunkEvidence.js';
 
-type Resource = { id: string; title: string; original_name: string | null; file_path: string | null; mime_type: string | null; file_id: string | null; status: string; error: string | null; checked_at: string | null; last_error: string | null };
-const resourceFields = `r.id,r.title,r.original_name,r.file_path,r.mime_type,d.file_id,COALESCE(j.status,'not_started') AS status,j.error,d.checked_at,d.last_error`;
+type Resource = { id: string; title: string; original_name: string | null; file_path: string | null; mime_type: string | null; file_id: string | null; status: string; error: string | null; checked_at: string | null; last_error: string | null; total_pages?: number; visual_pages_ready?: number; visual_pages_failed?: number };
+const resourceFields = `r.id,r.title,r.original_name,r.file_path,r.mime_type,${DRIVE_FILE_ID_SQL} AS file_id,COALESCE(j.status,'not_started') AS status,j.error,d.checked_at,d.last_error,
+  (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version) AS total_pages,
+  (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version AND p.status='ready') AS visual_pages_ready,
+  (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version AND p.status='failed') AS visual_pages_failed`;
 const resourceJoins = `FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id
   LEFT JOIN resource_drive_files d ON d.resource_id=r.id AND r.file_path LIKE 'gdrive://%'`;
 const visible = `${activeResourceSql('r.id')} AND (d.resource_id IS NULL OR d.available)`;
@@ -29,22 +34,22 @@ export async function findResources(args: { search?: string; query?: string; aft
   const scope = resourceScopeSql(args, values);
   values.push(limit + 1);
   const { rows } = await query<Resource>(`SELECT ${resourceFields} ${resourceJoins} WHERE ${conditions.join(' AND ')} ${scope} ORDER BY r.id LIMIT $${values.length}`, values);
-  const resources = rows.slice(0, limit).map(discoveredSource);
-  const result = { resources, has_more: rows.length > limit, next_after: rows.length > limit ? resources.at(-1)!.id : null };
+  const resources = (await filterRootedDriveRows(rows.slice(0, limit))).map(discoveredSource);
+  const result = { resources, has_more: rows.length > limit, next_after: rows.length > limit ? rows[limit - 1].id : null };
   const semanticQuery = args.query?.trim() || args.search?.trim();
   if (!semanticQuery || args.after) return result;
   // Content discovery always runs, even when a literal title matched. The model
   // receives candidate passages in this call instead of having to escape an
   // exact-name gate itself. Ranking never establishes document identity.
   try {
-    const found = await searchDocuments(semanticQuery, [], 8, rerankModel, { goal_id: args.goal_id, task_id: args.task_id }, { diversifyResources: true });
+    const found = await searchDocuments(semanticQuery, [], 8, rerankModel, { goal_id: args.goal_id, task_id: args.task_id, ...(args.resource_ids ? { resource_ids: args.resource_ids } : {}), ...(args.include_subtasks !== undefined ? { include_subtasks: args.include_subtasks } : {}) }, { diversifyResources: true });
     const candidateIds = [...new Set(found.evidence.map(row => row.resource_id))];
     // A semantic hit alone can confuse neighboring concepts. Supply the opening
     // context of the top candidates automatically, so the model can resolve the
     // book and follow its contents without another title-lookup loop.
     const previews = await Promise.all(candidateIds.slice(0, 2).map(async resource_id => {
       try {
-        const read = await readDocument({ resource_id, limit: 8 });
+        const read = await readDocument({ resource_id, limit: 8 }, args);
         let chars = 0;
         const passages = read.passages.filter(row => { chars += row.passage.length; return chars <= 6000; });
         const truncated = passages.length < read.passages.length;
@@ -72,14 +77,16 @@ export async function findResources(args: { search?: string; query?: string; aft
   }
 }
 
-async function getResource(id: string) {
-  const { rows } = await query<Resource>(`SELECT ${resourceFields} ${resourceJoins} WHERE r.id=$1 AND ${visible} AND r.file_validation='valid'`, [id]);
-  if (!rows[0]) throw new Error('This resource is missing, archived, unavailable, or has not passed file validation.');
+async function getResource(id: string, scope: ResourceScope = {}) {
+  const values: unknown[] = [id];
+  const filter = resourceScopeSql(scope, values);
+  const { rows } = await query<Resource>(`SELECT ${resourceFields} ${resourceJoins} WHERE r.id=$1 AND ${visible} AND r.file_validation='valid' ${filter}`, values);
+  if (!rows[0] || !(await filterRootedDriveRows(rows)).length) throw new Error('This resource is outside the selected context, missing, archived, unavailable, or has not passed file validation.');
   return rows[0];
 }
 
-export async function readDocument(args: { resource_id: string; page?: number; after_chunk?: number; limit?: number }) {
-  const resource = await getResource(args.resource_id);
+export async function readDocument(args: { resource_id: string; page?: number; after_chunk?: number; limit?: number }, scope: ResourceScope = {}) {
+  const resource = await getResource(args.resource_id, scope);
   if (resource.status !== 'ready') return { ...source(resource), status: resource.status, error: resource.error,
     passages: [], hint: 'Text indexing is not ready. For a PDF or image, inspect_document_page can read a selected original page visually.' };
   const limit = Math.min(8, Math.max(1, Math.trunc(args.limit ?? 4)));
@@ -87,12 +94,14 @@ export async function readDocument(args: { resource_id: string; page?: number; a
   const pageFilter = args.page === undefined ? '' : 'AND page_start <= $3 AND page_end >= $3';
   if (args.page !== undefined) values.push(args.page);
   values.push(limit + 1);
-  const { rows } = await query<{ id: string; chunk_index: number; content: string; page_start: number | null; page_end: number | null }>(
-    `SELECT id,chunk_index,content,page_start,page_end FROM resource_chunks WHERE resource_id=$1 AND chunk_index>$2 ${pageFilter} ORDER BY chunk_index,id LIMIT $${values.length}`, values);
-  const passages = rows.slice(0, limit).map(row => ({ chunk_id: row.id, chunk_index: row.chunk_index, passage: row.content, page_start: row.page_start, page_end: row.page_end }));
+  const { rows } = await query<{ id: string; chunk_index: number; content: string; page_start: number | null; page_end: number | null; chunk_metadata?: string }>(
+    `SELECT id,chunk_index,content,page_start,page_end,chunk_metadata FROM resource_chunks WHERE resource_id=$1 AND chunk_index>$2 ${pageFilter} ORDER BY chunk_index,id LIMIT $${values.length}`, values);
+  const passages = rows.slice(0, limit).map(row => ({ chunk_id: row.id, chunk_index: row.chunk_index, passage: row.content, page_start: row.page_start, page_end: row.page_end, ...chunkEvidence(row.chunk_metadata) }));
   return { ...source(resource), status: resource.status, passages, has_more: rows.length > limit,
     next_after_chunk: rows.length > limit ? passages.at(-1)!.chunk_index : null, requested_page: args.page ?? null,
-    coverage: 'Indexed text only; images and chart content require inspect_document_page.' };
+    coverage: resource.total_pages ? { total_pages: resource.total_pages, visual_pages_ready: resource.visual_pages_ready, visual_pages_failed: resource.visual_pages_failed,
+      note: 'Text, OCR, page structure and visual interpretations are labeled separately. Model-derived evidence may be wrong. Failed/unprocessed visual pages are not fully searchable; inspect_document_page can inspect one original.' }
+      : 'Legacy text index only; images and chart content require inspect_document_page or reindexing.' };
 }
 
 async function readOriginal(reference: string, limit: number) {
@@ -136,11 +145,11 @@ export async function inspectRenderedDocumentImage(args: { dataUrl: string; ques
   return result;
 }
 
-export async function inspectDocumentPage(args: { resource_id: string; page: number; question: string; mode?: 'ocr' | 'vision' | 'structure' }, models?: EvidenceModels) {
+export async function inspectDocumentPage(args: { resource_id: string; page: number; question: string; mode?: 'ocr' | 'vision' | 'structure' }, models?: EvidenceModels, scope: ResourceScope = {}) {
   const mode = args.mode ?? 'vision';
   if (models?.[mode] === 'off') throw new Error(`${mode} is disabled in your model choices.`);
   if (!nvidiaEvidenceAvailable()) throw new Error('NVIDIA visual document analysis is not configured.');
-  const resource = await getResource(args.resource_id);
+  const resource = await getResource(args.resource_id, scope);
   if (!resource.file_path) throw new Error('This resource has no saved original file.');
   const pdf = resource.mime_type === 'application/pdf';
   if (!pdf && !['image/png', 'image/jpeg', 'image/webp'].includes(resource.mime_type ?? '')) throw new Error('Visual inspection supports PDF, PNG, JPEG and WebP originals.');

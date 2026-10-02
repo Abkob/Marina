@@ -4,6 +4,7 @@ import { verifyResourceDeployment } from '../../../scripts/lib/resourceDeploymen
 
 const env = { DATABASE_URL: 'postgresql://test.invalid/marina_test', BLOB_READ_WRITE_TOKEN: 'test-blob', INNGEST_EVENT_KEY: 'test-event', INNGEST_SIGNING_KEY: 'test-signing', GOOGLE_CLIENT_ID: 'test', GOOGLE_CLIENT_SECRET: 'test', GOOGLE_TOKEN_ENCRYPTION_KEY: 'e'.repeat(32), GOOGLE_OAUTH_STATE_SECRET: 's'.repeat(32), APP_URL: 'https://marina.test' };
 const schema = {
+  resource_document_pages: 'resource_id generation page_number source_hash extractor_version native_text evidence status attempts error updated_at',
   resources: 'original_name mime_type file_size file_validation',
   resource_uploads: 'id request_key pathname original_name mime_type size attach_to_id attach_to_type state created_at expires_at last_checked_at completed_at storage_provider',
   resource_processing_jobs: 'id resource_id version stage status attempts error_code error lease_token lease_expires_at next_attempt_at last_dispatched_at created_at updated_at',

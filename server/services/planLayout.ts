@@ -10,6 +10,7 @@ export interface PlanTaskInfo {
   title: string;
   /** minutes of work still to place (estimate minus logged) */
   remaining_minutes: number;
+  blocker_ids?: string[];
 }
 
 export interface BusyInterval {
@@ -212,6 +213,7 @@ export function layoutPlan(opts: {
 
   const remaining = new Map<string, number>();
   const titleOf = new Map<string, string>();
+  const blockers = new Map(tasks.map(task => [task.id, task.blocker_ids ?? []]));
   for (const t of tasks) {
     remaining.set(t.id, Math.max(0, Math.round(t.remaining_minutes)));
     titleOf.set(t.id, t.title);
@@ -232,6 +234,9 @@ export function layoutPlan(opts: {
     let cursor = free.length ? free[0].start : 0;
 
     for (const taskId of day.task_ids) {
+      // Day-level feasibility does not guarantee that every prerequisite fit
+      // into actual free intervals. Never place a dependent ahead of that work.
+      if (blockers.get(taskId)?.some(id => !remaining.has(id) || remaining.get(id)! > 0)) continue;
       let left = remaining.get(taskId) ?? 0;
       let dayBudget = Math.min(left, day.task_minutes?.[taskId] ?? left);
       while (left > 0 && dayBudget > 0 && intervalIdx < free.length) {

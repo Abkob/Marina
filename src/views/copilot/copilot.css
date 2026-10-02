@@ -88,7 +88,7 @@
 .copilot-source-note { margin-top: 7px; font-size: 11px; line-height: 1.6; color: #64748b; }
 .copilot-source-details > summary, .copilot-context-details > summary { min-height: 44px; align-content: center; cursor: pointer; font-size: 12px; color: #64748b; border-radius: 6px; }
 .copilot-source-card > .copilot-source-details { border-top: 1px solid #e2e8f0; }
-.copilot-source-card > .copilot-source-details > summary { padding: 0 18px; }
+.copilot-source-card > .copilot-source-details > :is(summary,button) { padding: 0 18px; }
 .copilot-context-details { margin-top: 6px; }
 .copilot-context-details ul { max-height: 220px; overflow-y: auto; }
 .copilot-context-details li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 12px; color: #475569; }
@@ -107,7 +107,7 @@
   .copilot-source-header > svg { width: 17px; }
   .copilot-source-header h3 { font-size: 13px; }
   .copilot-source-passage { padding: 0 12px 12px; }
-  .copilot-source-card > .copilot-source-details > summary { padding: 0 12px; }
+  .copilot-source-card > .copilot-source-details > :is(summary,button) { padding: 0 12px; }
   .copilot-source-card { border-radius: 12px; }
   .copilot-source-excerpt { font-size: 13px; }
   .copilot-sources { margin-top: 16px; }

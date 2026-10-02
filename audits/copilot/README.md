@@ -10,7 +10,7 @@ npm test -- --maxWorkers=2
 npm run lint
 ```
 
-The audit has 219 cases: **212 ordinary passing checks and 7 expected failures** after the Nemotron document-pipeline changes. The original baseline was 202 ordinary passes and 17 expected failures; ten repaired cases are now ordinary regression tests. Vitest reports expected failures as passed. **That is reproduction of a known defect, not evidence of quality.** The desired assertions remain in `it.fails` until repaired. Unexpected success signals that promotion is required. See [the model study](../../docs/nemotron-model-study.md) for release validation and explicit implementation limits.
+The audit has 221 cases: **217 ordinary passing checks and 4 expected failures** after the scoped retrieval and scheduling changes. Vitest reports expected failures as passed. **That is reproduction of a known limitation, not evidence of quality.** The desired assertions remain in `it.fails` until repaired. Two native-PDF tests deliberately exercise only text extraction; positive visual coverage is tested separately through structured ingestion. Typed proposal IDs and relevance rejection remain quality gaps. See [the implementation follow-up](../../docs/copilot-implementation-2026-10-03.md) for validation and limits.
 
 | File | Subject |
 | --- | --- |

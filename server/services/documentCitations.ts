@@ -5,7 +5,7 @@ const sourceSchema = z.object({ resource_id: z.string().min(1).max(100), title: 
   page_start: z.number().int().positive().nullable().optional(), page_end: z.number().int().positive().nullable().optional(),
 });
 export type DocumentCitation = { entity_type: 'resource'; entity_id: string; title: string; matched_via: string[]; source_url: string; page_start: number | null; page_end: number | null;
-  excerpt?: string; excerpt_kind?: 'text' | 'ocr' | 'visual' | 'structure'; excerpt_truncated?: boolean; source_tool?: string; chunk_id?: string };
+  excerpt?: string; excerpt_kind?: 'text' | 'ocr' | 'visual' | 'structure'; excerpt_truncated?: boolean; source_tool?: string; chunk_id?: string; model?: string; generation?: number };
 
 /** Copy only evidence actually supplied by a successful tool, never model prose. */
 function citationExcerpt(tool: string, candidate: unknown): Partial<DocumentCitation> {
@@ -14,10 +14,12 @@ function citationExcerpt(tool: string, candidate: unknown): Partial<DocumentCita
   const raw = tool === 'inspect_document_page' ? value.text ?? value.analysis : value.passage;
   if (typeof raw !== 'string' || !raw.trim()) return {};
   const text = raw.trim();
-  const kind = tool !== 'inspect_document_page' ? 'text'
+  const kind = tool !== 'inspect_document_page' ? (['ocr','visual','structure'].includes(String(value.evidence_kind)) ? value.evidence_kind as 'ocr'|'visual'|'structure' : 'text')
     : typeof value.analysis === 'string' && !value.text ? 'visual'
       : value.evidence_type === 'model_extracted_page_structure' ? 'structure' : 'ocr';
   return { excerpt: text.slice(0, 1200), excerpt_kind: kind, excerpt_truncated: text.length > 1200, source_tool: tool,
+    ...(typeof value.model === 'string' && value.model.length <= 200 ? { model: value.model } : {}),
+    ...(typeof value.generation === 'number' && Number.isSafeInteger(value.generation) ? { generation: value.generation } : {}),
     ...(typeof value.chunk_id === 'string' && value.chunk_id.length <= 100 ? { chunk_id: value.chunk_id } : {}) };
 }
 
@@ -34,7 +36,7 @@ export function documentCitations(tool: string, data: unknown): DocumentCitation
   if (!data || typeof data !== 'object') return [];
   const value = data as Record<string, unknown>;
   let candidates: unknown[] = [];
-  if ((tool === 'search_documents' || tool === 'find_resources') && Array.isArray(value.evidence)) candidates = value.evidence;
+  if (['search_documents','find_resources','research_search'].includes(tool) && Array.isArray(value.evidence)) candidates = value.evidence;
   if (tool === 'find_resources' && Array.isArray(value.previews)) candidates = [...candidates, ...value.previews.flatMap(preview =>
     preview && typeof preview === 'object' && Array.isArray(preview.passages) ? preview.passages.map((row: unknown) => ({ ...preview, ...(row && typeof row === 'object' ? row : {}) })) : [])];
   if (tool === 'read_document' && Array.isArray(value.passages)) candidates = value.passages.map(row => ({ ...value, ...(row && typeof row === 'object' ? row : {}) }));

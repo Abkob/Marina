@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSchedule, type SchedulerInput } from '../../../server/services/scheduler.js';
+import { computeSchedule, detectDependencyCycles, type SchedulerInput } from '../../../server/services/scheduler.js';
 
 // ─── Helpers (fixed clock — timezone-independent) ─────────────────────────────
 // Use a fixed Monday so tests are deterministic regardless of machine timezone.
@@ -21,6 +21,25 @@ const BASE_PREFS: SchedulerInput['prefs'] = {
 function makeInput(overrides: Partial<SchedulerInput> = {}): SchedulerInput {
   return { tasks: [], meetings: [], prefs: BASE_PREFS, overrides: [], horizon_days: 7, start_date: FIXED_TODAY, ...overrides };
 }
+
+describe('precise dependency cycle diagnostics', () => {
+  const task = (id: string, blocker_ids: string[]) => ({ id, blocker_ids, title:id, estimated_minutes:30, due_date:null, priority:'medium' });
+  it('distinguishes a cycle from downstream blocked work and independent work', () => {
+    const tasks = [task('A',['B']),task('B',['A']),task('C',['B']),task('D',[])];
+    expect(detectDependencyCycles(tasks)).toEqual(['A','B']);
+    const result = computeSchedule(makeInput({tasks}));
+    expect(result.tasks_fit).toEqual(['D']);
+    expect(result.task_diagnostics.find(t=>t.task_id==='C')).toMatchObject({blocked_by:['B']});
+    expect(result.task_diagnostics.find(t=>t.task_id==='C')?.dependency_cycle).toBeUndefined();
+  });
+  it('does not mark zero-remaining tasks in cycles as feasible', () => {
+    const result = computeSchedule(makeInput({tasks:[{...task('A',['A']),estimated_minutes:0,has_estimate:true}]}));
+    expect(result.tasks_fit).toEqual([]); expect(result.tasks_overflow).toEqual(['A']);
+  });
+  it('handles a 10,000-task dependency chain without recursion overflow', () => {
+    expect(detectDependencyCycles(Array.from({length:10000},(_,i)=>task(String(i),i?[String(i-1)]:[])))).toEqual([]);
+  });
+});
 
 // ─── Feasibility ──────────────────────────────────────────────────────────────
 
@@ -109,7 +128,8 @@ describe('computeSchedule — blocker ordering', () => {
     const result = computeSchedule(makeInput({
       tasks: [{ id: 't1', title: 'Task', estimated_minutes: 60, due_date: daysFromNow(3), priority: 'medium', blocker_ids: ['ghost-id'] }],
     }));
-    expect(result.tasks_fit).toContain('t1');
+    expect(result.tasks_fit).not.toContain('t1');
+    expect(result.tasks_overflow).toContain('t1');
   });
 });
 

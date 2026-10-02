@@ -3,6 +3,8 @@ import { aiProposalsRouter } from './ai-proposals.js';
 import { activeProposals } from '../services/activeProposals.js';
 import { activeTaskSql, activeGoalSql, activeMilestoneSql, activeMeetingSql, activeEventSql, activeEntitySql, activeResourceSql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
+import { resourceScopeSchema, type ResourceScope } from '../../shared/resourceScope.js';
+import { historyInScope } from '../services/scopedConversation.js';
 import { runCopilotConversation, type ConversationTurn } from '../services/copilotConversation.js';
 import { createCopilotTools, readCopilotClock } from '../services/copilotTools.js';
 import { citationsForContext } from '../services/contextCitations.js';
@@ -380,7 +382,8 @@ async function getScheduleContext(userQuery?: string) {
     `SELECT source_id as blocker_id, target_id as task_id
      FROM edges
      WHERE relationship='blocks' AND source_type='task' AND target_type='task'
-       AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}`,
+       AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}
+       AND EXISTS (SELECT 1 FROM tasks blocker WHERE blocker.id=source_id AND NOT blocker.completed)`,
   ) as { rows: { blocker_id: string; task_id: string }[] };
   const planningBlockerMap = new Map<string, string[]>();
   for (const edge of planningBlockerEdges) {
@@ -1418,7 +1421,7 @@ async function persistActionsAsProposals(
 
 async function answerConversation(
   turns: ConversationTurn[],
-  options: { model?: string; evidenceModels?: Partial<EvidenceModels>; source: string; sessionId: string | null; onTrace?: (trace: ChatCallTrace) => void; agentRunId?: string },
+  options: { model?: string; evidenceModels?: Partial<EvidenceModels>; resourceScope?: ResourceScope; source: string; sessionId: string | null; onTrace?: (trace: ChatCallTrace) => void; agentRunId?: string },
 ) {
   const evidenceModels = resolveEvidenceModels(options.evidenceModels);
   const contexts = new Map<string, Awaited<ReturnType<typeof getScheduleContext>>>();
@@ -1436,6 +1439,7 @@ async function answerConversation(
   };
   const result = await runCopilotConversation({
     turns,
+    resourceScope: options.resourceScope,
     clock: await readCopilotClock(),
     model: options.model,
     onTrace: options.onTrace,
@@ -1444,6 +1448,7 @@ async function answerConversation(
     } : undefined,
     tools: createCopilotTools({
       evidenceModels,
+      resourceScope: options.resourceScope,
       workspace: async (search, sections) => rememberContext(compactContextForModel(await loadContext(search), sections ?? (search ? ['tasks', 'details'] : undefined))),
       previewSchedule: args => buildPlanPayload(args as PlanWindowParams),
       previewRoutine: args => buildSeriesPayload(args as unknown as SeriesParams),
@@ -1454,6 +1459,7 @@ async function answerConversation(
   return {
     ...result,
     evidence_models: evidenceModels,
+    resource_scope: options.resourceScope ?? {},
     actions: await persistActionsAsProposals(result.actions, options.source, options.sessionId),
     citations: [...citations.values(), ...result.document_citations],
   };
@@ -1466,6 +1472,7 @@ router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().min(1).max(16000) }).strict()).min(1).max(200),
     model: z.string().optional(),
     evidence_models: evidenceModelsSchema.optional(),
+    resource_scope: resourceScopeSchema.optional(),
   }).strict();
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Provide user/assistant messages, each no longer than 16000 characters.' });
@@ -1473,7 +1480,7 @@ router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
   try { model = resolveChatModel(parsed.data.model); }
   catch (error) { return res.status(400).json({ error: String(error) }); }
   try {
-    res.json(await answerConversation(parsed.data.messages, { model, evidenceModels: parsed.data.evidence_models, source: 'chat', sessionId: null }));
+    res.json(await answerConversation(parsed.data.resource_scope ? parsed.data.messages.slice(-1) : parsed.data.messages, { model, evidenceModels: parsed.data.evidence_models, resourceScope: parsed.data.resource_scope, source: 'chat', sessionId: null }));
   } catch (error) {
     res.status(502).json({ error: error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.' });
   }
@@ -1696,7 +1703,7 @@ async function loadSchedulerInputs(horizonDays: number) {
     ),
     query(`SELECT scheduled_at, duration_minutes FROM meetings WHERE ${activeMeetingSql()} AND DATE(scheduled_at::timestamp) BETWEEN $1 AND $2`, [todayStr, endStr]),
     query(`SELECT date, available_minutes FROM schedule_day_overrides WHERE date BETWEEN $1 AND $2`, [todayStr, endStr]),
-    query(`SELECT source_id as blocker_id, target_id as task_id FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}`),
+    query(`SELECT source_id as blocker_id, target_id as task_id FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')} AND EXISTS (SELECT 1 FROM tasks blocker WHERE blocker.id=source_id AND NOT blocker.completed)`),
     query(
       `SELECT id, parent_task_id, goal_id, milestone_id, start_date, due_date, target_date, hard_deadline
        FROM tasks WHERE completed=false AND ${activeTaskSql()}`,
@@ -1959,7 +1966,7 @@ async function buildPlanPayload(windowParams: PlanWindowParams) {
 
   const layout = layoutPlan({
     dayAssignments: schedulerResult.day_assignments,
-    tasks: planTasks.map(t => ({ id: t.id, title: t.title, remaining_minutes: t.estimated_minutes })),
+    tasks: planTasks.map(t => ({ id: t.id, title: t.title, remaining_minutes: t.estimated_minutes, blocker_ids: t.blocker_ids })),
     workStart,
     workEnd,
     busy: busy.map(b => ({ date: b.date, start_hour: b.start_hour, end_hour: b.start_hour + b.duration_hours })),
@@ -2595,7 +2602,7 @@ router.get('/sessions/:id/messages', async (req, res) => {
 
 // POST /api/ai/sessions/:id/chat — send a message in a session (history auto-loaded)
 router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), async (req, res) => {
-  const input = z.object({ message: z.string().min(1).max(16000).refine(value => Boolean(value.trim())), model: z.string().optional(), evidence_models: evidenceModelsSchema.optional() }).strict().safeParse(req.body);
+  const input = z.object({ message: z.string().min(1).max(16000).refine(value => Boolean(value.trim())), model: z.string().optional(), evidence_models: evidenceModelsSchema.optional(), resource_scope: resourceScopeSchema.optional() }).strict().safeParse(req.body);
   if (!input.success) return res.status(400).json({ error: 'A message between 1 and 16000 characters is required.' });
   const { message, model } = input.data;
   const requestStartedAt = Date.now();
@@ -2633,7 +2640,7 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
       SELECT role,content,metadata_json,created_at,id FROM chat_messages
       WHERE session_id=$1 AND role IN ('user','assistant') ORDER BY created_at DESC,id DESC LIMIT 100
     ) recent ORDER BY created_at ASC, CASE role WHEN 'user' THEN 0 ELSE 1 END ASC`, [req.params.id]);
-  const history: ConversationTurn[] = historyRows.map(row => {
+  const history: ConversationTurn[] = historyInScope(historyRows, input.data.resource_scope).map(row => {
     let context: unknown;
     try {
       const metadata = row.metadata_json ? JSON.parse(row.metadata_json) : null;
@@ -2652,7 +2659,7 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
   });
   try {
     const result = await answerConversation([...history, { role: 'user', content: message }], {
-      model: selectedModel, evidenceModels: input.data.evidence_models, source: 'chat_session', sessionId: req.params.id, agentRunId,
+      model: selectedModel, evidenceModels: input.data.evidence_models, resourceScope: input.data.resource_scope, source: 'chat_session', sessionId: req.params.id, agentRunId,
       onTrace: trace => modelCalls.push({ phase: 'answer', ...trace }),
     });
     const runtime = runtimeInfo();
@@ -2660,8 +2667,8 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
     const userMessageId = crypto.randomUUID(); const messageId = crypto.randomUUID();
     const metadata = { ...result, agent_run_id: agentRunId, model: selectedModel, runtime };
     await query(`INSERT INTO chat_messages (id,session_id,role,content,metadata_json,created_at)
-      VALUES ($1,$2,'user',$3,NULL,$4),($5,$2,'assistant',$6,$7,$4)`,
-      [userMessageId,req.params.id,message,now,messageId,result.reply,JSON.stringify(metadata)]);
+      VALUES ($1,$2,'user',$3,$8,$4),($5,$2,'assistant',$6,$7,$4)`,
+      [userMessageId,req.params.id,message,now,messageId,result.reply,JSON.stringify(metadata),JSON.stringify({ resource_scope: input.data.resource_scope ?? {} })]);
     await query('UPDATE chat_sessions SET updated_at=$1 WHERE id=$2', [now,req.params.id]);
     await setAgentIntent(agentRunId, result.conversation.needs_clarification ? 'clarification' : result.actions[0]?.type ?? 'conversation', 0, { routing: 'model_led', action_count: result.actions.length });
     await finishAgentRun(agentRunId, 'completed', result.reply, { metadata: { action_count: result.actions.length, tool_calls: result.conversation.tool_calls, runtime } });

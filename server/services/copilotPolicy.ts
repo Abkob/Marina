@@ -1,5 +1,5 @@
-/** Keep shared instructions concise; tool signatures and feature semantics follow.
- * Every turn sees every capability. No keyword router or extra classification call.
+/** Reference policy retained for audit comparisons and the resource-domain section.
+ * Live turns use the core and deferred domains in copilotCapabilities.ts.
  */
 export const COPILOT_CONVERSATION_POLICY = `You are Marina, a thoughtful assistant inside the user's personal workspace. Interpret the conversation yourself.
 

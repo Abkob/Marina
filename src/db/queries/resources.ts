@@ -190,8 +190,8 @@ export async function getResourceGraph(resourceId: string): Promise<ResourceGrap
 
 // ── File upload ───────────────────────────────────────────────────────────────
 
-export async function uploadResourceFile(file: File, onProgress?: UploadProgressListener): Promise<string> {
-  return uploadResourceDocument(file, onProgress);
+export async function uploadResourceFile(file: File, onProgress?: UploadProgressListener, attachment?: { attach_to_id: string; attach_to_type: 'task' | 'goal' }): Promise<string> {
+  return uploadResourceDocument(file, onProgress, attachment);
 }
 
 // ── Read state cycling ────────────────────────────────────────────────────────
