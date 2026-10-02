@@ -7,7 +7,7 @@ import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } 
 import { baseUrl, SKIP_INTEGRATION, startTestServer, stopTestServer } from './setup.js';
 import { query } from '../db.js';
 import { createUploadIntent, finalizeBlobUpload, registerLegacyBlob, reconcileUploads } from '../services/resourceUploads.js';
-import { getResourceProcessing, processResourceJob, reclaimResourceJobs, retryResourceProcessing } from '../services/resourceProcessing.js';
+import { getResourceProcessing, processResourceJob, reclaimResourceJobs, retryResourceProcessing, resourceRetryAt } from '../services/resourceProcessing.js';
 import { dispatchResourceEvents, reconcileResourceDispatch, resourceInngest } from '../services/resourceDispatch.js';
 import { textPdf } from './fixtures/uploadPdf.js';
 import { encryptedPdf } from './fixtures/encryptedPdf.js';
@@ -296,13 +296,19 @@ describe.skipIf(SKIP_INTEGRATION)('persistent uploads and durable processing (re
   });
   it('retries embedding failures with backoff, then exposes a terminal failure while the file stays readable', async () => {
     const { record, jobId } = await saved(); await processResourceJob(jobId);
+    const version = (await status(jobId)).version as number;
+    expect(await resourceRetryAt(jobId, version)).toBeNull();
     mocks.embed.mockRejectedValue(new Error('provider error with secret URL https://private.example/token'));
     for (let attempt = 1; attempt <= 3; attempt++) {
       await processResourceJob(jobId);
       const job = await status(jobId);
       expect(job.attempts).toBe(attempt); expect(String(job.error)).not.toContain('private.example');
       expect(job.status).toBe(attempt === 3 ? 'failed' : 'queued');
-      if (attempt < 3) expect(new Date(job.next_attempt_at as string).getTime()).toBeGreaterThan(Date.now());
+      if (attempt < 3) {
+        expect(new Date(job.next_attempt_at as string).getTime()).toBeGreaterThan(Date.now());
+        expect(await resourceRetryAt(jobId, version)).toBe(new Date(job.next_attempt_at as string).toISOString());
+      } else expect(await resourceRetryAt(jobId, version)).toBeNull();
+      expect(await resourceRetryAt(jobId, version - 1)).toBeNull();
       await query('UPDATE resource_processing_jobs SET next_attempt_at=NOW() WHERE id=$1', [jobId]);
     }
     const response = await fetch(`${baseUrl}/api/resources/blob/${record.id}`);

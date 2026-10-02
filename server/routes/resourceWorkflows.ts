@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { serve } from 'inngest/express';
 import { resourceInngest, durableProcessingConfigured, dispatchResourceEvents, reconcileResourceDispatch } from '../services/resourceDispatch.js';
-import { processResourceJob } from '../services/resourceProcessing.js';
+import { processResourceJob, resourceRetryAt } from '../services/resourceProcessing.js';
 import { reconcileUploads } from '../services/resourceUploads.js';
 import { reconcileDriveResources } from '../services/googleDrive.js';
 
@@ -11,7 +11,14 @@ export const processDocument = resourceInngest.createFunction({
 }, async ({ event, step }) => {
   const { jobId, version } = event.data;
   if (typeof jobId !== 'string' || !Number.isInteger(version)) return { ignored: true };
-  await step.run('process-stage', () => processResourceJob(jobId, version));
+  const retryAt = await step.run('process-stage', async () => {
+    await processResourceJob(jobId, version);
+    return resourceRetryAt(jobId, version);
+  });
+  // Persist the backoff with the coordinator, releasing the Vercel function
+  // while waiting. Transient failures need not wait for the recovery cron.
+  // Runs started before this change may have a memoized boolean step result.
+  if (typeof retryAt === 'string') await step.sleepUntil('retry-backoff', retryAt);
   await step.run('dispatch-next-stage', () => dispatchResourceEvents());
   return { ok: true };
 });

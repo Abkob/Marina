@@ -156,6 +156,14 @@ export async function processPendingResources(limit = 3) {
   return rows.length;
 }
 
+export async function resourceRetryAt(jobId: string, version: number): Promise<string | null> {
+  const { rows } = await query<{ next_attempt_at: Date | string }>(
+    `SELECT next_attempt_at FROM resource_processing_jobs
+     WHERE id=$1 AND version=$2 AND status='queued' AND error_code IS NOT NULL`, [jobId, version],
+  );
+  return rows[0] ? new Date(rows[0].next_attempt_at).toISOString() : null;
+}
+
 export async function retryResourceProcessing(resourceId: string) {
   // Legacy files acquire metadata lazily without changing their IDs or bytes.
   const resource = (await query('SELECT * FROM resources WHERE id=$1', [resourceId])).rows[0];
