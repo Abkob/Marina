@@ -12,6 +12,7 @@ import { dispatchResourceEvents, reconcileResourceDispatch, resourceInngest } fr
 import { textPdf } from './fixtures/uploadPdf.js';
 import { encryptedPdf } from './fixtures/encryptedPdf.js';
 import path from 'node:path';
+import * as pdfText from '../services/pdfText.js';
 
 const mocks = vi.hoisted(() => ({ objects: new Map<string, { bytes: Uint8Array; contentType: string; url: string; pathname: string }>(), head: vi.fn(), get: vi.fn(), del: vi.fn(), embed: vi.fn() }));
 vi.mock('@vercel/blob', async importOriginal => ({ ...await importOriginal<typeof import('@vercel/blob')>(), head: mocks.head, get: mocks.get, del: mocks.del }));
@@ -239,6 +240,25 @@ describe.skipIf(SKIP_INTEGRATION)('persistent uploads and durable processing (re
     const { record, jobId } = await saved('scan.pdf', textPdf());
     await processResourceJob(jobId);
     expect(await getResourceProcessing(record.id)).toMatchObject({ status: 'no_text', error_code: 'no_text', file_validation: 'valid' });
+  });
+  it('indexes PDF text containing NUL glyphs without changing the original or page citations', async () => {
+    const bytes = textPdf('Algebra page');
+    const parsed = await pdfText.extractPdfPages(new Uint8Array(bytes));
+    // Some embedded PDF fonts produce NUL glyphs even when the binary PDF is
+    // valid. Reproduce that parser output against real PostgreSQL.
+    parsed.pages[0].text = 'Algebra\u0000page';
+    const { record, jobId, object } = await saved('null-glyph.pdf', bytes);
+    const extract = vi.spyOn(pdfText, 'extractPdfPages').mockResolvedValueOnce(parsed);
+    try { await processResourceJob(jobId); } finally { extract.mockRestore(); }
+    expect(await getResourceProcessing(record.id)).toMatchObject({ status: 'queued', stage: 'embed', chunks: 1 });
+    const chunk = (await query('SELECT content,page_start,page_end FROM resource_chunks WHERE resource_id=$1', [record.id])).rows[0];
+    expect(chunk.content).toContain('Algebra');
+    expect(chunk.content).toContain('page');
+    expect(chunk.content).not.toContain('\u0000');
+    expect(chunk).toMatchObject({ page_start: 1, page_end: 1 });
+    expect(object.bytes).toEqual(bytes);
+    await processResourceJob(jobId);
+    expect(await getResourceProcessing(record.id)).toMatchObject({ status: 'ready', embedded: 1 });
   });
   it('distinguishes a password-protected PDF from an empty or corrupt PDF', async () => {
     const { record, jobId } = await saved('protected.pdf', Buffer.from(encryptedPdf, 'base64'));

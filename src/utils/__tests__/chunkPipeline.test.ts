@@ -4,6 +4,13 @@ import { sanitizeChunkContent } from '../../../server/services/chunkPipeline.js'
 // ─── sanitizeChunkContent ─────────────────────────────────────────────────────
 
 describe('sanitizeChunkContent', () => {
+  it('replaces PDF NUL glyphs without joining words or losing Unicode text', () => {
+    expect(sanitizeChunkContent('Algebra\u0000page: α + β = γ; مجموعة'))
+      .toBe('Algebra page: α + β = γ; مجموعة');
+  });
+  it('treats NUL-only extracted text as empty', () => {
+    expect(sanitizeChunkContent('\u0000\u0000 \n')).toBe('');
+  });
   it('returns clean text unchanged', () => {
     const text = 'This is a normal paragraph about machine learning.\n\nIt has no injection attempts.';
     expect(sanitizeChunkContent(text)).toBe(text.trim());

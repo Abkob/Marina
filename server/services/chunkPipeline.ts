@@ -14,6 +14,9 @@ const SUPPORTED_TEXT_EXTS = new Set(['.txt', '.md', '.csv']);
 // into a prompt. This is defense-in-depth — do not rely on this alone.
 export function sanitizeChunkContent(text: string): string {
   return text
+    // PDF font mappings can emit NULs, which PostgreSQL text rejects (22021).
+    // Keep character width and word boundaries; the original bytes stay intact.
+    .replace(/\u0000/g, ' ')
     .replace(/<\|.*?\|>/gs, '')                               // <|im_start|> token boundaries
     .replace(/\[\/?(INST|SYS|SYSTEM)\]/gi, '')               // [INST] / [/INST] instruction tags
     .replace(/###\s*(System|User|Assistant)\s*:/gi, '###')   // ### role markers

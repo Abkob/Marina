@@ -8,7 +8,9 @@ On October 2, 2026, the Vercel CLI login was renewed and Marina project access v
 
 Migrations M-028 and M-029 were applied to the production database using credentials retrieved from the linked Vercel project's production environment. Existing resource IDs, titles, URLs, and file references were checked before and after and preserved. No seed data was applied. Commit `1fffe4e` deployed successfully to the production alias. Inngest automatically registered both functions, and recovery run `01M3WXDM40X47KQCAA1V3DGA20` completed successfully with the ten-minute schedule. Unsigned `/api/inngest` requests return 401 by design; the signed coordinator requests succeed.
 
-The first live upload saved its original and triggered Inngest, but PDF extraction reported a parser error. The saved 210-page PDF parsed locally, exposing a serverless dependency gap. The follow-up explicitly loads the bundled PDF worker and canvas support, distinguishes runtime failures from corrupt documents, and exercises real PDF extraction during deployment readiness checks. The existing resource should be retried after that fix deploys; uploading another copy is unnecessary. Google Drive still needs its separate connection in Marina before new uploads use Drive.
+The first live upload saved its original and triggered Inngest, but PDF extraction reported a parser error. The saved 210-page PDF parsed locally. The follow-up explicitly loads and packages the bundled PDF worker and canvas support, distinguishes runtime failures from corrupt documents, and exercises real PDF extraction during deployment readiness checks. Subsequent safe diagnostics identified SQLSTATE `22021`: the extracted text contained 65 NUL glyphs. Chunk sanitization now replaces NULs with spaces before database persistence, preserving original file bytes and page mapping. Retrying the existing resource does not require another upload.
+
+Google Drive is now connected and live file listing succeeded. Google Tasks + Calendar is connected to the same account, and its first sync completed on October 2 at 00:01:02 UTC without a recorded error. New uploads use Drive; the PDF uploaded before Drive was connected remains safely in private Blob storage. Actual Drive upload/import, ready indexing, and cited chat retrieval still need their final live checks.
 
 Before migrating, a fresh private cloud backup was written, read back, and verified against a local recovery copy:
 
@@ -20,6 +22,8 @@ Before migrating, a fresh private cloud backup was written, read back, and verif
 A second backup was verified immediately before deployment: `marina-complete-before-drive-2026-10-01T23-29-11.600Z.marina-backup.zip`, SHA-256 `bd251a8b0b2045099d8f8a931dbb5eac7621358b655b633e35a66af9d1d83e22`. It contains 51 tables, 2,594 rows, and zero referenced originals. Private cloud read-back and local archive entry checksums both passed.
 
 After the first live upload, `marina-complete-before-drive-2026-10-01T23-43-54.697Z.marina-backup.zip` was verified in private cloud storage and locally, including the original PDF: 51 tables, 2,598 rows, one file, SHA-256 `9ac6e332577b555f67467260f70484e109e5fb3e92fe37bf23a386e607920425`.
+
+The latest checkpoint before the NUL-glyph repair is `marina-complete-before-drive-2026-10-02T00-03-35.029Z.marina-backup.zip`: 51 tables, 2,600 rows, one original, SHA-256 `cb6fe7ead5c2304c81c811326bbaf307fffa0d8eefefb613efdb70a18e7ed2b8`. Private cloud read-back and local entry checksums passed.
 
 ## Connection and deployment
 
@@ -52,6 +56,8 @@ Coverage includes concurrent session creation/imports, duplicate finalization, m
 The October 2 recovery-schedule adjustment passed 82 focused upload lifecycle, readiness, and Drive client tests, TypeScript, and the serverless bundle/import check on Node 24.
 
 The PDF worker fix passed 16 parser/chunk tests and 39 real-PostgreSQL upload integration tests, plus TypeScript and the expanded serverless readiness check. Regression coverage includes actual text, blank pages, password protection, corrupt bytes, missing runtime dependencies, and parser cleanup after failure.
+
+The NUL-glyph regression reproduced production's `22021` against isolated PostgreSQL before the fix. After sanitization, all 40 upload integration tests and 18 parser/chunk tests passed. The regression verifies successful embedding, preserved original bytes, and page citations; Unicode and NUL-only text have focused cases.
 
 Live Google upload/consent, successful PDF indexing after the worker fix, and a deployed chat response remain required; synthetic tests cannot establish those account-specific results or guarantee zero defects.
 
