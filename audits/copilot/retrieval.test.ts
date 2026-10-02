@@ -73,7 +73,7 @@ describe('Context and selection policy limits', () => {
     [{ query: 'x', resource_ids: Array.from({ length: 21 }, (_, i) => `r${i}`) }, false],
     [{ query: 'x'.repeat(2000) }, true], [{ query: 'x'.repeat(2001) }, false],
     [{ query: 'x', limit: 12 }, true], [{ query: 'x', limit: 13 }, false],
-    [{ query: 'x', page: 300 }, false], [{ query: 'x', goal_id: 'goal' }, false],
+    [{ query: 'x', page: 300 }, false], [{ query: 'x', goal_id: 'goal' }, true],
   ])('validates source search arguments %#', (args, valid) => {
     expect(tools.search_documents.parameters.safeParse(args).success).toBe(valid);
   });

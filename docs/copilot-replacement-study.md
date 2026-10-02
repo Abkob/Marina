@@ -2,6 +2,8 @@
 
 Study date: 2 October 2026. Code baseline: `2e4147c4beae6ca98adca597c9f53a8aff50b943`.
 
+**Current architecture review:** See the [2 October follow-up](copilot-architecture-review-2026-10-02.md) for the current-code comparison with Open WebUI, LibreChat, Onyx, RAGFlow, LlamaIndex, OpenAI guidance and chat UI kits. It distinguishes repaired findings below from remaining defects and adds Drive sync scaling, prompt/tool design, UI choices and release gates.
+
 **Follow-up implementation:** The [Nemotron model study](nemotron-model-study.md) records the subsequent model review and document-tool changes. Ten of this baseline's expected-failure cases are now repaired (page/word boundaries, changed chunk identity, full embedding input and selected-source coverage); the audit now has 212 ordinary passes and seven remaining expected failures. Selected-page OCR/structure/vision and role choices are implemented. Automatic multimodal library indexing and the separate scheduling redesign are still pending. The findings and counts below describe the original baseline.
 
 Marina should keep Google Drive for original documents and Neon PostgreSQL for application data and searchable evidence. The next Copilot should combine structured document reading, visual evidence, explicit source selection, and a deterministic scheduling service. Changing the chat model alone would leave several confirmed failures intact.
