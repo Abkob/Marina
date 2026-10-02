@@ -11,6 +11,7 @@ import { OverdueTasksWidget, type OverdueTasksView } from './copilot/OverdueTask
 import { useMediaQuery, MOBILE_LAYOUT_QUERY } from '../hooks/useMediaQuery';
 import { ModalFrame } from '../components/ModalFrame';
 import { CopilotEvidenceSettings, type EvidenceModelCatalog, type EvidenceModels } from '../components/CopilotEvidenceSettings';
+import { CopilotInlineText } from '../components/CopilotInlineText';
 import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
 import './copilot/copilot.css';
@@ -149,14 +150,7 @@ function renderMarkdown(text: string): React.ReactNode {
     const isBullet = /^[-*•]\s/.test(line);
     const content  = line.replace(/^#{2,3}\s/, '').replace(/^[-*•]\s/, '');
 
-    const inline = (s: string) =>
-      s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((p, j) => {
-        if (p.startsWith('**') && p.endsWith('**'))
-          return <strong key={j} className="font-semibold text-slate-900">{p.slice(2, -2)}</strong>;
-        if (p.startsWith('`') && p.endsWith('`'))
-          return <code key={j} className="bg-slate-50 px-1 py-0.5 rounded text-[11px] font-mono text-indigo-700">{p.slice(1, -1)}</code>;
-        return p;
-      });
+    const inline = (s: string) => <CopilotInlineText text={s} />;
 
     if (isH2)    return <p key={i} className="text-base font-bold text-slate-900 mt-5 mb-2 first:mt-0">{content}</p>;
     if (isH3)    return <p key={i} className="text-[14px] font-semibold text-slate-900 mt-4 mb-1">{content}</p>;

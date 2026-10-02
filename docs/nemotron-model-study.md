@@ -82,7 +82,7 @@ Ultra and Omni also returned capacity errors in earlier requests. The first Pars
 
 ### Release validation
 
-- Unit regression suite: 1,062 passed with two workers; the additional final conversation-fallback regression also passed (28/28 in that focused suite), giving 1,063 current unit cases.
+- Unit regression suite: 1,062 passed with two workers; the additional final conversation-fallback regression also passed (28/28 in that focused suite). Eight later inline-citation regressions passed (12/12 with the model-picker tests), giving 1,071 current unit cases. These focused additions followed the full run.
 - Copilot audit: 219 cases, comprising 212 ordinary passes and seven expected failures. An expected failure is an unresolved defect, not a passing quality assertion.
 - PostgreSQL integration: 67 upload/Drive cases plus three new document-evidence cases passed. The latter execute both retrieval lanes, compare a long and short selected file, check title/page filtering and verify legacy-vector invalidation and changed-content IDs against real PostgreSQL.
 - Live Super document-tool evaluation: final run answered all three synthetic cases correctly with source links. Earlier runs exposed omitted links, tool argument repairs and Omni 503s. Those outcomes led to deterministic source attachments, explicit Markdown instructions and an OCR fallback. A separate regression ensures the fallback warning appears even if the model omits it.
@@ -90,6 +90,8 @@ Ultra and Omni also returned capacity errors in earlier requests. The first Pars
 - TypeScript, production frontend build, serverless bundle/import and Vercel preflight passed. Vite continues to report the existing large-bundle warning.
 
 ## How the complete system should work
+
+Production acceptance on 2 October: the new model controls loaded and changed successfully on desktop and at a 390-pixel viewport, with 44-pixel controls and no horizontal document overflow. Copilot inspected the study guide's physical page 1 and returned its chapter title with an application-attached Drive source link. This exposed raw Markdown links in the older prose renderer; the follow-up makes HTTP(S) and internal resource citations clickable while leaving executable URLs and HTML inert. This single real-page check validates the deployed path, not general OCR accuracy.
 
 1. **Store originals in Drive.** Goal/task folder placement, Drive file ID, permissions and links remain source management concerns. Neon stores metadata and searchable derived evidence; it does not need the original 50 GB of binary files.
 2. **Process once when content changes.** An Inngest worker checks source version, extracts native text page by page, then routes scans/layout/table/chart work as needed. Avoid sending every page to every model. Cache derived evidence by source version, physical page, crop, model and prompt version.
