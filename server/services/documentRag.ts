@@ -2,6 +2,7 @@ import { query } from '../db.js';
 import { embedQuery, EMBED_MODEL, EMBED_DIMENSION } from '../embeddingProvider.js';
 import { activeResourceSql } from '../utils/archiveVisibility.js';
 import { MAX_RERANK_PASSAGES, rerankPassages } from './nvidiaEvidence.js';
+import { resourceScopeSql, type ResourceScope } from './resourceContext.js';
 type Passage = { resource_id: string; title: string; chunk_id: string; content: string; page_start: number | null; page_end: number | null; file_id: string | null; checked_at: string | null; last_error: string | null };
 const visible = `${activeResourceSql('r.id')} AND r.file_validation='valid' AND j.status='ready' AND (d.resource_id IS NULL OR d.available)`;
 const joins = `FROM resource_chunks c JOIN resources r ON r.id=c.resource_id
@@ -18,7 +19,7 @@ export function selectSourceCoverage<T extends { resource_id: string }>(ranked: 
 }
 /** Every returned passage belongs to a ready/visible resource and has source provenance.
  * Ranking identifies candidates, not a guarantee of relevance or exhaustive coverage. */
-export async function searchDocuments(text: string, resourceIds: string[] = [], limit = 8, rerankModel?: string) {
+export async function searchDocuments(text: string, resourceIds: string[] = [], limit = 8, rerankModel?: string, resourceScope: ResourceScope = {}) {
   resourceIds = [...new Set(resourceIds)].slice(0, 20);
   const bounded = Math.max(1, Math.min(12, Math.trunc(limit) || 8));
   const scope = resourceIds.length ? 'AND r.id=ANY($2::text[])' : '';
@@ -32,19 +33,23 @@ export async function searchDocuments(text: string, resourceIds: string[] = [], 
   const laneSql = (base: string, order: string) => resourceIds.length
     ? `SELECT * FROM (${base.replace('SELECT ', `SELECT row_number() OVER (PARTITION BY r.id ORDER BY ${order}) AS source_rank,`)} ) candidates WHERE source_rank<=${perSource} ORDER BY source_rank,resource_id LIMIT ${MAX_RERANK_PASSAGES}`
     : `${base} ORDER BY ${order} LIMIT ${laneLimit}`;
+  const lexicalValues: unknown[] = resourceIds.length ? [queryText, resourceIds] : [queryText];
+  const lexicalScope = resourceScopeSql(resourceScope, lexicalValues);
   const lexical = await query<Passage>(laneSql(`SELECT ${fields} ${joins}
-    WHERE ${visible} ${scope} AND to_tsvector('simple',c.content) @@ plainto_tsquery('simple',$1)
+    WHERE ${visible} ${scope} ${lexicalScope} AND to_tsvector('simple',c.content) @@ plainto_tsquery('simple',$1)
     `, lexicalRank),
-  resourceIds.length ? [queryText, resourceIds] : [queryText]);
+  lexicalValues);
   let vector: Passage[] = []; let degraded = false;
   try {
     const values = await embedQuery(queryText);
+    const vectorValues: unknown[] = [`[${values.join(',')}]`, EMBED_MODEL, EMBED_DIMENSION, ...(resourceIds.length ? [resourceIds] : [])];
+    const vectorScope = resourceScopeSql(resourceScope, vectorValues);
     const result = await query<Passage>(laneSql(`SELECT ${fields} ${joins}
       JOIN embeddings e ON e.entity_type='resource_chunk' AND e.entity_id=c.id
       WHERE ${visible} AND NOT e.is_stale AND e.embedding_3072 IS NOT NULL
-        AND e.embedding_model=$2 AND e.embedding_dimension=$3 ${resourceIds.length ? 'AND r.id=ANY($4::text[])' : ''}
+        AND e.embedding_model=$2 AND e.embedding_dimension=$3 ${resourceIds.length ? 'AND r.id=ANY($4::text[])' : ''} ${vectorScope}
       `, 'e.embedding_3072 <=> $1::halfvec,c.id'),
-    [`[${values.join(',')}]`, EMBED_MODEL, EMBED_DIMENSION, ...(resourceIds.length ? [resourceIds] : [])]);
+    vectorValues);
     vector = result.rows;
   } catch { degraded = true; }
   const merged = new Map<string, { row: Passage; score: number }>();
@@ -62,6 +67,7 @@ export async function searchDocuments(text: string, resourceIds: string[] = [], 
     page_start: row.page_start, page_end: row.page_end, source_url: row.file_id ? `https://drive.google.com/file/d/${row.file_id}/view` : `/api/resources/blob/${row.resource_id}`,
     last_source_check: row.last_error ? null : row.checked_at, source_check_error: row.last_error,
   })), vector_degraded: degraded, reranking: reranked.status,
+    requested_scope: resourceScope,
     coverage: { exhaustive: false, candidates: candidates.length, returned: selected.length,
       resource_ids_without_evidence: resourceIds.filter(id => !selected.some(row => row.resource_id === id)) },
     resources, missing_resource_ids: resourceIds.filter(id => !resources.some(row => row.id === id)) };

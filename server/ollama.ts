@@ -1,6 +1,7 @@
 import { Ollama } from 'ollama';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import OpenAI from 'openai';
+import { KIMI_MODEL, supportsDocumentModel, documentModelParameters, nvidiaKeyForModel, prepareNvidiaMessages } from './config/nvidiaModels.js';
 import {
   CHAT_HOST,
   CHAT_MODEL_PRIMARY,
@@ -43,6 +44,8 @@ const nvidia = process.env.NVIDIA_API_KEY
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /** Ephemeral provider continuation state: never render, log or persist. */
+  reasoning_content?: string;
 }
 
 export interface ChatCallTrace {
@@ -65,6 +68,7 @@ export interface ChatOptions {
   jsonMode?: boolean;
   thinking?: boolean;
   onTrace?: (trace: ChatCallTrace) => void;
+  onAssistantMessage?: (message: ChatMessage) => void;
   allowFallback?: boolean;
   allowLocalFallback?: boolean;
   fallbackPromptCharLimit?: number;
@@ -96,7 +100,7 @@ function classifyModel(model: string, installed: string[]): ModelStatus {
   // inference still happens remotely. Preserve that distinction in readiness
   // and privacy indicators instead of reporting it as locally available.
   if (model.startsWith('gemini-')) return gemini ? 'cloud' : 'missing';
-  if (isNvidiaChatModel(model)) return NVIDIA_CONFIGURED ? 'cloud' : 'missing';
+  if (isNvidiaChatModel(model)) return nvidiaKeyForModel(model) ? 'cloud' : 'missing';
   if (isCloudChatModel(model)) return 'cloud';
   // Exact match, or match ignoring the ':latest' suffix convention
   if (installed.some(n => n === model || n === `${model}:latest` || `${n}:latest` === model)) {
@@ -148,7 +152,7 @@ export async function validateChatModels(): Promise<{
         provider: model.startsWith('gemini-') ? 'gemini' as const
           : isNvidiaChatModel(model) ? 'nvidia' as const
             : 'ollama' as const,
-        status: isNvidiaChatModel(model) && NVIDIA_CONFIGURED ? 'cloud' as const : 'unknown' as const,
+        status: isNvidiaChatModel(model) && nvidiaKeyForModel(model) ? 'cloud' as const : 'unknown' as const,
       })),
       installed: [],
       error: String(err),
@@ -219,7 +223,11 @@ async function chatOnce(
   const startedAt = Date.now();
   try {
     if (isNvidiaChatModel(model)) {
-      if (!nvidia) throw new Error('NVIDIA_API_KEY is required for NVIDIA NIM chat');
+      const apiKey = nvidiaKeyForModel(model);
+      if (!apiKey) throw new Error('The selected NVIDIA chat model has no configured API key');
+      const client = model === KIMI_MODEL && process.env.NVIDIA_KIMI_API_KEY
+        ? new OpenAI({ apiKey, baseURL: NVIDIA_API_BASE, timeout: requestTimeoutMs, maxRetries: 0 }) : nvidia;
+      if (!client) throw new Error('NVIDIA_API_KEY is required for NVIDIA NIM chat');
       const maxTokens = opts.max_tokens ?? 16_384;
       const isNemotron3 = /nemotron-3[.-]/.test(model);
       // Extended reasoning is useful for the substantive 8K-token Copilot
@@ -239,46 +247,57 @@ async function chatOnce(
       );
       const request = {
         model,
-        messages,
+        messages: prepareNvidiaMessages(model, messages),
         temperature: opts.temperature ?? Number(process.env.MARINA_NVIDIA_TEMPERATURE ?? 1),
         top_p: Number(process.env.MARINA_NVIDIA_TOP_P ?? 0.95),
         max_tokens: maxTokens,
         ...(opts.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
         stream: true,
         stream_options: { include_usage: true },
-        chat_template_kwargs: isNemotron3
+        ...(supportsDocumentModel(model) ? documentModelParameters(model) : { chat_template_kwargs: isNemotron3
           ? { enable_thinking: thinkingEnabled }
-          : { thinking: thinkingEnabled },
+          : { thinking: thinkingEnabled } }),
         ...(isNemotron3 && thinkingEnabled ? { reasoning_budget: reasoningBudget } : {}),
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming & {
-        chat_template_kwargs: {
+        chat_template_kwargs?: {
           enable_thinking?: boolean;
           thinking?: boolean;
         };
         reasoning_budget?: number;
       };
+      // Kimi's hosted contract fixes the remaining sampling parameters.
+      if (model === KIMI_MODEL) delete request.top_p;
       const streamedResult = (async () => {
-        const stream = await nvidia.chat.completions.create(request, {
+        const stream = await client.chat.completions.create(request, {
           signal: abortController?.signal,
         });
         let content = '';
         let reasoningChars = 0;
+        let continuationReasoning = '';
+        let finishReason: string | null = null;
         let usage: OpenAI.CompletionUsage | undefined;
         for await (const chunk of stream) {
           if (chunk.usage) usage = chunk.usage;
+          if (chunk.choices?.[0]?.finish_reason) finishReason = chunk.choices[0].finish_reason;
           const delta = chunk.choices?.[0]?.delta as
             | (OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & {
                 reasoning_content?: string | null;
               })
             | undefined;
-          if (delta?.reasoning_content) reasoningChars += delta.reasoning_content.length;
+          if (delta?.reasoning_content) {
+            reasoningChars += delta.reasoning_content.length;
+            if (model === KIMI_MODEL) continuationReasoning += delta.reasoning_content;
+          }
           if (delta?.content) content += delta.content;
         }
-        return { content, reasoningChars, usage };
+        return { content, reasoningChars, usage, continuationReasoning, finishReason };
       })();
-      const { content, reasoningChars, usage } = await Promise.race([streamedResult, timeout]);
+      const { content, reasoningChars, usage, continuationReasoning, finishReason } = await Promise.race([streamedResult, timeout]);
+      if (finishReason === 'length') throw new Error(`NVIDIA model ${model} reached its response limit. Try a narrower question.`);
       const text = content.trim();
       if (!text) throw new Error(`NVIDIA model ${model} returned an empty response`);
+      opts.onAssistantMessage?.({ role: 'assistant', content,
+        ...(model === KIMI_MODEL ? { reasoning_content: continuationReasoning } : {}) });
       const durationMs = Date.now() - startedAt;
       opts.onTrace?.({
         model,

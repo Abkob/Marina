@@ -17,6 +17,22 @@ function setup(outputs: unknown[], tool?: Partial<ConversationTool>) {
 }
 
 describe('model-led conversation', () => {
+  it('retains provider continuation within a tool loop without returning it to the client', async () => {
+    const { tools } = setup([]);
+    const complete = vi.fn<typeof chat>()
+      .mockImplementationOnce(async (_messages, options) => {
+        const content = JSON.stringify(toolCall());
+        options?.onAssistantMessage?.({ role: 'assistant', content, reasoning_content: 'private-continuation' });
+        return content;
+      })
+      .mockImplementationOnce(async messages => {
+        expect(messages.some(message => message.reasoning_content === 'private-continuation')).toBe(true);
+        return JSON.stringify(final());
+      });
+    const result = await runCopilotConversation({ turns: [{ role: 'user', content: 'q' }], clock, tools, complete, model: 'moonshotai/kimi-k3' });
+    expect(result.reply).toBe('Here is my actual explanation.');
+    expect(JSON.stringify(result)).not.toContain('private-continuation');
+  });
   it('keeps inspected-page citations and discloses OCR fallback even when model prose omits it', async () => {
     const complete = vi.fn<typeof chat>()
       .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'page', name: 'inspect_document_page', arguments: {} }] }))

@@ -4,6 +4,7 @@ import { openStoredFile } from './fileStorage.js';
 import { renderPdfPage } from './pdfText.js';
 import { analyzeDocumentImage, transcribeDocumentImage, parseDocumentImage, MAX_VISION_IMAGE_BYTES, nvidiaEvidenceAvailable } from './nvidiaEvidence.js';
 import type { EvidenceModels } from './copilotModelRoles.js';
+import { resourceScopeSql, type ResourceScope } from './resourceContext.js';
 
 type Resource = { id: string; title: string; file_path: string | null; mime_type: string | null; file_id: string | null; status: string; error: string | null; checked_at: string | null; last_error: string | null };
 const resourceFields = `r.id,r.title,r.file_path,r.mime_type,d.file_id,COALESCE(j.status,'not_started') AS status,j.error,d.checked_at,d.last_error`;
@@ -14,7 +15,7 @@ const source = (row: Resource) => ({ resource_id: row.id, title: row.title,
   source_url: row.file_id ? `https://drive.google.com/file/d/${row.file_id}/view` : `/api/resources/blob/${row.id}`,
   last_source_check: row.last_error ? null : row.checked_at, source_check_error: row.last_error });
 
-export async function findResources(args: { search?: string; after?: string; limit?: number }) {
+export async function findResources(args: { search?: string; after?: string; limit?: number } & ResourceScope) {
   const limit = Math.min(30, Math.max(1, Math.trunc(args.limit ?? 20)));
   const values: unknown[] = [];
   const conditions = [visible];
@@ -23,8 +24,9 @@ export async function findResources(args: { search?: string; after?: string; lim
     conditions.push(`r.title ILIKE $${values.length}`);
   }
   if (args.after) { values.push(args.after); conditions.push(`r.id > $${values.length}`); }
+  const scope = resourceScopeSql(args, values);
   values.push(limit + 1);
-  const { rows } = await query<Resource>(`SELECT ${resourceFields} ${resourceJoins} WHERE ${conditions.join(' AND ')} ORDER BY r.id LIMIT $${values.length}`, values);
+  const { rows } = await query<Resource>(`SELECT ${resourceFields} ${resourceJoins} WHERE ${conditions.join(' AND ')} ${scope} ORDER BY r.id LIMIT $${values.length}`, values);
   const resources = rows.slice(0, limit).map(row => ({ ...source(row), id: row.id, mime_type: row.mime_type, status: row.status, error: row.error }));
   return { resources, has_more: rows.length > limit, next_after: rows.length > limit ? resources.at(-1)!.id : null };
 }

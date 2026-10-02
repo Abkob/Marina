@@ -12,6 +12,7 @@
  * The PROVIDER_MODE env var is set at startup and validated here.
  */
 
+import { KIMI_MODEL, nvidiaKeyForModel } from './nvidiaModels.js';
 export type ProviderMode = 'local' | 'hybrid' | 'cloud';
 
 function resolveMode(): ProviderMode {
@@ -72,6 +73,9 @@ export const NVIDIA_CHAT_MODELS = [...new Set([
   NVIDIA_LIGHTNING_MODEL,
   NVIDIA_DEEPSEEK_MODEL,
   NVIDIA_FALLBACK_MODEL,
+  // Kimi is an explicitly requested preview. Muse remains a document specialist:
+  // live evaluations did not meet the Copilot tool-loop JSON contract reliably.
+  KIMI_MODEL,
 ])];
 
 export function isNvidiaChatModel(model: string): boolean {
@@ -131,7 +135,7 @@ export function getProviderSummary() {
       fallback: CHAT_MODEL_FALLBACK || null,
       fallback_is_cloud: CHAT_MODEL_FALLBACK ? isCloudChatModel(CHAT_MODEL_FALLBACK) : null,
       nvidia_fallback: NVIDIA_FALLBACK_MODEL,
-      nvidia_fallback_configured: Boolean(process.env.NVIDIA_API_KEY),
+      nvidia_fallback_configured: Boolean(nvidiaKeyForModel(NVIDIA_FALLBACK_MODEL)),
       host: LOCAL_CHAT_ENABLED ? CHAT_HOST : null,
     },
     embeddings: {

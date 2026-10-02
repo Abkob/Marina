@@ -89,6 +89,49 @@ Ultra and Omni also returned capacity errors in earlier requests. The first Pars
 - Desktop and 390-pixel mobile settings were checked in the browser: role changes and restoring defaults work, controls have 44-pixel touch targets, and the dialog has no horizontal overflow.
 - TypeScript, production frontend build, serverless bundle/import and Vercel preflight passed. Vite continues to report the existing large-bundle warning.
 
+## Kimi, more model choices, and goal-aware retrieval — 2 October follow-up
+
+The new NVIDIA Build credential is configured server-side as `NVIDIA_KIMI_API_KEY`, falling back to `NVIDIA_API_KEY` when absent. It is never a browser environment variable. The separate key does not imply a separate billing plan or unlimited inference. NVIDIA describes its hosted access as a trial service. Keep Nemotron Super as the everyday chat default; use separate extraction and retrieval roles.
+
+| Candidate | Documented fit | This release's evidence and decision |
+| --- | --- | --- |
+| `moonshotai/kimi-k3` | Text/image input, tool use, 1M advertised context; always-on thinking | Selectable preview for chat, visual analysis, transcription and layout reading. Text and image requests both exceeded 90 seconds with the supplied key at low effort; a separate max-effort request exceeded 45 seconds. No live Kimi success is claimed. |
+| `meta/muse-glimmer-30b` | Text/image understanding | Added for selected-page vision, transcription and layout, not chat. Synthetic text and chart probes passed; a text check with the new key returned the correct answer in 4.4 seconds. Its chat tool-loop evaluations remained inconsistent, so it is excluded from the chat picker. |
+| `z-ai/glm-5.3-flash` | Text/image reasoning | Not promoted into the picker: the initial live tests timed out. The API identifier differs from the Build page slug. |
+| `deepseek-ai/deepseek-v4.1-flash` | Multimodal reasoning | Not promoted: text/image probes timed out. Existing DeepSeek V4 Pro remains a separate choice. |
+
+Sources: [Kimi NVIDIA contract](https://docs.api.nvidia.com/nim/reference/moonshotai-kimi-k3), [Muse endpoint](https://docs.api.nvidia.com/nim/reference/meta-muse-glimmer-30b), [GLM endpoint](https://docs.api.nvidia.com/nim/reference/z-ai-glm-5-3-flash), [DeepSeek endpoint](https://docs.api.nvidia.com/nim/reference/nvidia-deepseek-v4_1-flash).
+
+Kimi requires its complete prior assistant response during continuations. Marina now retains its reasoning state only in memory for the active tool loop, excludes it from browser replies, logs and saved history, and supplies saved conversations as an inert historical transcript when starting a new Kimi exchange. Kimi uses temperature 1 and low reasoning effort for interactive calls; unsupported generic thinking toggles are omitted. A response cut off at the token limit is rejected. These request/continuation behaviors have regression tests; they are not a substitute for a successful live Kimi run. [Contract details](https://docs.api.nvidia.com/nim/reference/moonshotai-kimi-k3).
+
+### What happens to Drive files and embeddings
+
+Marina imports selected Drive resources, fetches their originals using the user's Google authorization, extracts text, and keeps page-local chunks plus Gemini Embedding 2 vectors in Neon. Current vectors have 3,072 dimensions. Embeddings represent searchable similarity; they are neither copies of the originals nor knowledge permanently installed inside a chat model. At question time Marina searches text and vectors, merges and reranks candidates, reads additional passages or original pages when needed, then supplies that evidence to the chosen chat model. Switching Super to Kimi does not require re-embedding; switching the embedding model does.
+
+A private Drive URL alone does not give NVIDIA access to its contents. Selected text or rendered page images must be supplied. Moonshot's native file-Q&A service separately uploads files, obtains extracted content, and includes that content in the prompt. An NVIDIA Build key does not grant that native Moonshot file service. Large context is useful for bounded selected sources, but does not replace source discovery, freshness checks or a library index. [Native file-Q&A workflow](https://platform.kimi.ai/docs/guide/use-kimi-api-for-file-based-qa).
+
+### Current goals and timing must come from the database
+
+The new `resource_context` tool reads saved resource attachments, task/resource mentions and task-note mentions, including inherited task goals and milestone ownership. It returns current deadlines and task dates, source links, text-index coverage and explicit relationship limits. It does not guess a goal from a document title. Unlinked resources remain unlinked. Calendar placements still require `schedule_range`.
+
+Both `find_resources` and `search_documents` now accept goal/task filters. Task scope includes descendants; selected resource IDs and other scope filters intersect. The same filter applies to lexical and vector search. Empty, missing and archived scopes cannot silently expand to another goal. Real PostgreSQL tests cover direct/inherited links, milestone and child-goal overrides, note mentions, wrong scopes, archives, unavailable Drive files, current deadlines, relationship fan-out and parent cycles. These read-time changes require no production schema or data migration.
+
+This follows the useful separation in [NVIDIA metadata filtering](https://docs.nvidia.com/rag/latest/custom-metadata.html): structured constraints decide which sources qualify, while similarity ranks evidence within that set. Its [agentic RAG design](https://docs.nvidia.com/rag/latest/agentic-rag.html) also supports focused follow-up retrieval. Marina's loop remains bounded to three default tool rounds and 180 seconds; complex whole-library studies can exceed it.
+
+### What remains necessary for broader document coverage
+
+The [open-source NeMo Retriever](https://github.com/NVIDIA/NeMo-Retriever) separates extraction of text, tables, charts and images. That is a useful ingestion reference, not a reason to run every model on every page. Marina currently extracts native text automatically and inspects selected visual pages on demand. Scanned text and chart interpretations are not automatically embedded throughout the library. Kimi/Muse transcription has no detector confidence or bounding boxes; layout reading is not a validated table grid.
+
+Future ingestion should route image-only or complex pages to suitable extraction models, cache results by source version/page/model, and evaluate recall and citation support before replacing the index. A durable Drive change cursor can support broader synchronization; [Google's changes API](https://developers.google.com/workspace/drive/api/guides/manage-changes) provides the mechanism. Current reconciliation covers imported resources, not every file in the Drive account. Uploads still share a Marina Resources root folder; the requested goal/task folder hierarchy is separate unfinished work.
+
+### Follow-up validation
+
+The final unit run passed 1,085 cases across 113 files with two workers and a 20-second test timeout for real PDF rendering. The initial full run exposed an ambiguous settings-text assertion (corrected) and a five-second PDF render timeout. All 155 PostgreSQL integration tests passed across 16 files, including eight new relationship-scope cases. The first new integration run exceeded the schema-setup hook's ten-second allowance; it passed with a sixty-second setup allowance. TypeScript, frontend build, serverless import/PDF extraction and deployment preflight passed. Vite still reports the existing large-bundle warning.
+
+The local desktop picker exposes the new choices, changing chat updates its label, and document-role selection and restore work. At 390 × 844, page width stays 390 pixels and selects retain at least 44-pixel height. These UI checks do not establish Kimi endpoint availability. The supplied key succeeded on Muse, while Kimi timed out as recorded above. The new context queries also passed a read-only check against three live resources; a nonexistent goal scope returned no resources. No production documents, relationships or schema were rewritten for this follow-up.
+
+Additional Muse tool-loop evaluations exposed an empty answer and inconsistent protocol output. Trials using bounded reasoning, alternating messages and provider JSON mode did not consistently pass all cases. Muse therefore remains a single-page specialist, with documented temperature 0.95, top-p 1.0 and low reasoning effort; it is excluded from selectable chat models. Its direct page tests passed, but no broad extraction-accuracy claim follows. A regression verifies that it cannot be selected for chat. The final unit inventory remains 1,085. [Muse request contract](https://docs.api.nvidia.com/nim/reference/meta-muse-glimmer-30b-infer).
+
 ## How the complete system should work
 
 Production acceptance on 2 October: the new model controls loaded and changed successfully on desktop and at a 390-pixel viewport, with 44-pixel controls and no horizontal document overflow. Copilot inspected the study guide's physical page 1 and returned its chapter title with an application-attached Drive source link. This exposed raw Markdown links in the older prose renderer; the follow-up makes HTTP(S) and internal resource citations clickable while leaving executable URLs and HTML inert. This single real-page check validates the deployed path, not general OCR accuracy.

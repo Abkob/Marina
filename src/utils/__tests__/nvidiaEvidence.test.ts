@@ -4,12 +4,33 @@ import { analyzeDocumentImage, transcribeDocumentImage, parseDocumentImage, rera
 const fetchMock = vi.fn();
 const rows = [{ content: 'irrelevant', id: 'a' }, { content: 'relevant', id: 'b' }];
 const image = 'data:image/png;base64,aGVsbG8=';
-beforeEach(() => { vi.stubEnv('NVIDIA_API_KEY', 'synthetic-key'); vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset(); });
+beforeEach(() => { vi.stubEnv('NVIDIA_API_KEY', 'synthetic-key'); vi.stubEnv('NVIDIA_KIMI_API_KEY', ''); vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const detection = (text = 'NEBULA-731') => ({ text_prediction: { text, confidence: 0.9 }, bounding_box: { points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }] } });
 
 describe('NVIDIA evidence contracts', () => {
+  it.each(['moonshotai/kimi-k3', 'meta/muse-glimmer-30b'])('uses %s for transcription without inventing detector confidence', async model => {
+    fetchMock.mockResolvedValue(json({ choices: [{ message: { content: 'NEBULA-731' }, finish_reason: 'stop' }] }));
+    expect(await transcribeDocumentImage(image, model)).toMatchObject({ model, text: 'NEBULA-731', evidence_type: 'model_transcription', regions: [] });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe(model);
+  });
+  it.each(['moonshotai/kimi-k3', 'meta/muse-glimmer-30b'])('uses %s for layout reading with an explicit extraction limitation', async model => {
+    fetchMock.mockResolvedValue(json({ choices: [{ message: { content: '| before | after |\n|25|45|' }, finish_reason: 'stop' }] }));
+    const result = await parseDocumentImage(image, model);
+    expect(result.model).toBe(model); expect(result.warning).toContain('not a validated cell grid');
+  });
+  it('uses the dedicated Kimi key for visual requests only', async () => {
+    vi.stubEnv('NVIDIA_KIMI_API_KEY', 'kimi-synthetic');
+    fetchMock.mockImplementation(async () => json({ choices: [{ message: { content: '25' }, finish_reason: 'stop' }] }));
+    await analyzeDocumentImage('q', image, 'moonshotai/kimi-k3');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer kimi-synthetic');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).toMatchObject({ temperature: 1, reasoning_effort: 'low' });
+    expect(body).not.toHaveProperty('reasoning_budget');
+    await analyzeDocumentImage('q', image, 'meta/muse-glimmer-30b');
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer synthetic-key');
+  });
   it('orders by logits without detaching source identities or mutating input', async () => {
     fetchMock.mockResolvedValue(json({ rankings: [{ index: 0, logit: -9 }, { index: 1, logit: -1 }] }));
     const result = await rerankPassages('question', rows);

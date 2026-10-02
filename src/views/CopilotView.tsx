@@ -134,6 +134,7 @@ function fmtMins(mins: number): string {
 }
 
 function modelLabel(model: string) {
+  if (model === 'moonshotai/kimi-k3') return 'Kimi K3 · preview';
   if (model.includes('nemotron-3-ultra')) return 'Nemotron 3 Ultra';
   if (model.includes('nemotron-3-super')) return 'Nemotron 3 Super';
   if (model.includes('nemotron-3.5-lightning')) return 'Nemotron 3.5 Lightning';

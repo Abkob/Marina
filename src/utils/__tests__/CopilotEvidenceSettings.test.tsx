@@ -22,7 +22,7 @@ describe('document model settings', () => {
     const onChange = vi.fn();
     render(<CopilotEvidenceSettings catalog={catalog} value={{ ocr: 'off' }} disabled={false} onChange={onChange} />);
     fireEvent.click(screen.getByRole('button')); expect(onChange).toHaveBeenCalledWith(catalog.defaults);
-    expect(screen.getByText(/rebuilding/i)).toBeInTheDocument();
+    expect(screen.getByText(/Changing the embedding model requires rebuilding/i)).toBeInTheDocument();
   });
   it('shows a retry path when the catalog cannot load', () => {
     render(<CopilotEvidenceSettings catalog={null} value={{}} disabled={false} onChange={vi.fn()} />);
