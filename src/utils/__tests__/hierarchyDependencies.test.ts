@@ -28,6 +28,10 @@ describe('hierarchical prerequisites', () => {
     const graph=buildWorkHierarchy([task('p'),task('a','p'),task('b','p'),task('next')]);
     expect(hierarchyDependencies(graph,[{blocker_id:'p',task_id:'next'}],2).get('next')).toEqual(['unresolved:hierarchy-dependency-limit']);
   });
+  it('deduplicates 10,000 repeated hierarchy edges before expanding their work', () => {
+    const graph=buildWorkHierarchy([task('p'),task('a','p'),task('next')]);
+    expect(hierarchyDependencies(graph,Array.from({length:10000},()=>({blocker_id:'p',task_id:'next'})),2).get('next')).toEqual(['a','p']);
+  });
   it('expands a 10,000-deep inclusive chain without recursion or duplicate work', () => {
     const graph=buildWorkHierarchy(Array.from({length:10000},(_,i)=>({...task(String(i),i?String(i-1):null),time_rollup_mode:'inclusive'})).concat({...task('next'),time_rollup_mode:'additive'}));
     expect(hierarchyDependencies(graph,[{blocker_id:'0',task_id:'next'}]).get('next')).toEqual(['9999']);

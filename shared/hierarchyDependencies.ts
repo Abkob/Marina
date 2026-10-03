@@ -7,6 +7,7 @@ export function hierarchyDependencies(
   limit = 100_000,
 ): Map<string, string[]> {
   const result = new Map<string, Set<string>>();
+  const seenEdges = new Set<string>();
   let expanded = 0;
   const subtree = (id: string) => {
     const queue = [id]; const seen = new Set<string>();
@@ -19,6 +20,9 @@ export function hierarchyDependencies(
     return [...seen];
   };
   for (const edge of edges) {
+    const edgeKey = JSON.stringify([edge.blocker_id, edge.task_id]);
+    if (seenEdges.has(edgeKey)) continue;
+    seenEdges.add(edgeKey);
     const blockers = subtree(edge.blocker_id).filter(id => {
       const row = hierarchy.summaries.get(id);
       return !row || row.issues.length > 0 || row.executable;
