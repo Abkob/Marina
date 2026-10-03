@@ -6,6 +6,8 @@ Implementation checkpoint, 3 October 2026. This follows the [architecture compar
 
 The follow-up [time-management research and implementation recommendation](time-management-copilot-research-2026-10-03.md) compares current products, pinned open-source implementations and research papers. It develops section 8 into a proposed architecture, staged delivery plan and evaluation strategy; those additions are recommendations, not newly implemented features.
 
+Its [expanded comparison of closer alternatives](time-management-copilot-research-2026-10-03.md#16-closer-alternatives-the-expanded-search-for-marinas-actual-objective) now includes conversational personal planning, PExA/PTIME, TaskTracer, GAIA and additional calendar/assistant implementations. The resulting recommendation is a persistent, revisable work plan linking requirements, resource evidence, progress, uncertain effort and alternative uses of time. It records source/license findings and additional evaluation cases; this remains proposed work.
+
 ## 1. The folder and context contract
 
 The stored Google Drive root ID is the boundary. Matching a folder named “Marina” is insufficient. Import, browsing, downloading, synchronization, candidate retrieval, exact page reads and visual inspection now verify ancestry back to that ID. Trashed folders, missing parents, shortcuts, cycles and ambiguous ancestry fail closed. Cached parent metadata lives for one operation only, so a later move outside the root is checked again. Temporary provider failure is reported rather than treated as proof that no resources exist.
