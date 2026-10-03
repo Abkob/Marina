@@ -87,17 +87,17 @@ router.get('/', async (req, res) => {
   let countResult;
   if (goal_id) {
     [result, countResult] = await Promise.all([
-      query(`SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE goal_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [goal_id, limit, offset]),
+      query(`SELECT tasks.*, (SELECT COUNT(*)::int FROM tasks child WHERE child.parent_task_id=tasks.id AND ${activeTaskSql('child.id')}) AS child_count, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE goal_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [goal_id, limit, offset]),
       query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE goal_id = $1 AND ${visible}`, [goal_id]),
     ]);
   } else if (parent_task_id) {
     [result, countResult] = await Promise.all([
-      query(`SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE parent_task_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [parent_task_id, limit, offset]),
+      query(`SELECT tasks.*, (SELECT COUNT(*)::int FROM tasks child WHERE child.parent_task_id=tasks.id AND ${activeTaskSql('child.id')}) AS child_count, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE parent_task_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [parent_task_id, limit, offset]),
       query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE parent_task_id = $1 AND ${visible}`, [parent_task_id]),
     ]);
   } else {
     [result, countResult] = await Promise.all([
-      query(`SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE ${visible} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      query(`SELECT tasks.*, (SELECT COUNT(*)::int FROM tasks child WHERE child.parent_task_id=tasks.id AND ${activeTaskSql('child.id')}) AS child_count, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE ${visible} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
       query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE ${visible}`),
     ]);
   }
@@ -108,7 +108,7 @@ router.get('/', async (req, res) => {
 
 // GET /api/tasks/:id
 router.get('/:id', async (req, res) => {
-  const { rows } = await query('SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE id = $1', [req.params.id]);
+  const { rows } = await query(`SELECT tasks.*, (SELECT COUNT(*)::int FROM tasks child WHERE child.parent_task_id=tasks.id AND ${activeTaskSql('child.id')}) AS child_count, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE id = $1`, [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
   res.json(rows[0]);
 });
@@ -280,6 +280,7 @@ router.patch('/:id', async (req, res) => {
 
   const { sets, vals } = buildUpdate(updates);
   await transaction(async (client) => {
+    if(parentChanged) await client.query("SELECT pg_advisory_xact_lock(hashtext('marina-task-hierarchy'))");
     await client.query(`UPDATE tasks SET ${sets} WHERE id = $${vals.length + 1}`, [...vals, taskId]);
     if (parentChanged) {
       // Remove old subtask_of edge

@@ -5,6 +5,31 @@ import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { assertPlanningTestDatabase, validatePlanningTestUrl } from '../audits/planning/databaseFixtures';
 
+test('P03.2 parent breakdown counts children once and survives reload on this viewport', async ({page,isMobile},info)=>{
+  const client=new pg.Client({connectionString:validatePlanningTestUrl(process.env.DATABASE_URL_TEST,process.env.PLANNING_TEST_DB)});
+  await client.connect();await assertPlanningTestDatabase(client as any);
+  const goal=randomUUID(),parent=randomUUID(),first=randomUUID(),second=randomUUID();const errors:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  try {
+    await client.query("INSERT INTO goals(id,title,created_at,updated_at) VALUES ($1,'Hierarchy browser goal',NOW()::text,NOW()::text)",[goal]);
+    await client.query("INSERT INTO tasks(id,goal_id,title,estimated_minutes,created_at,updated_at) VALUES ($1,$2,'Prepare the report',150,NOW()::text,NOW()::text)",[parent,goal]);
+    for(const [id,title] of [[first,'Read the source material'],[second,'Draft the report']])await client.query("INSERT INTO tasks(id,goal_id,parent_task_id,title,estimated_minutes,time_rollup_mode,created_at,updated_at) VALUES ($1,$2,$3,$4,60,'inclusive',NOW()::text,NOW()::text)",[id,goal,parent,title]);
+    await page.goto(`/?view=goals&goal=${goal}&task=${parent}`,{waitUntil:'domcontentloaded'});
+    const panel=page.getByRole('region',{name:'Work and calendar time'});await expect(panel.getByText('2h 30m',{exact:true})).toBeVisible();
+    const toggle=panel.getByRole('button',{name:'Counted work'});await toggle.scrollIntoViewIfNeeded();
+    expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    if(isMobile)await toggle.tap();else{await toggle.focus();await page.keyboard.press('Enter');}
+    await expect(panel.getByText('Read the source material')).toBeVisible();await expect(panel.getByText('Separate work on this task',{exact:true})).toBeVisible();
+    await expect(panel.getByText('30m',{exact:true})).toHaveCount(3);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await page.screenshot({path:`tmp/planning-baseline/${info.project.name}-work-hierarchy.png`,fullPage:true});
+    await client.query('UPDATE tasks SET estimated_minutes=NULL WHERE id=$1',[second]);
+    await page.reload({waitUntil:'domcontentloaded'});await expect(panel.getByText('1h known · partial')).toBeVisible();
+    await panel.getByRole('button',{name:'Counted work'}).click();await expect(panel.getByText(/known subtotal is not the full amount/)).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {await client.query('DELETE FROM goals WHERE id=$1',[goal]);await client.end();}
+});
+
 for (const failed of [false, true]) test(`P00.2-F01/P00.3-F04 ${failed ? 'provider failure' : 'evidence answer'} remains usable on this viewport`, async ({ page, isMobile }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const id = fixtureId(900); const fixture = planningFixtures[1];

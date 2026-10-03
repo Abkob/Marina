@@ -1,3 +1,4 @@
+import { buildWorkHierarchy, type HierarchyTask } from '../../shared/workHierarchy';
 import { accountWork } from '../../shared/workAccounting';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ArrowUp, ArrowDown, Keyboard, SquarePen, Copy, Zap, RefreshCw, CheckCircle, X, AlertTriangle, ChevronRight, ChevronDown, Diamond, Calendar, ChevronLeft, MessageSquare, Plus, Paperclip, SlidersHorizontal, Target } from 'lucide-react';
@@ -446,9 +447,7 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
         const health = await Promise.all(active.map(async g => {
           const tasks = await apiFetch<Record<string, unknown>[]>(`/api/tasks?goal_id=${g.id}`);
           const incomplete = tasks.filter(t => !t.completed && t.status !== 'done');
-          const parentIds = new Set(incomplete.map(task => task.parent_task_id));
-          const remaining = incomplete.filter(task => !parentIds.has(task.id)).map(task => accountWork(task).remaining_minutes);
-          const totalMins = remaining.some(value => value === null) ? null : remaining.reduce((sum, value) => sum + (value ?? 0), 0);
+          const totalMins = buildWorkHierarchy(tasks as unknown as HierarchyTask[]).total.remaining_minutes;
           const deadline   = g.deadline as string | null;
           let feasibility: GoalHealth['feasibility'] = null;
           let daysUntil: number | null = null;

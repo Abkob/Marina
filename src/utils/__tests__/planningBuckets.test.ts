@@ -10,6 +10,7 @@ function task(overrides: Partial<PlanningTaskInput>): PlanningTaskInput {
     goal_id: overrides.goal_id ?? 'goal',
     goal_title: overrides.goal_title ?? 'Goal',
     parent_task_id: overrides.parent_task_id ?? null,
+    time_rollup_mode: overrides.time_rollup_mode ?? 'additive',
     status: overrides.status ?? 'todo',
     priority: overrides.priority ?? 'medium',
     feel_score: overrides.feel_score ?? null,
@@ -58,8 +59,8 @@ describe('buildPlanningBuckets', () => {
       task({ id: 'subchild', title: 'Find citations', parent_task_id: 'child', due_date: '2026-07-07', estimated_minutes: 60 }),
     ]);
 
-    expect(result.parent_rollups.map(t => t.id)).toEqual(['parent']);
-    expect(result.parent_rollups[0]).toMatchObject({
+    expect(result.parent_rollups.map(t => t.id)).toEqual(['child', 'parent']);
+    expect(result.parent_rollups.find(t => t.id === 'parent')).toMatchObject({
       earliest_child_deadline: '2026-07-07',
       latest_child_deadline: '2026-07-07',
       dated_descendant_count: 2,
@@ -86,9 +87,9 @@ describe('buildPlanningBuckets', () => {
 
   it('does not list a parent rollup as due work on the same day as its subtasks', () => {
     const result = buckets([
-      task({ id: 'parent', title: 'Fix Errors', due_date: '2026-07-07', estimated_minutes: 300, child_count: 2 }),
-      task({ id: 'child-a', title: 'Missing items stock feature', parent_task_id: 'parent', due_date: '2026-07-07', estimated_minutes: 90 }),
-      task({ id: 'child-b', title: 'Database refresh from legacy', parent_task_id: 'parent', due_date: '2026-07-07', estimated_minutes: 60 }),
+      task({ id: 'parent', title: 'Fix Errors', due_date: '2026-07-07', estimated_minutes: 150, child_count: 2 }),
+      task({ id: 'child-a', time_rollup_mode: 'inclusive', title: 'Missing items stock feature', parent_task_id: 'parent', due_date: '2026-07-07', estimated_minutes: 90 }),
+      task({ id: 'child-b', time_rollup_mode: 'inclusive', title: 'Database refresh from legacy', parent_task_id: 'parent', due_date: '2026-07-07', estimated_minutes: 60 }),
     ]);
 
     expect(result.parent_rollups.map(t => t.id)).toEqual(['parent']);

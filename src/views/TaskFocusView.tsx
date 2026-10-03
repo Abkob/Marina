@@ -240,7 +240,7 @@ function TimePill({
   const hasOverhead = isRollup && ownMinutes !== null && childrenSum !== null;
   const hasIncludedChildren = includedMinutes > 0;
   const hasExtraChildren = extraMinutes > 0;
-  const resolvedTooltip = isRollup && ownMinutes !== null && hasIncludedChildren
+  const resolvedTooltip = isRollup && minutes === null ? 'Partial total: some subtask estimates or hierarchy data need review. Open Counted work below.' : isRollup && ownMinutes !== null && hasIncludedChildren
     ? `${formatTaskTime(minutes)} total. ${formatTaskTime(includedMinutes)} of subtasks are inside the ${formatTaskTime(ownMinutes)} parent estimate${hasExtraChildren ? `; ${formatTaskTime(extraMinutes)} adds extra.` : '.'}`
     : hasOverhead
     ? `${formatTaskTime(minutes)} total. ${formatTaskTime(ownMinutes)} parent estimate + ${formatTaskTime(childrenSum)} extra subtasks.`
@@ -260,7 +260,7 @@ function TimePill({
       >
         <Clock size={9} />
         {isRollup && <span className="text-[7px] opacity-60">{hasOverhead ? '+' : 'Σ'}</span>}
-        {formatTaskTime(minutes)}
+        {isRollup && minutes === null ? 'Partial' : formatTaskTime(minutes)}
       </button>
       {hasParent && minutes !== null && onSaveRollupMode && (
         <button

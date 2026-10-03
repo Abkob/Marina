@@ -2,7 +2,7 @@
 
 Date: 3 October 2026. Planning baseline: `6f627ecbd37cce9dfe1e0e71f70dbfea5789e98a`. Source behavior is grounded in the current repository, the [implementation checkpoint](copilot-implementation-2026-10-03.md), and the [expanded research](time-management-copilot-research-2026-10-03.md#16-closer-alternatives-the-expanded-search-for-marinas-actual-objective).
 
-**Status: P00–P02 and P03.1 implemented; 68 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures and diagnostics; [P01.1](planning-checkpoints/P01.1.md) records typed identities. The [P01–P02 checkpoint](planning-checkpoints/P01-P02.md) expands each new leaf into reviewed child steps, with frontend/backend behavior, concurrency and recovery tests, migration evidence and limitations. [P03.1](planning-checkpoints/P03.1.md) now unifies own-task time accounting, versioned remaining forecasts and eligible reservations. Persistent manual plan memory is implemented; automatic chat use, workload inference and effort forecasting remain later work. The remaining document specifies proposed work; proposed tests are not passing results.
+**Status: P00–P02 and P03.1–P03.2 implemented; 67 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures and diagnostics; [P01.1](planning-checkpoints/P01.1.md) records typed identities. The [P01–P02 checkpoint](planning-checkpoints/P01-P02.md) expands each new leaf into reviewed child steps, with frontend/backend behavior, concurrency and recovery tests, migration evidence and limitations. [P03.1](planning-checkpoints/P03.1.md) now unifies own-task time accounting, versioned remaining forecasts and eligible reservations. [P03.2](planning-checkpoints/P03.2.md) now preserves inclusive/additive hierarchy effort, residual parent work, dependency inheritance and expandable totals. Real provider/semantic checks remain separate and include documented failures. Persistent manual plan memory is implemented; automatic chat use, workload inference and effort forecasting remain later work. The remaining document specifies proposed work; proposed tests are not passing results.
 
 **Execution style requested by the user:** implement and test small sections through successive prompts, inspect each section's results, then decide whether to continue, repair or expand. The default future implementation unit is one leaf ID, such as `P03.1`, not the whole document. A later user instruction can explicitly authorize a larger batch. Section 10 supplies copyable prompts, checkpoint records and the continuation protocol. This planning task does not start implementing the features.
 
@@ -244,7 +244,7 @@ Related contracts: P01.1, P00.2. Proposed home: `workAccounting`; adapt every ex
 - **Stress/failure:** S1/S2 100,000 session/link rows with duplicates and corrections; no negative minutes, safe numeric bounds and deterministic deduplication.
 - **Done:** One shared accounting implementation is used by all inventoried planning consumers.
 
-#### P03.2 [ ] Respect hierarchy and rollup semantics
+#### P03.2 [x] Respect hierarchy and rollup semantics
 
 - **Backend:** Preserve existing additive/inclusive parent semantics; choose executable leaf/residual-parent work explicitly. Parent summaries cannot duplicate the same effort in children.
 - **Frontend:** Expand a compact parent total into counted items and residual work; explain unallocated parent effort without forcing subtasks.

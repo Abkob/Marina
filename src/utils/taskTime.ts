@@ -1,5 +1,6 @@
 import type { DBTask } from '../db/schema';
 import { accountWork } from '../../shared/workAccounting';
+import { buildWorkHierarchy } from '../../shared/workHierarchy';
 
 const MAX_TASK_MINUTES = 60 * 1000;
 
@@ -81,159 +82,43 @@ export interface RolledUpActualTime {
   contributingChildren: number;
 }
 
-/** Actual time is additive: every session belongs to one task and rolls up to its ancestors. */
+/** A single iterative hierarchy calculation underlies estimate, ledger and remaining displays. */
+function hierarchyFor(task: DBTask, allTasks: DBTask[]) {
+  const rows = allTasks.some(row => row.id === task.id) ? allTasks : [...allTasks, task];
+  return buildWorkHierarchy(rows);
+}
 export function getRolledUpActualTime(task: DBTask, allTasks: DBTask[]): RolledUpActualTime {
-  const ownMinutes = accountWork(task).logged_minutes;
-  const directChildren = allTasks.filter(t => t.parent_task_id === task.id);
-  let childrenMinutes = 0;
-  let contributingChildren = 0;
-
-  for (const child of directChildren) {
-    const childActual = getRolledUpActualTime(child, allTasks);
-    childrenMinutes += childActual.minutes;
-    contributingChildren += childActual.contributingChildren;
-    if (accountWork(child).logged_minutes > 0) contributingChildren += 1;
-  }
-
-  return { minutes: ownMinutes + childrenMinutes, ownMinutes, childrenMinutes, contributingChildren };
+  const row=hierarchyFor(task,allTasks).summaries.get(task.id)!;
+  const ownMinutes=accountWork(task).logged_minutes;
+  return {minutes:row.logged_minutes,ownMinutes,childrenMinutes:Math.max(0,row.logged_minutes-ownMinutes),
+    contributingChildren:Math.max(0,row.logged_task_count-(ownMinutes>0?1:0))};
 }
-
-function getLeafDescendants(taskId: string, allTasks: DBTask[]): DBTask[] {
-  const direct = allTasks.filter(t => t.parent_task_id === taskId);
-  if (direct.length === 0) return [];
-  const result: DBTask[] = [];
-  for (const child of direct) {
-    const childLeaves = getLeafDescendants(child.id, allTasks);
-    if (childLeaves.length === 0) result.push(child);
-    else result.push(...childLeaves);
-  }
-  return result;
-}
-
-/**
- * Returns a 0–1 completion ratio for a task based on its leaf descendants.
- * If the task itself is marked completed/done, returns 1 immediately.
- * If it has no descendants, returns 0 (incomplete) or 1 (completed).
- */
 export function getTaskLeafProgress(task: DBTask, allTasks: DBTask[]): number {
-  if (task.completed || task.status === 'done') return 1;
-  const leaves = getLeafDescendants(task.id, allTasks);
-  if (leaves.length === 0) return 0;
-  const done = leaves.filter(l => l.completed || l.status === 'done').length;
-  return done / leaves.length;
+  if(task.completed || task.status==='done')return 1;
+  const row=hierarchyFor(task,allTasks).summaries.get(task.id)!;
+  return row.issues.length || !row.leaf_count ? 0 : row.completed_leaf_count/row.leaf_count;
 }
-
 export interface TaskTimeProgress {
-  /** 0–1 completion ratio, time-weighted when leaf estimates exist, count-based otherwise. */
+  /** Completion ratio of leaves; time spent is not a completion signal. */
   ratio: number;
-  /** Sum of current remaining-work estimates for incomplete leaves; null if any is unknown. */
   remainingMinutes: number | null;
-  /** Recorded work on leaves, including unfinished work. */
   spentMinutes: number;
-  /** True when at least one leaf has time data (so ratio is time-weighted, not count-based). */
   isTimeWeighted: boolean;
 }
-
-/**
- * Returns accurate time-based progress for a task.
- *
- * Unlike getTaskLeafProgress (which counts tasks), this weights each leaf
- * by its estimated time so that completing a 3h task moves the bar more
- * than completing a 30m task. remainingMinutes is the direct sum of
- * incomplete leaves' current forecasts — not derived from the completion ratio.
- */
 export function getTaskTimeProgress(task: DBTask, allTasks: DBTask[]): TaskTimeProgress {
-  const isDone = task.completed || task.status === 'done';
-  if (isDone) {
-    const est = getTaskEstimatedMinutes(task);
-    return {
-      ratio: 1,
-      remainingMinutes: 0,
-      spentMinutes: accountWork(task).logged_minutes,
-      isTimeWeighted: est !== null || (task.actual_minutes ?? 0) > 0,
-    };
-  }
-
-  const leaves = getLeafDescendants(task.id, allTasks);
-
-  // Leaf node with no children
-  if (leaves.length === 0) {
-    return {
-      ratio: 0,
-      remainingMinutes: accountWork(task).remaining_minutes,
-      spentMinutes: accountWork(task).logged_minutes,
-      isTimeWeighted: getTaskEstimatedMinutes(task) !== null,
-    };
-  }
-
-  const doneleaves    = leaves.filter(l => l.completed || l.status === 'done');
-  const pendingLeaves = leaves.filter(l => !l.completed && l.status !== 'done');
-
-  const doneEst    = doneleaves.reduce((s, l)    => s + (getTaskEstimatedMinutes(l) ?? 0), 0);
-  const pendingEst = pendingLeaves.reduce((s, l) => s + (getTaskEstimatedMinutes(l) ?? 0), 0);
-  const totalEst   = doneEst + pendingEst;
-
-  const spentMinutes = leaves.reduce((s, l) => s + accountWork(l).logged_minutes, 0);
-
-  const isTimeWeighted = totalEst > 0;
-
-  const ratio = isTimeWeighted
-    ? doneEst / totalEst
-    : leaves.length > 0 ? doneleaves.length / leaves.length : 0;
-
-  const forecasts = pendingLeaves.map(l => accountWork(l).remaining_minutes);
-  const remainingMinutes = forecasts.some(minutes => minutes === null) ? null : forecasts.reduce<number>((sum, minutes) => sum + (minutes ?? 0), 0);
-
-  return { ratio, remainingMinutes, spentMinutes, isTimeWeighted };
+  const row=hierarchyFor(task,allTasks).summaries.get(task.id)!;
+  const weighted=row.estimated_leaf_minutes>0;
+  return {ratio:row.issues.length?0:task.completed||task.status==='done'?1:weighted?row.completed_leaf_minutes/row.estimated_leaf_minutes:row.leaf_count?row.completed_leaf_count/row.leaf_count:0,
+    remainingMinutes:row.remaining_minutes,spentMinutes:row.logged_minutes,isTimeWeighted:weighted};
 }
-
-/**
- * Mixed parent estimate model:
- *   - Leaf (no children): use own explicit time.
- *   - Parent with timed children but no own time: total = all children.
- *   - Parent with own time: each child can either add extra time, or sit inside
- *     the parent's rough estimate. The child's time_rollup_mode controls that
- *     relationship to its parent.
- */
+/** The child's mode controls whether its complete subtree is inside the parent's budget. */
 export function getRolledUpTime(task: DBTask, allTasks: DBTask[]): RolledUpTime {
-  const directChildren = allTasks.filter(t => t.parent_task_id === task.id);
-  const ownMinutes = getTaskEstimatedMinutes(task);
-
-  if (directChildren.length === 0) {
-    return { minutes: ownMinutes, isRollup: false, ownMinutes, childrenSum: null };
-  }
-
-  let includedSum = 0;
-  let extraSum = 0;
-  let anyChildHasTime = false;
-
-  for (const child of directChildren) {
-    const childResult = getRolledUpTime(child, allTasks);
-    if (childResult.minutes !== null) {
-      if (child.time_rollup_mode === 'inclusive') {
-        includedSum += childResult.minutes;
-      } else {
-        extraSum += childResult.minutes;
-      }
-      anyChildHasTime = true;
-    }
-  }
-
-  if (!anyChildHasTime) {
-    return { minutes: ownMinutes, isRollup: false, ownMinutes, childrenSum: null };
-  }
-
-  const childrenSum = includedSum + extraSum;
-  const total = ownMinutes !== null
-    ? Math.max(ownMinutes, includedSum) + extraSum
-    : childrenSum;
-
-  return {
-    minutes: total,
-    isRollup: true,
-    ownMinutes,
-    childrenSum,
-    includedChildrenSum: includedSum > 0 ? includedSum : null,
-    extraChildrenSum: extraSum > 0 ? extraSum : null,
-  };
+  const tree=hierarchyFor(task,allTasks);const row=tree.summaries.get(task.id)!;
+  const ownMinutes=accountWork(task).estimated_minutes;
+  if(!row.child_ids.length)return {minutes:row.estimated_minutes,isRollup:false,ownMinutes,childrenSum:null};
+  const children=row.child_ids.map(id=>tree.summaries.get(id)!);
+  const included=children.filter(child=>child.relation==='inclusive').reduce((sum,child)=>sum+child.known_estimated_minutes,0);
+  const extra=children.filter(child=>child.relation==='additive').reduce((sum,child)=>sum+child.known_estimated_minutes,0);
+  return {minutes:row.estimated_minutes,isRollup:true,ownMinutes,childrenSum:children.some(child=>child.estimated_minutes===null)?null:included+extra,
+    includedChildrenSum:included||null,extraChildrenSum:extra||null};
 }

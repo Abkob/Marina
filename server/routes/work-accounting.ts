@@ -17,9 +17,17 @@ workAccountingRouter.get<{ taskId: string }>('/', async (req, res) => {
   const work = snapshot.accounting.get(String(req.params.taskId));
   if (!work) return res.status(404).json({ error: 'Task unavailable.' });
   const input = snapshot.inputs.get(String(req.params.taskId))!;
+  const summary=snapshot.hierarchy.summaries.get(String(req.params.taskId))!;
+  const { child_ids, ...totals }=summary;
+  const children=child_ids.slice(0,20).map(id=>{
+    const child=snapshot.hierarchy.summaries.get(id)!;
+    return {id,title:snapshot.hierarchy.tasks.get(id)?.title??'Task',relation:child.relation,
+      estimated_minutes:child.estimated_minutes,remaining_minutes:child.remaining_minutes,known_remaining_minutes:child.known_remaining_minutes,unknown_count:child.unknown_count};
+  });
   res.json({ work, window: snapshot.window, as_of: snapshot.as_of, versions: {
     work: Number(input.work_version), logs: Number(input.worklog_version), forecast: Number(input.forecast_revision),
-  }, forecast_updated_at: input.remaining_forecast_updated_at ?? null });
+  }, forecast_updated_at: input.remaining_forecast_updated_at ?? null,
+    hierarchy:{...totals,child_count:child_ids.length,children,children_omitted:Math.max(0,child_ids.length-children.length)} });
 });
 
 const forecastRequest = z.object({

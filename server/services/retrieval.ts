@@ -1,4 +1,4 @@
-import { accountWork, workColumns } from './workAccounting.js';
+import { accountWork, loadWorkAccounting, workColumns } from './workAccounting.js';
 import { activeTaskSql, activeEntitySql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
 import {
@@ -18,6 +18,9 @@ export interface EntityCard {
   estimated_minutes?: number | null;
   logged_minutes?: number;
   remaining_minutes?: number | null;
+  remaining_scope?: 'own_work';
+  subtree_remaining_minutes?: number | null;
+  known_subtree_remaining_minutes?: number;
   planning_summary?: string | null;
   semantic_summary?: string | null;
   blocker_ids?: string[];
@@ -477,6 +480,22 @@ export async function buildRetrievalContext(opts: RetrievalOptions): Promise<Ret
   }
 
   const enriched = await enrichCards(budgeted);
+  if (enriched.some(card => card.entity_type === 'task')) {
+    const today = new Date().toISOString().slice(0,10);
+    const current = await loadWorkAccounting(today, today, 'UTC');
+    for (const card of enriched) {
+      if (card.entity_type !== 'task') continue;
+      const work = current.accounting.get(card.entity_id);
+      const subtree = current.hierarchy.summaries.get(card.entity_id);
+      card.remaining_minutes = work?.remaining_minutes ?? null;
+      card.remaining_scope = 'own_work';
+      card.subtree_remaining_minutes = subtree?.remaining_minutes ?? null;
+      card.known_subtree_remaining_minutes = subtree?.known_remaining_minutes ?? 0;
+      card.logged_minutes = work?.logged_minutes ?? 0;
+      // Cached prose may predate hierarchy changes; current structured fields own effort.
+      if (card.planning_summary) card.planning_summary = card.planning_summary.split('\n').filter(line => !/^Estimated:|^Remaining:/.test(line)).join('\n');
+    }
+  }
   await annotateTopics(enriched);
   return {
     cards: enriched,

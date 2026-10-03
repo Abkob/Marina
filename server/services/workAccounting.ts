@@ -2,6 +2,7 @@ import { query } from '../db.js';
 import { activeEventSql, activeTaskSql } from '../utils/archiveVisibility.js';
 import { buildTaskTimelineResolver, type TaskTimelineRow, type GoalTimelineRow, type MilestoneTimelineRow } from './taskTimeline.js';
 import { accountReservations, accountWork, type ReservationRow, type WorkAccounting, type WorkInputs } from '../../shared/workAccounting.js';
+import { buildWorkHierarchy, type HierarchyTask } from '../../shared/workHierarchy.js';
 
 export { accountWork } from '../../shared/workAccounting.js';
 export const workColumns = (alias = 't') => ['actual_minutes','work_version','worklog_version','remaining_forecast_minutes',
@@ -16,12 +17,13 @@ export function localClock(now = new Date(), timezone = 'UTC') {
 
 /** One statement gives tasks, current session totals and links a consistent MVCC snapshot. */
 export async function loadWorkAccounting(from: string, to: string, timezone?: string, taskIds?: string[], now = new Date()) {
-  const { rows } = await query<{ tasks: Array<WorkInputs & { id: string }>; links: ReservationRow[]; timeline_tasks: TaskTimelineRow[]; goals: GoalTimelineRow[]; milestones: MilestoneTimelineRow[] }>(`
-    WITH selected AS (SELECT t.* FROM tasks t WHERE ${activeTaskSql('t.id')} AND ($3::text[] IS NULL OR t.id=ANY($3))),
+  const { rows } = await query<{ tasks: HierarchyTask[]; links: ReservationRow[]; timeline_tasks: TaskTimelineRow[]; goals: GoalTimelineRow[]; milestones: MilestoneTimelineRow[] }>(`
+    WITH selected AS (SELECT t.* FROM tasks t WHERE ${activeTaskSql('t.id')}),
     session_totals AS (SELECT ws.task_id, SUM(ws.minutes) AS minutes, COUNT(*) AS count FROM work_sessions ws
       JOIN selected t ON t.id=ws.task_id WHERE ws.minutes IS NOT NULL GROUP BY ws.task_id)
     SELECT COALESCE((SELECT jsonb_agg(jsonb_build_object(
-      'id',t.id,'estimated_minutes',t.estimated_minutes,'actual_minutes',t.actual_minutes,'completed',t.completed,'status',t.status,
+      'id',t.id,'title',t.title,'parent_task_id',t.parent_task_id,'goal_id',t.goal_id,'time_rollup_mode',t.time_rollup_mode,
+      'estimated_minutes',t.estimated_minutes,'actual_minutes',t.actual_minutes,'completed',t.completed,'status',t.status,
       'work_version',t.work_version,'worklog_version',t.worklog_version,'forecast_revision',t.forecast_revision,
       'remaining_forecast_minutes',t.remaining_forecast_minutes,'remaining_forecast_work_version',t.remaining_forecast_work_version,
       'remaining_forecast_log_version',t.remaining_forecast_log_version,'remaining_forecast_updated_at',t.remaining_forecast_updated_at,
@@ -37,7 +39,7 @@ export async function loadWorkAccounting(from: string, to: string, timezone?: st
     COALESCE((SELECT jsonb_agg(row_to_json(timeline)) FROM (SELECT id,parent_task_id,goal_id,milestone_id,start_date,due_date,target_date,hard_deadline FROM tasks) timeline),'[]') AS timeline_tasks,
     COALESCE((SELECT jsonb_agg(row_to_json(timeline)) FROM (SELECT id,start_date,target_date,hard_deadline,deadline FROM goals) timeline),'[]') AS goals,
     COALESCE((SELECT jsonb_agg(row_to_json(timeline)) FROM (SELECT id,start_date,due_date,hard_deadline FROM goal_milestones) timeline),'[]') AS milestones`,
-  [from, to, taskIds ?? null]);
+  [from, to]);
   const resolve = buildTaskTimelineResolver(rows[0]?.timeline_tasks ?? [], rows[0]?.goals ?? [], rows[0]?.milestones ?? []);
   const reservations = accountReservations((rows[0]?.links ?? []).map(link => {
     const timeline = resolve({ id: link.task_id });
@@ -50,5 +52,9 @@ export async function loadWorkAccounting(from: string, to: string, timezone?: st
     inputs.set(task.id, task);
     accounting.set(task.id, accountWork(task, reserved?.minutes, reserved?.stale));
   }
-  return { accounting, inputs, window: { from, to }, as_of: now.toISOString() };
+  const hierarchy = buildWorkHierarchy(rows[0]?.tasks ?? [], accounting);
+  for(const [id,summary] of hierarchy.summaries) accounting.set(id,summary.own);
+  // Aggregate against the complete visible hierarchy first; narrow only the returned own-task maps.
+  if(taskIds) for(const id of accounting.keys()) if(!taskIds.includes(id)){accounting.delete(id);inputs.delete(id);}
+  return { accounting, inputs, hierarchy, window: { from, to }, as_of: now.toISOString() };
 }

@@ -88,6 +88,7 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('P03.1 work accounting (real Pos
     await pool.query("UPDATE tasks SET title='Different work' WHERE id=$1", [id]);
     expect((await snapshot([id])).accounting.get(id)).toMatchObject({ reserved_minutes: 0, stale_reservation_count: 1 });
     await pool.query(await readFile('server/migrations/032-work-accounting.sql', 'utf8'));
+    await pool.query(await readFile('server/migrations/033-work-hierarchy.sql', 'utf8'));
     expect((await snapshot([id])).accounting.get(id)?.stale_reservation_count).toBe(1);
     await pool.query('UPDATE event_task_links SET planned_minutes=90 WHERE task_id=$1', [id]);
     expect((await snapshot([id])).accounting.get(id)?.reserved_minutes).toBe(90);

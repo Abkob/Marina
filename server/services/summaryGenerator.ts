@@ -1,4 +1,4 @@
-import { accountWork } from './workAccounting.js';
+import { loadWorkAccounting } from './workAccounting.js';
 import crypto from 'crypto';
 import { query } from '../db.js';
 import { chat, parseJSON, CHAT_MODEL } from '../ollama.js';
@@ -39,7 +39,9 @@ async function buildPlanningText(type: string, id: string): Promise<string | nul
     const { rows: ws } = await query('SELECT SUM(minutes) as total FROM work_sessions WHERE task_id=$1', [id]);
     const logged = Number((ws[0] as Record<string, unknown>)?.total ?? t.actual_minutes ?? 0);
     const est = Number(t.estimated_minutes ?? 0);
-    const remaining = accountWork({ ...t, logged_minutes: logged }).remaining_minutes;
+    const today = new Date().toISOString().slice(0,10);
+    const snapshot = await loadWorkAccounting(today,today,'UTC',[id]);
+    const remaining = snapshot.accounting.get(id)?.remaining_minutes ?? null;
     return [
       `Entity: Task`,
       `Title: ${t.title}`,
@@ -49,7 +51,7 @@ async function buildPlanningText(type: string, id: string): Promise<string | nul
       `Status: ${t.status} | Priority: ${t.priority} | Kind: ${t.kind}`,
       t.feel_score != null ? `Feel score: ${t.feel_score}/100 (user's subjective need signal)` : null,
       t.due_date ? `Due: ${t.due_date}` : null,
-      est > 0 ? `Estimated: ${est}min | Logged: ${logged}min | Remaining: ${remaining === null ? "unknown" : remaining + "min"}` : null,
+      est > 0 ? `Estimated: ${est}min | Logged: ${logged}min | Separate work remaining: ${remaining === null ? "unknown" : remaining + "min"}` : null,
       blockers.length ? `Blocked by: ${blockers.map((b: Record<string, unknown>) => b.title).join(', ')}` : null,
       t.completed ? `Completed: yes` : null,
     ].filter(Boolean).join('\n');

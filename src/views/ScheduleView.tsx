@@ -1,3 +1,4 @@
+import { buildWorkHierarchy } from '../../shared/workHierarchy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import {
@@ -1285,27 +1286,11 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     [scheduler],
   );
 
-  const childIds = useMemo(
-    () => new Set(allTasks.map(t => t.parent_task_id).filter((id): id is string => Boolean(id))),
-    [allTasks],
-  );
-  const isDone = (task: DBTask) => task.completed || task.status === 'done';
-  const scheduleWork = useMemo(
-    () => allTasks.filter(t =>
-      !isDone(t)
-      && t.kind !== 'critical_path'
-      && t.scheduling_enabled !== false
-      && !childIds.has(t.id)
-    ),
-    [allTasks, childIds],
-  );
-  const rollupTasks = useMemo(
-    () => allTasks.filter(t =>
-      !isDone(t)
-      && (childIds.has(t.id) || t.scheduling_enabled === false || t.kind === 'critical_path')
-    ),
-    [allTasks, childIds],
-  );
+  const workHierarchy = useMemo(() => buildWorkHierarchy(allTasks), [allTasks]);
+  const scheduleWork = useMemo(() => allTasks.filter(task =>
+    workHierarchy.summaries.get(task.id)?.executable && task.scheduling_enabled !== false), [allTasks, workHierarchy]);
+  const rollupTasks = useMemo(() => allTasks.filter(task => !task.completed && task.status !== 'done'
+    && (!workHierarchy.summaries.get(task.id)?.executable || task.scheduling_enabled === false)), [allTasks, workHierarchy]);
   const startsByDate = useMemo(() => {
     const m = new Map<string, DBTask[]>();
     for (const t of scheduleWork) {
@@ -1315,8 +1300,8 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     }
     return m;
   }, [scheduleWork]);
-  const backlog = useMemo(() => scheduleWork.filter(t => !t.start_date && (t.estimated_minutes ?? 0) > 0), [scheduleWork]);
-  const unestimated = useMemo(() => scheduleWork.filter(t => !(t.estimated_minutes! > 0)), [scheduleWork]);
+  const backlog = useMemo(() => scheduleWork.filter(t => !t.start_date && (workHierarchy.summaries.get(t.id)?.own.remaining_minutes ?? 0) > 0), [scheduleWork, workHierarchy]);
+  const unestimated = useMemo(() => scheduleWork.filter(t => workHierarchy.summaries.get(t.id)?.own.remaining_minutes == null), [scheduleWork, workHierarchy]);
 
   // Calendar blocks in the visible range. Only dated blocks render — the old
   // "no date = repeats every week" rule is gone (it made seeded demo events
@@ -1680,7 +1665,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     const key = `${task.id}|${date}|${hour}`;
     if (scheduling.current.has(key)) return;
     scheduling.current.add(key);
-    const fill = autofillFromTask({ ...task, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0);
+    const fill = autofillFromTask({ ...task, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0, workHierarchy.summaries.get(task.id)?.own);
     const duration = Math.max(.25, Math.min(drawnDuration ?? fill.duration_hours, 24 - hour));
     setFeedback({ label: `Scheduling ${task.title}…` });
     try {
@@ -1875,7 +1860,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
             <div className="schedule-planning-content">
               {planningPanel === 'tasks' && <TaskTreeDrawer embedded tasks={allTasks} goals={goals} draggableIds={draggableIds} scheduledDates={scheduledDates}
                 onCollapse={() => setPlanningPanel(null)} onCreateTask={createCalendarTask}
-                onScheduleTask={task => { setPlanningPanel(null); setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ ...task, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0).duration_hours, linkedTaskId: task.id }); }} />}
+                onScheduleTask={task => { setPlanningPanel(null); setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ ...task, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0, workHierarchy.summaries.get(task.id)?.own).duration_hours, linkedTaskId: task.id }); }} />}
               {planningPanel === 'routines' && <div className="p-3"><RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => openRoutine()} onEdit={openRoutine} onStartFocus={startRoutineFocus} /></div>}
               {planningPanel === 'assist' && <PlanAssistPanel suggestions={suggestions} taskLookup={taskLookup} unestimated={unestimated} rollupCount={rollupTasks.length}
                 onPlace={(taskId, date) => move.mutateAsync({ taskId, date }).then(() => {}).catch(() => { /* The mutation shows its save error. */ })} onPlaceAll={placeAllSuggestions} />}

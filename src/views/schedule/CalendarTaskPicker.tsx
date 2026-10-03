@@ -1,8 +1,7 @@
-import { accountWork } from '../../../shared/workAccounting';
+import { buildWorkHierarchy } from '../../../shared/workHierarchy';
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { DBGoal, DBTask } from '../../db/schema';
-import { remainingMinutes } from '../../utils/eventAutofill';
 function fmtMins(mins: number) { return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ''}`; }
 
 // ── Task picker ───────────────────────────────────────────────────────────────
@@ -32,19 +31,23 @@ function buildPickerRows(tasks: DBTask[], goals: DBGoal[]): PickerRow[] {
   roots.sort(byGoal);
 
   const rows: PickerRow[] = [];
-  const walk = (t: DBTask, depth: number, parents: string[]) => {
-    const ctx = [goalTitle.get(t.goal_id ?? ''), ...parents].filter(Boolean).join(' · ');
-    rows.push({ task: t, depth, context: ctx });
-    for (const c of (children.get(t.id) ?? []).sort((a, b) => a.position - b.position)) {
-      walk(c, depth + 1, [...parents, t.title]);
+  const stack = roots.slice().reverse().map(task => ({ task, depth: 0, parents: [] as string[] }));
+  const visited = new Set<string>();
+  while (stack.length) {
+    const { task, depth, parents } = stack.pop()!;
+    if (visited.has(task.id)) continue;
+    visited.add(task.id);
+    rows.push({ task, depth: Math.min(depth, 3), context: [goalTitle.get(task.goal_id ?? ''), ...parents].filter(Boolean).join(' · ') });
+    for (const child of (children.get(task.id) ?? []).slice().sort((a,b) => b.position-a.position)) {
+      stack.push({ task: child, depth: depth + 1, parents: [...parents.slice(-1), task.title] });
     }
-  };
-  for (const r of roots) walk(r, 0, []);
+  }
   return rows;
 }
 
 export function TaskPicker({ tasks, goals, onPick }: { tasks: DBTask[]; goals: DBGoal[]; onPick: (t: DBTask) => void }) {
   const [q, setQ] = useState('');
+  const hierarchy = useMemo(() => buildWorkHierarchy(tasks), [tasks]);
   const rows = useMemo(() => buildPickerRows(tasks, goals), [tasks, goals]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -68,13 +71,13 @@ export function TaskPicker({ tasks, goals, onPick }: { tasks: DBTask[]; goals: D
           <p className="px-3 py-2 text-[11px] text-gray-400">No open task matches "{q}".</p>
         )}
         {filtered.slice(0, 60).map(({ task, depth, context }) => {
-          const remaining = accountWork(task).remaining_minutes;
+          const remaining = hierarchy.summaries.get(task.id)?.own.remaining_minutes ?? null;
           return (
             <button
               key={task.id}
               type="button"
               onClick={() => onPick(task)}
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-indigo-50/60"
+              className="flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-indigo-50/60 focus-visible:outline focus-visible:outline-indigo-500"
               style={{ paddingLeft: 12 + depth * 14 }}
             >
               {depth > 0 && <span className="text-[10px] text-gray-300">↳</span>}

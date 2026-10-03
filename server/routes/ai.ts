@@ -1,3 +1,5 @@
+import { hierarchyDependencies } from '../../shared/hierarchyDependencies.js';
+import { buildWorkHierarchy } from '../../shared/workHierarchy.js';
 import { accountWork, loadWorkAccounting, workColumns } from '../services/workAccounting.js';
 import { loadBusyWindow } from '../services/calendarBusy.js';
 import { schedulePreviewRouter } from './schedule-preview.js';
@@ -170,6 +172,7 @@ async function getScheduleContext(userQuery?: string) {
     ? new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date())
     : (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
   const today = new Date(todayStr + 'T00:00:00');
+  const contextWork = await loadWorkAccounting(todayStr, addDaysStr(todayStr, 13), prefs.timezone as string | undefined);
   const dailyCapacity = Number(prefs.daily_capacity_minutes ?? 480);
   const bufferRatio = Number(prefs.buffer_ratio ?? 0.15);
   const effectiveCapacity = Math.round(dailyCapacity * (1 - bufferRatio));
@@ -200,17 +203,11 @@ async function getScheduleContext(userQuery?: string) {
       FROM tasks t LEFT JOIN (SELECT task_id,SUM(minutes) AS logged FROM work_sessions WHERE minutes IS NOT NULL GROUP BY task_id) ws ON ws.task_id=t.id
       WHERE t.goal_id=ANY($1) AND ${activeTaskSql('t.id')}`, [goalIds]) : { rows: [] };
   const metricsMap: Record<string, { incomplete_count: number; mins_remaining: number | null; known_minutes: number; unknown_count: number; mins_logged: number }> = {};
-  for (const task of metricRows) {
-    const goalId=String(task.goal_id);
-    const metric=metricsMap[goalId] ??= { incomplete_count:0,mins_remaining:0,known_minutes:0,unknown_count:0,mins_logged:0 };
-    const work=accountWork(task);
-    metric.mins_logged+=work.logged_minutes;
-    if (task.completed || task.status==='done') continue;
-    metric.incomplete_count++;
-    if (!task.is_leaf) continue;
-    if (work.remaining_minutes===null) metric.unknown_count++;
-    else metric.known_minutes+=work.remaining_minutes;
-    metric.mins_remaining=metric.unknown_count ? null : metric.known_minutes;
+  for (const goalId of goalIds) {
+    const rows=metricRows.filter(task=>task.goal_id===goalId);
+    const totals=buildWorkHierarchy(rows as any).total;
+    metricsMap[goalId]={incomplete_count:rows.filter(task=>!task.completed&&task.status!=='done').length,
+      mins_remaining:totals.remaining_minutes,known_minutes:totals.known_remaining_minutes,unknown_count:totals.unknown_count,mins_logged:totals.logged_minutes};
   }
 
   // ── Task coverage buckets (counts for AI honesty — Epic 40.3) ─────────────
@@ -268,7 +265,7 @@ async function getScheduleContext(userQuery?: string) {
     horizonDays: 14,
     nearDeadlineDays: 14,
     bufferRatio: 0.15,
-  });
+  }, contextWork.hierarchy);
 
   // ── Upcoming tasks via hybrid retrieval (top 30 across all goals) ─────────
   const retrievalResult = await buildRetrievalContext({
@@ -381,13 +378,9 @@ async function getScheduleContext(userQuery?: string) {
      FROM edges
      WHERE relationship='blocks' AND source_type='task' AND target_type='task'
        AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}
-       AND EXISTS (SELECT 1 FROM tasks blocker WHERE blocker.id=source_id AND NOT blocker.completed)`,
+       `,
   ) as { rows: { blocker_id: string; task_id: string }[] };
-  const planningBlockerMap = new Map<string, string[]>();
-  for (const edge of planningBlockerEdges) {
-    if (!planningBlockerMap.has(edge.task_id)) planningBlockerMap.set(edge.task_id, []);
-    planningBlockerMap.get(edge.task_id)!.push(edge.blocker_id);
-  }
+  const planningBlockerMap = hierarchyDependencies(contextWork.hierarchy, planningBlockerEdges);
 
   const planningTaskById = new Map(planningTaskRows.map(t => [t.id, t]));
   const resolvePlanningDueDate = buildTaskDueDateResolver(
@@ -407,12 +400,11 @@ async function getScheduleContext(userQuery?: string) {
     if (!inheritedDue) return { deadline: null, deadline_kind: null };
     return { deadline: inheritedDue, deadline_kind: task.due_date ? 'due_date' : 'inherited_due_date' };
   };
-  const remainingPlanningMinutes = (task: PlanningTaskInput): number | null => accountWork(task).remaining_minutes;
-  const isParentPlanningTask = (task: PlanningTaskInput) => Number(task.child_count ?? 0) > 0;
+  const remainingPlanningMinutes = (task: PlanningTaskInput): number | null => contextWork.accounting.get(task.id)?.remaining_minutes ?? null;
+  const isParentPlanningTask = (task: PlanningTaskInput) => (contextWork.hierarchy.children.get(task.id)?.length ?? 0) > 0;
   const isSchedulablePlanningLeaf = (task: PlanningTaskInput) =>
-    !isParentPlanningTask(task)
-    && task.scheduling_enabled !== false
-    && task.kind !== 'critical_path';
+    Boolean(contextWork.hierarchy.summaries.get(task.id)?.executable)
+    && task.scheduling_enabled !== false;
   const overdueTasks = planningTaskRows
     .map(task => {
       const { deadline, deadline_kind } = effectivePlanningDeadline(task);
@@ -472,7 +464,7 @@ async function getScheduleContext(userQuery?: string) {
     if (priority === 'low') return 'low';
     return 'medium';
   };
-  const contextWork = await loadWorkAccounting(todayStr, addDaysStr(todayStr, 13), prefs.timezone as string | undefined, planningTaskRows.map(task => task.id));
+
   const canonicalSchedulerTasks = planningTaskRows.flatMap(task => {
     if (!isSchedulablePlanningLeaf(task)) return [];
     const { deadline } = effectivePlanningDeadline(task);
@@ -608,15 +600,8 @@ async function getScheduleContext(userQuery?: string) {
     const links = calendarLinksByEvent.get(ev.id) ?? [];
     for (const link of links) {
       linkedTaskDateKeys.add(`${link.task_id}|${date}`);
-      plannedLeafTaskIds.add(link.task_id);
-      // A block linked to a river/container represents planned work for its
-      // executable leaves as well; otherwise Today calls the same work
-      // "unscheduled" while visibly showing its parent block on the calendar.
-      for (const candidate of planningTaskRows) {
-        if (isSchedulablePlanningLeaf(candidate) && isDescendantOf(candidate, link.task_id)) {
-          plannedLeafTaskIds.add(candidate.id);
-        }
-      }
+      // Calendar ownership is exact: a parent block never reserves its children.
+      if (contextWork.accounting.get(link.task_id)?.unscheduled_minutes === 0) plannedLeafTaskIds.add(link.task_id);
     }
     const durationMinutes = Math.max(0, Math.round(Number(ev.duration_hours ?? 0) * 60));
     const linkedTasks = links.map(link => {
@@ -743,7 +728,8 @@ async function getScheduleContext(userQuery?: string) {
           child_leaf_minutes: childKnownMinutes,
           child_unestimated_count: childUnestimatedCount,
           child_count: Number(task.child_count ?? 0),
-          note: 'Rollup/context only: do not add own_remaining_minutes to child_leaf_minutes.',
+          total_remaining_minutes: contextWork.hierarchy.summaries.get(task.id)?.remaining_minutes ?? null,
+          note: 'Own remaining is residual parent work; children are counted once. Total remains unknown when any required work is unknown.',
         };
       })
       .slice(0, 8);
@@ -860,6 +846,8 @@ async function getScheduleContext(userQuery?: string) {
       deadline,
       deadline_kind,
       remaining_minutes: remainingPlanningMinutes(task),
+      subtree_remaining_minutes: contextWork.hierarchy.summaries.get(task.id)?.remaining_minutes ?? null,
+      residual_estimated_minutes: contextWork.hierarchy.summaries.get(task.id)?.residual_estimated_minutes ?? null,
       logged_minutes: Number(task.logged_minutes ?? 0),
       feel_score: task.feel_score ?? null,
       blocker_ids: planningBlockerMap.get(task.id) ?? [],
@@ -985,6 +973,8 @@ async function getScheduleContext(userQuery?: string) {
     ]);
     targetedTaskContext = (detailRows as Record<string, unknown>[]).map(task => ({
       ...task,
+      work_accounting: contextWork.accounting.get(String(task.id)),
+      subtree_remaining_minutes: contextWork.hierarchy.summaries.get(String(task.id))?.remaining_minutes ?? null,
       scheduled_blocks: scheduledBlocksByTask.get(String(task.id)) ?? [],
       blocker_ids: planningBlockerMap.get(String(task.id)) ?? [],
       children: (childRows as Record<string, unknown>[]).filter(child => child.parent_task_id === task.id),
@@ -1052,6 +1042,7 @@ async function getScheduleContext(userQuery?: string) {
         estimated_minutes: card.estimated_minutes ?? null,
         logged_minutes: card.logged_minutes ?? 0,
         remaining_minutes: card.remaining_minutes ?? null,
+        remaining_scope: card.remaining_scope, subtree_remaining_minutes: card.subtree_remaining_minutes ?? null,
         planning_summary: card.planning_summary ?? null,
         blocker_ids: card.blocker_ids ?? [],
         evidence_facts: card.evidence_facts ?? [],
@@ -1726,7 +1717,7 @@ export async function loadSchedulerInputs(horizonDays: number) {
     ),
     query(`SELECT scheduled_at, duration_minutes FROM meetings WHERE ${activeMeetingSql()} AND DATE(scheduled_at::timestamp) BETWEEN $1 AND $2`, [todayStr, endStr]),
     query(`SELECT date, available_minutes FROM schedule_day_overrides WHERE date BETWEEN $1 AND $2`, [todayStr, endStr]),
-    query(`SELECT source_id as blocker_id, target_id as task_id FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')} AND EXISTS (SELECT 1 FROM tasks blocker WHERE blocker.id=source_id AND NOT blocker.completed)`),
+    query(`SELECT source_id as blocker_id, target_id as task_id FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')} `),
     query(
       `SELECT id, parent_task_id, goal_id, milestone_id, start_date, due_date, target_date, hard_deadline
        FROM tasks WHERE completed=false AND ${activeTaskSql()}`,
@@ -1741,11 +1732,7 @@ export async function loadSchedulerInputs(horizonDays: number) {
     milestoneTimelineRows as unknown as MilestoneTimelineRow[],
   );
 
-  const blockerMap = new Map<string, string[]>();
-  for (const e of blockerEdges as { blocker_id: string; task_id: string }[]) {
-    if (!blockerMap.has(e.task_id)) blockerMap.set(e.task_id, []);
-    blockerMap.get(e.task_id)!.push(e.blocker_id);
-  }
+  const blockerMap = hierarchyDependencies(workSnapshot.hierarchy, blockerEdges as { blocker_id: string; task_id: string }[]);
   // THE SCHEDULING GATE: Marina manages a task's time only when ALL hold —
   //   scheduling is enabled, a duration estimate exists, and a real date
   //   (hard_deadline > target_date > legacy due_date) exists. Everything else
@@ -1771,9 +1758,10 @@ export async function loadSchedulerInputs(horizonDays: number) {
     if (t.scheduling_enabled === false) reasons.push('scheduling disabled by user');
     if (t.goal_scheduling_enabled === false) reasons.push('automatic scheduling disabled for goal');
     if (t.milestone_scheduling_enabled === false) reasons.push('automatic scheduling disabled for milestone');
-    if (Number(t.child_count ?? 0) > 0) reasons.push('parent task rolls up from child tasks');
-    // A critical-path item with no active children is executable work. Only
-    // parent rollups are excluded (already covered by child_count above).
+    const hierarchyWork = workSnapshot.hierarchy.summaries.get(String(t.id));
+    if(hierarchyWork?.issues.length) reasons.push('hierarchy needs review: '+hierarchyWork.issues.join(', '));
+    else if (!hierarchyWork?.executable) reasons.push('parent has no separate remaining work');
+    // Executable leaves and residual parent work share the same scheduling gate.
     if (remaining === null) reasons.push(work?.remaining_state === 'overrun' ? 'remaining work unknown: original estimate exhausted' : work?.remaining_state === 'stale_forecast' ? 'remaining forecast needs review after work or log changes' : 'missing estimated duration');
     else if (remaining === 0) reasons.push('no additional calendar time needed in this window');
     if (!effectiveDue) reasons.push('missing target date or deadline');
@@ -2294,6 +2282,7 @@ router.get('/retrieval/debug', async (req, res) => {
         due_date: c.due_date ?? null,
         estimated_minutes: c.estimated_minutes ?? null,
         remaining_minutes: c.remaining_minutes ?? null,
+        remaining_scope: c.remaining_scope, subtree_remaining_minutes: c.subtree_remaining_minutes ?? null,
         planning_summary_snippet: c.planning_summary?.slice(0, 120) ?? null,
         blocker_ids: c.blocker_ids ?? [],
         evidence_facts: c.evidence_facts ?? [],

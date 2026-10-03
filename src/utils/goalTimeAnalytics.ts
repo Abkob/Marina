@@ -1,4 +1,5 @@
 import { accountWork } from '../../shared/workAccounting';
+import { buildWorkHierarchy } from '../../shared/workHierarchy';
 import type { DBTask } from '../db/schema';
 import { formatTaskTime } from './taskTime';
 
@@ -23,17 +24,19 @@ export interface GoalTimeStats {
  * Historical pace is descriptive; it does not automatically rewrite the current forecast.
  */
 export function computeGoalTimeStats(tasks: DBTask[]): GoalTimeStats {
+  const hierarchy=buildWorkHierarchy(tasks);
+  tasks=[...hierarchy.tasks.values()] as DBTask[];
   const completed  = tasks.filter(t => t.completed || t.status === 'done');
   const incomplete = tasks.filter(t => !t.completed && t.status !== 'done');
 
   // Measured/reported time only: completing an estimate does not log work.
-  const spentMinutes = tasks.reduce((sum, task) => sum + accountWork(task).logged_minutes, 0);
+  const spentMinutes = hierarchy.total.logged_minutes;
 
   // Velocity: only from tasks where we have BOTH actual AND estimated
-  const pairedTasks = completed.filter(t => (t.logged_minutes != null || t.actual_minutes != null) && (t.estimated_minutes ?? 0) > 0);
+  const pairedTasks = completed.filter(t => (t.logged_minutes != null || t.actual_minutes != null) && (hierarchy.summaries.get(t.id)?.residual_estimated_minutes ?? 0) > 0);
   const velocityRatio = pairedTasks.length > 0
     ? pairedTasks.reduce((s, t) => s + accountWork(t).logged_minutes, 0) /
-      pairedTasks.reduce((s, t) => s + t.estimated_minutes!, 0)
+      pairedTasks.reduce((s, t) => s + hierarchy.summaries.get(t.id)!.residual_estimated_minutes!, 0)
     : null;
 
   const velocityConfidence: GoalTimeStats['velocityConfidence'] =
@@ -41,18 +44,15 @@ export function computeGoalTimeStats(tasks: DBTask[]): GoalTimeStats {
     pairedTasks.length < 3  ? 'low'  :
     pairedTasks.length < 8  ? 'medium' : 'high';
 
-  const remaining = incomplete.map(task => accountWork(task).remaining_minutes);
-  const unknownRemainingCount = remaining.filter(value => value === null).length;
-  const knownRemainingMinutes = remaining.reduce((sum, value) => sum + (value ?? 0), 0);
-  const estimatedRemainingMinutes = unknownRemainingCount ? null : knownRemainingMinutes;
+  const unknownRemainingCount = hierarchy.total.unknown_count;
+  const knownRemainingMinutes = hierarchy.total.known_remaining_minutes;
+  const estimatedRemainingMinutes = hierarchy.total.remaining_minutes;
   // Historical ratios are descriptive, not a calibrated forecast.
   const adjustedRemainingMinutes = estimatedRemainingMinutes;
 
   // Total estimated across all tasks
   const allWithEst = tasks.filter(t => (t.estimated_minutes ?? 0) > 0);
-  const totalEstimatedMinutes = allWithEst.length > 0
-    ? allWithEst.reduce((s, t) => s + t.estimated_minutes!, 0)
-    : null;
+  const totalEstimatedMinutes = allWithEst.length > 0 ? hierarchy.total.estimated_minutes : null;
 
   return {
     spentMinutes,

@@ -9,7 +9,7 @@ npm run test:planning
 npm run test:planning-baseline
 ```
 
-Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (56 at P03.1: 19 prior cases, 23 persistent-plan cases and 14 accounting cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
+Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (70 at P03.2: 19 prior cases, 23 persistent-plan cases, 14 accounting cases and 14 hierarchy cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
 
 For real integration checks, start an isolated local PostgreSQL cluster, then run:
 
@@ -84,3 +84,5 @@ One bounded snapshot is stored as an `evaluation_trace_v1` event in the existing
 Storage uses a short statement timeout and catches diagnostic failures; an unavailable sink cannot change a successful application result. It may add a bounded database operation after the core write. Real DB tests inject an INSERT failure and verify the chat still saves and returns success. New traces are an aid to investigation, not an assertion that every existing save path is failure-independent.
 
 No live model call or production load test is part of this baseline. The [P00 checkpoint](../../docs/planning-checkpoints/P00.md) records executed checks, limitations and the next section.
+
+P03.2 adds the [hierarchy checkpoint](../../docs/planning-checkpoints/P03.2.md), 14 real database/HTTP cases, deep/wide/generated-tree unit cases and a parent-breakdown flow on four viewports. `liveModels.ts` is an explicit opt-in real-provider harness; its protocol success requires a separate semantic review and is never included in the synthetic test totals.

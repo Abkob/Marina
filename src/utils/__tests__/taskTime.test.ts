@@ -366,25 +366,25 @@ describe('getRolledUpTime', () => {
     expect(gpResult.childrenSum).toBe(80);
   });
 
-  it('children without times → falls back to parent own time, isRollup=false', () => {
+  it('children without times keep the total unknown and expose a rollup', () => {
     const parent = makeTask({ id: 'P', estimated_minutes: 60 });
     const child  = makeTask({ id: 'C', parent_task_id: 'P' }); // no time
     const all    = [parent, child];
 
     const result = getRolledUpTime(parent, all);
-    expect(result.minutes).toBe(60);
-    expect(result.isRollup).toBe(false);
+    expect(result.minutes).toBeNull();
+    expect(result.isRollup).toBe(true);
     expect(result.childrenSum).toBeNull();
   });
 
-  it('mixed children — some timed, some not — sums only timed ones', () => {
+  it('mixed timed and unknown children do not present a partial sum as complete', () => {
     const parent  = makeTask({ id: 'P' });
     const timed   = makeTask({ id: 'C1', parent_task_id: 'P', estimated_minutes: 60 });
     const untimed = makeTask({ id: 'C2', parent_task_id: 'P' });
     const all     = [parent, timed, untimed];
 
     const result = getRolledUpTime(parent, all);
-    expect(result.minutes).toBe(60);
+    expect(result.minutes).toBeNull();
     expect(result.isRollup).toBe(true);
     expect(result.ownMinutes).toBeNull();
   });

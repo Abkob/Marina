@@ -1,4 +1,4 @@
-import { accountWork, workColumns } from './workAccounting.js';
+import { loadWorkAccounting, workColumns } from './workAccounting.js';
 import { z } from 'zod';
 import { query } from '../db.js';
 import { activeTaskSql, activeEventSql, activeMeetingSql } from '../utils/archiveVisibility.js';
@@ -129,7 +129,14 @@ export function createCopilotTools(dependencies: {
            FROM tasks t WHERE (t.id = ANY($1) OR t.parent_task_id = ANY($1)) AND ${activeTaskSql('t.id')}
            ORDER BY (t.id = ANY($1)) DESC, t.position, t.title LIMIT 101`, [ids],
         );
-        const tasks = rows.slice(0, 100).map(row => ({ ...row, work_accounting: accountWork(row as Record<string, unknown>) }));
+        const today = new Date().toISOString().slice(0,10);
+        const accounting = await loadWorkAccounting(today, today, 'UTC');
+        const tasks = rows.slice(0, 100).map(row => {
+          const summary = accounting.hierarchy.summaries.get(row.id);
+          return {...row, work_accounting:accounting.accounting.get(row.id),
+            hierarchy:summary ? {remaining_minutes:summary.remaining_minutes,known_remaining_minutes:summary.known_remaining_minutes,
+              unknown_count:summary.unknown_count,residual_estimated_minutes:summary.residual_estimated_minutes,issues:summary.issues} : null};
+        });
         return { data: { tasks, missing_ids: ids.filter(id => !tasks.some(row => row.id === id)), limit: 100,
           children_has_more: rows.length > 100, more_children_tool: 'find_tasks with parent_task_id' } };
       },

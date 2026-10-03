@@ -16,6 +16,18 @@ const mount = (id = 'task-a') => {
 beforeEach(() => { vi.resetAllMocks(); mocks.get.mockResolvedValue(response()); mocks.patch.mockResolvedValue({ saved: true }); });
 afterEach(cleanup);
 describe('P03.1 time details', () => {
+  it('expands an incomplete hierarchy with explicit residual work and accessible controls', async () => {
+    mocks.get.mockResolvedValue({...response(), work:accountWork({estimated_minutes:30}), hierarchy:{ child_count:21, children_omitted:20,
+      remaining_minutes:null, known_remaining_minutes:90, unknown_count:1, logged_minutes:0, residual_estimated_minutes:30, issues:[],
+      children:[{id:'child',title:'Read chapter',relation:'inclusive',remaining_minutes:60,known_remaining_minutes:60,unknown_count:0}] }});
+    mount(); await screen.findByText('1h 30m known · partial');
+    expect(screen.queryByText('Read chapter')).not.toBeInTheDocument();
+    const toggle=screen.getByRole('button',{name:'Counted work'});toggle.focus();await userEvent.keyboard('{Enter}');
+    expect(toggle).toHaveAttribute('aria-expanded','true');expect(screen.getByText('Read chapter')).toBeVisible();
+    expect(screen.getByText('Separate work on this task')).toBeVisible();expect(screen.getByText(/20 more subtasks/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button',{name:/Time details/}));
+    expect(screen.getByRole('spinbutton',{name:/outside the subtasks/})).toBeVisible();expect(mocks.patch).not.toHaveBeenCalled();
+  });
   it('makes unfinished overruns unknown and exposes a keyboard-accessible explanation', async () => {
     mount(); await screen.findByText('Work remaining'); expect(screen.getAllByText('Unknown')).toHaveLength(2);
     const details = screen.getByRole('button', { name: /Time details/ }); details.focus(); await userEvent.keyboard('{Enter}');

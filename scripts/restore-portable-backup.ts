@@ -116,7 +116,7 @@ try {
     const { rows: accountingTriggers } = await client.query<{ table_name: string; trigger_name: string }>(
       `SELECT c.relname AS table_name,t.tgname AS trigger_name FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
        JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND t.tgenabled='O'
-         AND (c.relname,t.tgname) IN (('tasks','task_work_version'),('work_sessions','session_work_version'),('event_task_links','link_work_version'))`);
+         AND (c.relname,t.tgname) IN (('tasks','task_work_version'),('tasks','task_hierarchy_guard'),('tasks','task_hierarchy_versions'),('work_sessions','session_work_version'),('event_task_links','link_work_version'))`);
     for (const { table_name, trigger_name } of accountingTriggers) await client.query(`ALTER TABLE ${quoteIdentifier(table_name)} DISABLE TRIGGER ${quoteIdentifier(trigger_name)}`);
 
     const tableNames = manifest.database.tables.map(table => table.name);

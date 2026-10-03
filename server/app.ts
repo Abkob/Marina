@@ -623,6 +623,10 @@ export function createApp(): express.Express {
       return res.status(409).json({ error: 'Conflict: duplicate entry' });
     }
 
+    if (err && typeof err === 'object' && (err as Record<string, unknown>).constraint === 'task_hierarchy_acyclic') {
+      return res.status(409).json({ error: 'A task cannot be placed inside itself or one of its descendants.' });
+    }
+
     // PostgreSQL FK violation → 400
     if (err && typeof err === 'object' && (err as Record<string, unknown>).code === '23503') {
       return res.status(400).json({ error: 'Referenced entity does not exist' });

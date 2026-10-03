@@ -1,3 +1,4 @@
+import { hierarchyDependencies } from '../../shared/hierarchyDependencies.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db.js';
@@ -90,18 +91,14 @@ router.get('/schedule-preview', async (req, res) => {
          AND COALESCE(t.scheduling_enabled, true) = true
          AND COALESCE(g.scheduling_enabled, true) = true
          AND COALESCE(gm.scheduling_enabled, true) = true
-         AND NOT EXISTS (
-           SELECT 1 FROM tasks child
-           WHERE child.parent_task_id = t.id
-             AND child.completed = false AND ${activeTaskSql("child.id")}
-         )
+
        GROUP BY t.id, t.title, t.goal_id, g.title, t.milestone_id, t.parent_task_id,
                 t.estimated_minutes, t.start_date, t.due_date, t.target_date, t.hard_deadline, t.priority`,
     ),
     query(
       `SELECT source_id as blocker_id, target_id as task_id
        FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}
-         AND EXISTS (SELECT 1 FROM tasks blocker WHERE blocker.id=source_id AND NOT blocker.completed)`,
+         `,
     ),
     query(
       `SELECT id, parent_task_id, goal_id, milestone_id, start_date, due_date, target_date, hard_deadline
@@ -138,11 +135,7 @@ router.get('/schedule-preview', async (req, res) => {
     .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
 
   // Build blocker map for scheduler
-  const blockerMap = new Map<string, string[]>();
-  for (const e of blockerEdges as { blocker_id: string; task_id: string }[]) {
-    if (!blockerMap.has(e.task_id)) blockerMap.set(e.task_id, []);
-    blockerMap.get(e.task_id)!.push(e.blocker_id);
-  }
+  const blockerMap = hierarchyDependencies(workSnapshot.hierarchy, blockerEdges as { blocker_id: string; task_id: string }[]);
 
   // Every saved calendar block consumes capacity. Restricting this to locked
   // events made the sidebar optimizer place suggested work over blocks the
@@ -168,7 +161,8 @@ router.get('/schedule-preview', async (req, res) => {
     }
   }
 
-  const schedulerInputTasks = (allSchedulerTasks as Record<string, unknown>[]).map(t => {
+  const schedulerInputTasks = (allSchedulerTasks as Record<string, unknown>[])
+    .filter(t => workSnapshot.hierarchy.summaries.get(String(t.id))?.executable).map(t => {
     const timeline = resolveTaskTimeline(t as Partial<TaskTimelineRow> & { id: unknown });
     const work = workSnapshot.accounting.get(String(t.id));
     return ({

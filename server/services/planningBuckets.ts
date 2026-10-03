@@ -1,10 +1,12 @@
 import { accountWork, type WorkInputs } from '../../shared/workAccounting.js';
+import { buildWorkHierarchy } from '../../shared/workHierarchy.js';
 export interface PlanningTaskInput extends WorkInputs {
   id: string;
   title: string;
   goal_id?: string | null;
   goal_title?: string | null;
   parent_task_id?: string | null;
+  time_rollup_mode?: string | null;
   milestone_id?: string | null;
   status?: string | null;
   priority?: string | null;
@@ -137,6 +139,7 @@ function compact<T>(items: T[], max: number): T[] {
 export function buildPlanningBuckets(
   tasks: PlanningTaskInput[],
   options: BuildPlanningBucketsOptions,
+  hierarchy = buildWorkHierarchy(tasks),
 ): PlanningBuckets {
   const horizonDays = options.horizonDays ?? 14;
   const nearDeadlineDays = options.nearDeadlineDays ?? horizonDays;
@@ -146,21 +149,21 @@ export function buildPlanningBuckets(
   const horizonEnd = addDays(options.today, horizonDays);
 
   const normalized = tasks
-    .map(t => normalizeTask(t, options.today))
+    .map(t => ({...normalizeTask(t, options.today),remaining_minutes:hierarchy.summaries.get(t.id)?.own.remaining_minutes??null}))
     .filter(t => t.remaining_minutes !== 0)
     .sort(sortByDeadlineAndPriority);
 
   const byId = new Map(tasks.map(t => [t.id, t]));
-  const isParent = (t: PlanningBucketTask) => t.child_count > 0;
+  const isParent = (t: PlanningBucketTask) => t.child_count > 0 || (hierarchy.children.get(t.id)?.length ?? 0) > 0;
   const isSchedulableLeaf = (t: PlanningBucketTask) => {
     const raw = byId.get(t.id);
-    return !isParent(t) && raw?.scheduling_enabled !== false && raw?.kind !== 'critical_path';
+    return hierarchy.summaries.get(t.id)?.executable && raw?.scheduling_enabled !== false;
   };
 
   const dueMap = new Map<string, PlanningBucketTask[]>();
   for (const t of normalized) {
     if (!t.deadline || t.deadline < options.today || t.deadline > horizonEnd) continue;
-    if (isParent(t)) continue;
+    if (!isSchedulableLeaf(t)) continue;
     if (!dueMap.has(t.deadline)) dueMap.set(t.deadline, []);
     dueMap.get(t.deadline)!.push(t);
   }
@@ -186,35 +189,24 @@ export function buildPlanningBuckets(
       };
     });
 
-  const childrenByParent = new Map<string, PlanningTaskInput[]>();
-  for (const task of tasks) {
-    if (!task.parent_task_id) continue;
-    if (!childrenByParent.has(task.parent_task_id)) childrenByParent.set(task.parent_task_id, []);
-    childrenByParent.get(task.parent_task_id)!.push(task);
-  }
-  const descendantDeadlines = (taskId: string) => {
-    const dates: string[] = [];
-    const queue = [...(childrenByParent.get(taskId) ?? [])];
-    const seen = new Set<string>([taskId]);
-    while (queue.length) {
-      const descendant = queue.shift()!;
-      if (seen.has(descendant.id)) continue;
-      seen.add(descendant.id);
-      const { deadline } = resolvePlanningDeadline(descendant);
-      if (deadline) dates.push(deadline);
-      queue.push(...(childrenByParent.get(descendant.id) ?? []));
+  // Summaries are inserted child-first; aggregate dates without repeated subtree walks.
+  const deadlineTotals = new Map<string, { first: string | null; last: string | null; count: number }>();
+  const parentRollups: ParentRollupTask[] = [];
+  for (const row of hierarchy.summaries.values()) {
+    let first: string | null = null; let last: string | null = null; let count = 0;
+    for (const childId of row.child_ids) {
+      const child = byId.get(childId); const nested = deadlineTotals.get(childId);
+      const date = child ? resolvePlanningDeadline(child).deadline : null;
+      for (const value of [date, nested?.first]) if (value && (!first || value < first)) first = value;
+      for (const value of [date, nested?.last]) if (value && (!last || value > last)) last = value;
+      count += (date ? 1 : 0) + (nested?.count ?? 0);
     }
-    return dates.sort();
-  };
-  const parentRollups = normalized.filter(t => isParent(t)).map(parent => {
-    const dates = descendantDeadlines(parent.id);
-    return {
-      ...parent,
-      earliest_child_deadline: dates[0] ?? null,
-      latest_child_deadline: dates.at(-1) ?? null,
-      dated_descendant_count: dates.length,
-    };
-  });
+    deadlineTotals.set(row.id, { first, last, count });
+    const raw = byId.get(row.id); if (!raw) continue;
+    const parent = normalizeTask(raw, options.today); if (!isParent(parent)) continue;
+    parentRollups.push({ ...parent, remaining_minutes: row.remaining_minutes,
+      earliest_child_deadline: first, latest_child_deadline: last, dated_descendant_count: count });
+  }
 
   const backgroundFillers = normalized
     .filter(t =>
@@ -246,7 +238,7 @@ export function buildPlanningBuckets(
     rules_summary: [
       'A task is due on a date only when its own hard_deadline, target_date, or due_date is that date.',
       'Large future-deadline tasks should be described as slices to start/continue before the deadline, not as due today.',
-      'Parent tasks are rollups when they have incomplete children; schedule leaf subtasks when possible.',
+      'Parent totals count included children once; schedule executable children and any separate residual parent work.',
       'An undated parent can still be time-sensitive: use its earliest child deadline for urgency and its latest child deadline as the last known rollup cutoff.',
       'Far-deadline or undated large tasks are background fillers: use small slices only after urgent work fits.',
     ],

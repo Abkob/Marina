@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { query } from '../db.js';
+import { query, transaction } from '../db.js';
 import { SKIP_INTEGRATION, startTestServer, stopTestServer } from './setup.js';
 import { EMBED_MODEL } from '../config/providers.js';
 import { searchDocuments } from '../services/documentRag.js';
@@ -106,7 +106,12 @@ describe.skipIf(SKIP_INTEGRATION)('resource relationships with real PostgreSQL',
     expect(result.resources[0].tasks_has_more).toBe(true); expect(result.missing_resource_ids).toEqual([unavailable]);
   });
   it('terminates malformed parent cycles and deduplicates repeated ownership paths', async () => {
-    await query('UPDATE tasks SET parent_task_id=$2 WHERE id=$1', [parent,child]);
+    // Legacy malformed data predates M033. Re-enable validation before testing reads.
+    await transaction(async client => {
+      await client.query('ALTER TABLE tasks DISABLE TRIGGER task_hierarchy_guard');
+      await client.query('UPDATE tasks SET parent_task_id=$2 WHERE id=$1', [parent,child]);
+      await client.query('ALTER TABLE tasks ENABLE TRIGGER task_hierarchy_guard');
+    });
     const a = await resource('task',child); await link('task',child,'resource',a,'mentions');
     expect(await found({ task_id: parent, include_subtasks: true })).toEqual([a]);
     expect((await readResourceContext([a])).resources[0].tasks).toHaveLength(1);

@@ -1,10 +1,10 @@
+import { buildWorkHierarchy } from '../../shared/workHierarchy';
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CalendarCheck2, CalendarClock, ChevronRight, GripVertical, Search } from 'lucide-react';
 import type { DBGoal, DBTask } from '../db/schema';
 import { buildTaskForest, filterForest, type TaskTreeNode } from '../utils/taskTree';
 import { useAppStore } from '../store/useAppStore';
-import { getRolledUpActualTime, getRolledUpTime } from '../utils/taskTime';
 import { getDescendantTaskDeadlineSummary, type DescendantTaskDeadlineSummary } from '../utils/taskDates';
 import { taskContextMap } from '../utils/taskContext';
 
@@ -163,6 +163,7 @@ function SelectableRow(props: Parameters<typeof RowBody>[0] & { selected: boolea
 
 export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, onSchedule, draggableIds, scheduledDates, searchPlaceholder, hideGoalHeaders = false, includeCriticalPath = false }: TaskTreeProps) {
   const [q, setQ] = useState('');
+  const workHierarchy = useMemo(() => buildWorkHierarchy(tasks), [tasks]);
   const [openGoals, setOpenGoals] = useState<Set<string>>(new Set());
   const [closedNodes, setClosedNodes] = useState<Set<string>>(new Set());
 
@@ -195,10 +196,10 @@ export function TaskTree({ tasks, goals, mode, selectedTaskId, onSelect, onSched
       scheduledOn: scheduledDates?.get(task.id),
       muted,
       mutedReason: muted
-        ? (hasChildren ? `${task.title} — plan its subtasks instead` : `${task.title} — kept out of scheduling`)
+        ? (hasChildren ? `${task.title} — no separate schedulable work` : `${task.title} — kept out of scheduling`)
         : undefined,
-      estimatedMinutes: getRolledUpTime(task, tasks).minutes,
-      loggedMinutes: getRolledUpActualTime(task, tasks).minutes,
+      estimatedMinutes: workHierarchy.summaries.get(task.id)?.estimated_minutes ?? null,
+      loggedMinutes: workHierarchy.summaries.get(task.id)?.logged_minutes ?? null,
       childDeadlines: hasChildren ? getDescendantTaskDeadlineSummary(task.id, tasks) : null,
     };
     return (
