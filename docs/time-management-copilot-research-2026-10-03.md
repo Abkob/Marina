@@ -6,6 +6,8 @@ Research and implementation recommendation, 3 October 2026. Current Marina sourc
 
 **Status:** research and proposed design. No new runtime capability, dependency, schema, model deployment or production reindexing is delivered by this document.
 
+The follow-up [section-by-section implementation game plan](time-management-copilot-implementation-plan-2026-10-03.md) translates the recommendation into 26 work packages with 78 detailed frontend/backend sections, test and stress oracles, dependencies, rollout gates and checkpoint prompts. Its coverage matrix also includes the complete chatbot experience and existing application domains. All proposed implementation checkboxes remain open until their recorded acceptance evidence exists.
+
 ## 1. Recommendation
 
 Keep Marina's current TypeScript application, Google Drive originals, Neon database, selected chat models and reviewable Apply workflow. The next substantial addition should connect **what the work involves**, **what remains**, **what it might take**, and **what time is actually available**.
