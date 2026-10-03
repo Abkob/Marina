@@ -22,7 +22,7 @@ The audit has 221 cases: **217 ordinary passing checks and 4 expected failures**
 | `conversation.test.ts` | Actual tool loop and proposal validation with scripted model responses; mixed source/task observations, entity-type confusion, retry and round limits |
 | `candidateIndex.ts` | Experimental helpers only; never imported by application code |
 
-Remaining expected-failure issue IDs: RAG-02, RAG-03, VIS-01, VIS-02, PLAN-01, PLAN-02, CHAT-01. Native extraction still omits images; the new on-demand OCR/vision tools are separate from automatic indexing. IDX-01 (3 cases), IDX-02, IDX-03 (3), IDX-04, EMBED-01 and RAG-01 were repaired.
+Remaining expected-failure issue IDs: **RAG-02, VIS-01, VIS-02 and CHAT-01**. VIS-01/VIS-02 exercise the native-text PDF primitive, which still omits embedded images; automatic structured ingestion and selected-page OCR/vision are covered separately. RAG-03, PLAN-01 and PLAN-02 now have ordinary passing regression checks. IDX-01 (3 cases), IDX-02, IDX-03 (3), IDX-04, EMBED-01 and RAG-01 were also repaired. See the implementation document's [limitations inventory](../../docs/copilot-implementation-2026-10-03.md#7-limitations-in-plain-language) for the practical impact and remaining work.
 
 The retrieval tests do not execute SQL or measure embedding quality. Their controlled rankings expose the behavior of the application when a candidate set has those properties. Scripted conversation tests measure software contracts, not a model's ability to choose the right tool or resist every injection.
 

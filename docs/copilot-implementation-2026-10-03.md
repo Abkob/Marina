@@ -139,3 +139,187 @@ Current scaling limits remain explicit:
 - OAuth expiry and provider availability remain operational dependencies. UI status exposes failed checks and incomplete evidence.
 
 The implementation is designed for measurable recovery and explicit limits, rather than a claim of zero defects.
+
+## 7. Limitations in plain language
+
+This inventory was checked against the repository on 3 October 2026, after application commit `489a7aa` and documentation update `669e1ac`. It covers the reviewed upload, Drive, ingestion, retrieval, Copilot, scheduling and recovery paths. It records identifiable limits rather than claiming to enumerate every possible bug. No production data was changed for this documentation audit.
+
+The labels matter: a **hard limit** is an enforced cap; a **tradeoff** is intentional behavior with a cost; a **known defect** has a reproduced failing expectation; an **unvalidated capability** has not been demonstrated at the claimed scale or quality. A proposed improvement below is not a feature already delivered.
+
+### 7.1 File sizes and supported formats
+
+**Hard limits.** Uploads accept up to **50 MiB per file** (52,428,800 bytes; the interface calls this “50 MB”). That is unrelated to the amount of free space in Google Drive. Interactive visual inspection has a smaller limit: **25 MiB for a PDF original**, or **8 MiB for a standalone image**. A 40 MiB PDF can therefore be accepted and processed in the background but rejected when chat tries to inspect one of its original pages live. The page-inspection path currently downloads the whole PDF to render that page.
+
+PDF, UTF-8 TXT/MD/CSV, PNG, JPEG, GIF and WebP are accepted upload types. Acceptance does not imply equal analysis support:
+
+- PDF, PNG, JPEG and WebP enter the automatic visual path when configured. GIF can be saved but is not supported by that path or the selected-page inspection tool; convert it to PNG/JPEG for analysis.
+- The default detector OCR accepts PNG/JPEG, not WebP. A WebP image can receive visual interpretation while its OCR role fails; conversion to PNG/JPEG avoids that particular mismatch. Merely accepting WebP does not guarantee complete specialist coverage.
+- Direct DOCX/XLSX/PPTX, archives, audio and video are not handled by this resource upload/indexing path. Export relevant material to a supported format. Native Google Docs, Sheets and Slides are exported to PDF, so analysis sees the export, not editable spreadsheet formulas, hidden sheets or slide interactions as structured application objects.
+- Password-protected PDFs cannot be indexed without an unlocked copy. Corrupt files, mismatched signatures and empty files are rejected or fail processing. Google can also refuse a native export under its own rules; the app's 50 MiB cap does not override provider restrictions.
+
+**Practical response:** export/unlock/convert a source when needed. Raising a byte limit alone would not fix the download, memory, rendering and timeout constraints. Sources: [upload policy](../shared/uploadPolicy.ts), [Drive export](../server/services/googleDriveClient.ts), [file validation](../server/services/uploadValidation.ts), [original-page inspection](../server/services/documentReading.ts), [OCR](../server/services/nvidiaEvidence.ts).
+
+### 7.2 Folder organization and selected context
+
+**Tradeoff.** Drive originals must be descendants of the stored Marina root ID. A shortcut to an outside file is not accepted as proof that the original belongs to Marina. Missing access, a trashed root, ambiguous parents, duplicate managed folders or excessively deep hierarchies stop the operation. The ancestry walk is bounded to 64 visited items; resolving task ancestry permits at most 48 task nodes. These are safety bounds, not recommended folder depths.
+
+Directory refresh reads ten entries at a time and limits its pending traversal queue to 200 folders. This is a queue-width bound, **not a 200-file library cap**. Very broad folder trees may require selecting a smaller goal/task folder. The browser continues the paginated refresh; leaving or changing context stops further client requests. Already queued indexing jobs continue, but undiscovered files may wait until the folder is selected again.
+
+The `@` interface currently selects one goal, task or document at a time. Its chooser lists up to 20 matching items of each kind and searches names by text; semantic document discovery happens in the assistant's retrieval tools, not in that chooser. Task subfolders require the include-subtasks option. Changing context also excludes earlier differently scoped turns from the model's active history, even though those turns remain visible in the chat.
+
+Existing Blob files were not moved into Drive, and old Drive originals were not automatically reorganized. Adding a reference does not move the file. Directory import can add a goal/task reference without removing earlier references. Folder identity is based on saved IDs; this is not a complete bidirectional file-manager synchronization system that automatically renames, relocates and removes every old relationship.
+
+**Practical response:** select the smallest useful context, search the chooser by a more specific name and check import/refresh status. Sources: [folder refresh](../server/services/driveDirectoryScan.ts), [client refresh lifecycle](../src/hooks/useResourceDirectory.ts), [root guard](../server/services/driveAncestry.ts), [folder creation](../server/services/driveFolders.ts), [chooser](../src/components/ResourceContextPicker.tsx).
+
+### 7.3 Freshness and external changes
+
+**Tradeoff.** Drive synchronization is based on checks, not a push notification for every edit. The Inngest recovery function is configured every ten minutes and checks ten saved Drive resources per run by default, oldest checked first. Those ten resources are not the entire library. If that background path were the only trigger, checking 1,000 unchanged resources would take roughly 100 successful runs, or about 16 hours 40 minutes. That arithmetic describes the configured batch size, not a promised delay: selecting a resource/folder and other maintenance paths also perform checks.
+
+A successful ancestry/access check proves the file is still inside Marina and accessible. It does not, by itself, refresh its indexed content to the latest Drive version. Until synchronization detects an edit, a search can return older evidence. Once the change is detected, the document is queued again. Google access expiry, API errors and rate limits can delay checks or prevent reading even when passages exist in Neon.
+
+**Practical response:** select or explicitly sync the relevant source before relying on a recent edit, then wait for its processing status. A scalable freshness improvement would use provider change tracking and a measured refresh backlog. Sources: [Drive synchronization](../server/services/googleDrive.ts), [recovery cadence](../server/routes/resourceWorkflows.ts), [candidate access checks](../server/services/driveResourceAccess.ts).
+
+### 7.4 Indexing cost, waiting and recovery
+
+**Tradeoff.** Saving a file, finishing searchable text and completing visual analysis are separate states. Jobs are asynchronous. The configured Inngest processing concurrency is two stage invocations; each extraction invocation advances one page, and each embedding invocation handles up to three missing chunk embeddings. A large book can therefore require many downloads, model calls, database operations and durable executions. Configured concurrency is not a measured documents-per-hour throughput.
+
+Each page invocation currently downloads/materializes the original again. Initial PDF text extraction reads the document before staging its pages, and final publication gathers its page evidence into chunks. There is no dedicated parsing service or immutable intermediate page cache. The whole-file hash also means a one-page edit can repeat specialist work across the document. These are concrete efficiency limits before terabyte-scale use.
+
+Previous chunks are preserved until replacement publication, but normal search and `read_document` require the resource job to be `ready`. Starting re-indexing therefore creates a **temporary search gap** for that document; preserved data does not mean the old index remains served while a replacement builds. A failed replacement can leave it unavailable to normal search until repaired, although an accessible validated original may still be inspected within the visual tool's size limits.
+
+Worker failures and missing visual roles have bounded retry paths, generally three processing attempts for the relevant stage/page; successful roles are retained. Inngest has its own retries too, so “three” is not a promise of at most three HTTP requests across an entire document. Some failures need a manual retry. A document may reach searchable status with failed visual pages; inspect the separate visual coverage counts. Keeping the original safe does not guarantee analysis will finish successfully or by a particular time.
+
+**Practical response:** monitor processing errors and coverage, and upgrade old books deliberately. Highest-value improvements are cached originals/pages, page-level change detection, a versioned index that can keep serving the last verified generation, and measured queue/cost controls. Sources: [worker](../server/services/resourceProcessing.ts), [structured ingestion](../server/services/structuredIngestion.ts), [dispatch](../server/services/resourceDispatch.ts), [workflows](../server/routes/resourceWorkflows.ts), [search readiness](../server/services/documentRag.ts).
+
+### 7.5 Visual understanding and OCR accuracy
+
+**Quality limits.** Rendering lets the visual model see PDF images, but does not make it infallible. Pages are scaled to fit 1,600 by 2,200 pixels with an upscale ceiling of 2. Tiny chart labels, dense engineering drawings and small mathematical notation can lose detail. The current tool examines a whole physical page; it does not provide an automatic zoom/crop investigation workflow.
+
+OCR is automatically added when native page text has fewer than 80 trimmed characters. A page with abundant native text plus a small scanned inset does not necessarily receive detector OCR; Parse and Omni still run, but may miss exact text in that inset. Detector OCR output is bounded to 150 regions and about 12,000 characters. Truncation is flagged as incomplete coverage; retrying the same dense page is not a substitute for splitting/cropping it. Structure and visual responses also have output limits.
+
+Descriptions of figures are embedded as **text**. There is no separate visual embedding index that can retrieve an image detail never captured in those descriptions. Tables are extracted as model text/markup, not a validated spreadsheet cell graph. Descriptions can omit relationships, duplicate headings, misread a minus sign or infer the wrong trend. Cross-page figures and tables are not automatically reconstructed into one verified object.
+
+Chat can inspect a known page on demand, including before indexing is ready, but it must choose the tool and the original must be supported and accessible. If visual interpretation fails, selected-page inspection may return OCR instead, with a warning. Reading labels is not evidence that shapes, colors or spatial relationships were understood. Physical PDF page numbers can differ from the numbers printed inside the book.
+
+**Practical response:** name the figure/page, inspect the source and verify important numbers. Useful future work includes high-resolution crops, visual retrieval evaluation and structured table validation. Sources: [rendering](../server/services/pdfText.ts), [specialist limits](../server/services/nvidiaEvidence.ts), [OCR trigger](../server/services/structuredIngestion.ts), [inspection/fallback](../server/services/documentReading.ts).
+
+### 7.6 Chunking, embeddings and database growth
+
+**Tradeoff.** Structured chunks preserve page and evidence-kind boundaries and prefer headings/paragraphs before splitting at 2,000 characters. That ceiling counts characters, not model tokens or complete ideas. A long proof, table or explanation can still span multiple chunks or pages. The new structured splitter does not add a guaranteed overlap between every chunk; the assistant may need neighboring passages to interpret a small excerpt correctly.
+
+Full resource-chunk content is now embedded with its title, section and page metadata; it is no longer cut to the former 600-character prefix. Older vectors are not magically regenerated when code is deployed. Explicit re-indexing upgrades older embedding inputs. Other entity types have their own shorter summaries—for example, a note's embedding input currently uses the first 500 content characters—so improving resource chunks does not make every workspace search exhaustive.
+
+Embeddings currently use the configured Gemini embedding model at 3,072 dimensions, independently of the chosen chat model. A Kimi/NVIDIA chat key does not replace the Gemini embedding dependency. Choosing another chat model does not change existing vectors. Changing the embedding model requires a compatible re-index/migration; vectors from different models cannot be assumed comparable merely because they have the same length.
+
+Neon stores passages, evidence, metadata and vectors; Drive stores originals. There is no fixed conversion from “50 GB of PDFs” to a database size. A scan-heavy library and a text-heavy library produce different indexes; multiple evidence kinds can repeat information. Index storage, query indexes, retained page generations, chat history and backups add overhead. No terabyte capacity or bill prediction follows from the available Drive space.
+
+**Practical response:** measure chunk counts, database size, indexing time and retrieval accuracy on representative documents before changing models or scaling up. Sources: [structured splitter](../server/services/documentElements.ts), [chunk reuse](../server/services/chunkPipeline.ts), [embedding inputs](../server/routes/embeddings.ts), [embedding provider](../server/embeddingProvider.ts).
+
+### 7.7 Retrieval, comparisons and evidence quality
+
+**Hard limits and known defect.** A document search accepts up to 20 explicit document IDs, sends at most 60 merged candidates to reranking and returns at most 12 passages. `read_document` returns at most eight chunks per call, with a continuation cursor. Those are per-call budgets, not limits on how many documents can be stored. A goal can contain many more than 20 documents, but a single answer still sees a bounded selection.
+
+The system combines lexical and vector candidates and can reserve coverage across requested sources. This does not guarantee the best passage, every selected source or a tiny exception buried in a long book will reach the answer. Twenty requested documents cannot all have a passage in one 12-result response. Balanced source coverage also does not prove relevance. Large comparisons and “find every exception” questions require iterative searches/reads and remain limited by the turn budget.
+
+**RAG-02 remains reproduced:** an unrelated vector candidate can be returned because there is no calibrated relevance/abstention gate. For example, the audit asks about quasar radio emission and supplies an unrelated baking passage; the search does not reliably discard it. Reranking scores rank candidates and are not correctness probabilities. The assistant can also confuse similar mathematical terms or source titles.
+
+Lexical search uses PostgreSQL's `simple` text-search configuration; it is not a complete multilingual synonym/word-form engine. If query embedding fails, search can fall back to lexical candidates with `vector_degraded` reported. If reranking fails, fused candidates remain with an unavailable status. These preserve partial service, not equivalent answer quality. Empty search results cannot prove a topic is absent from all files, especially if indexing is incomplete or scope excludes them.
+
+**Practical response:** narrow the question, select relevant goals/files, request neighboring pages and review citations. Priorities are a labeled relevance/abstention evaluation, stronger long-document and multi-source tests, and explicit coverage reporting. Sources: [retrieval](../server/services/documentRag.ts), [reading/discovery](../server/services/documentReading.ts), [tool schemas](../server/services/copilotTools.ts), [RAG-02 reproduction](../audits/copilot/retrieval.test.ts).
+
+### 7.8 Conversation memory, prompting and research depth
+
+**Hard limits and tradeoffs.** A session message is limited to 16,000 characters. The server fetches at most the most recent 100 stored chat messages; model history is then reduced by complete turns toward a 32,000-character budget, retaining the newest turn even if it is large. Older visible conversation is therefore not guaranteed to be in the model's current context. There is no claim of unlimited long-term conversational memory. Changing resource scope further restricts active history to the contiguous matching context.
+
+The tool protocol allows at most three tool calls in one model reply and normally three fresh read rounds, with bounded format/proposal repair and additional research-verification allowances. Encoded tool observations must remain below 50,000 characters for one observation and at most 70,000 cumulatively. Exhausting these budgets can produce a partial answer, a clarification or an error instead of a complete book-by-book investigation.
+
+The 3,923-character core prompt is only the initial system component. Resource rules raise it to 13,017 characters; additional domains, history and retrieved evidence add more. These are measured characters, not tokens or a guarantee of response time. Domain discovery also depends on the model calling the appropriate tools. Modular prompts remove unnecessary overhead but do not make every tool decision correct.
+
+**Practical response:** split broad investigations into stages and restate essential constraints when changing context or revisiting an old conversation. A future long-running research workflow would need its own resumable plan and coverage checks. Sources: [conversation loop/history](../server/services/copilotConversation.ts), [context budgets](../server/services/copilotContextWire.ts), [session route](../server/routes/ai.ts), [scope history](../server/services/scopedConversation.ts).
+
+### 7.9 Model availability, timeouts and model choices
+
+**Operational limits.** NVIDIA chat calls have a default 90-second timeout, configurable by the deployment, and share a 180-second deadline across the model calls in one conversation turn. Individual tools have separate timeouts, so this is not an exact end-to-end wall-clock promise. The Vercel function is configured for a maximum duration of 300 seconds. Raising one timeout does not increase every other deadline or remove a provider queue.
+
+Specialist call budgets differ: reranking uses eight seconds; detector OCR twenty; Parse twenty-five; ordinary visual interpretation thirty-five; Kimi visual interpretation sixty. Long/dense outputs can hit generation limits before a final answer appears. The normal conversation requests 6,000 output tokens, or 16,384 for Kimi; reasoning can consume part of the provider's allowance. Empty, interrupted or invalid model output is reported as failure after bounded recovery attempts.
+
+The current model-led Copilot deliberately does not automatically switch chat models on failure. It can retry an eligible transient failure with the same model. A fallback displayed elsewhere in provider configuration does not mean this conversation uses it. Choose another available model if a selected endpoint cannot respond. A model appearing in the picker does not guarantee the key has access or that its endpoint is healthy.
+
+Per-chat OCR/vision/structure settings govern interactive inspection. Background indexing uses server defaults; changing the picker does not rerun old documents or retroactively alter their descriptions. The release does not install LlamaIndex, Docling, a local visual model or an OpenAI MCP service. No provider price, free-tier permanence, throughput entitlement or service-level guarantee was established by the code audit.
+
+**Practical response:** use model traces and explicit errors to distinguish timeouts, access failures, malformed output and slow retrieval. Sources: [provider calls](../server/ollama.ts), [NVIDIA transport](../server/services/nvidiaTransport.ts), [specialists](../server/services/nvidiaEvidence.ts), [role selection](../server/services/copilotModelRoles.ts), [Vercel configuration](../vercel.json).
+
+### 7.10 Scheduling, action proposals and Google synchronization
+
+**Tradeoff.** The planner enforces the reviewed dependency/capacity constraints on the supplied data. It does not know unrecorded commitments, your true task duration, travel time or an undeclared prerequisite. Missing estimates are not proof that a task requires no time. Incorrect input can produce a logically consistent but impractical plan. Reading a resource does not itself create a verified task estimate or mark its prerequisite complete.
+
+Day allocation and placement into actual clock intervals are separate steps. Enough total minutes in a day does not prove there is a suitable free interval. The clock layout skips available slivers shorter than fifteen minutes by default and may leave work unplaced. Plans also operate within bounded date windows. The algorithm makes local placement choices rather than solving a global optimization objective; a feasible alternative or better arrangement can exist even when the current preview is poor or partial.
+
+Conversational workspace reads are bounded too: `find_tasks` pages at up to 50 tasks, `task_details` accepts up to 20 requested IDs and returns at most 100 task rows including related work, and `schedule_range` reads at most 200 day-level tasks, 200 events and 100 meetings per call. These are tool-result limits, not database or solver capacity guarantees. A broad answer about “everything in my schedule” must not imply it reviewed rows beyond those limits; narrower windows and follow-up reads may be necessary.
+
+**CHAT-01 remains reproduced:** proposal preparation collects observed IDs without fully distinguishing resource IDs from task IDs. The scripted audit can obtain an `update_task` proposal containing an observed resource ID before Apply. This is a missing early validation check, not evidence that the audit successfully changed a task. The server's Apply validation remains the authoritative write boundary. A proposal review model can also misunderstand intent; its approval is not a proof of correctness. Review target, dates and scope before Apply.
+
+Google Calendar/Tasks synchronization is a separate operation from generating or applying a Marina plan. Changes on both sides can create conflicts; a remote deletion can be retained as a decision instead of deleting the Marina task. A partial or failed sync does not imply both systems now match. Planner accuracy depends on the commitments actually present in Marina. Large simultaneous-edit and cross-provider failure behavior was not exhaustively validated in this release.
+
+**Practical response:** maintain estimates/dependencies, review unplaced work, inspect proposals and check sync status. Next work should prioritize typed entity validation before proposal creation and benchmarked scheduling-quality comparisons. Sources: [scheduler](../server/services/scheduler.ts), [clock layout](../server/services/planLayout.ts), [workspace tool limits](../server/services/copilotTools.ts), [proposal preparation](../server/services/copilotConversation.ts), [CHAT-01 reproduction](../audits/copilot/conversation.test.ts), [Google sync](../server/services/googleWorkspaceSync.ts).
+
+### 7.11 Source cards, citations and interface behavior
+
+**Tradeoff.** Source cards record evidence a tool actually returned, but “consulted” does not establish that every sentence of the answer is supported by that evidence. There is no complete claim-by-claim entailment verifier. Inline citations are model-authored Markdown; the renderer repairs one observed bracket mistake and validates links, not every possible malformed citation.
+
+Saved excerpts are capped at 1,200 characters per citation; cards initially show 360, and only the first two document cards are expanded into the main list. “Read excerpt” expands the saved excerpt, not the whole book. The original/page preview points to the current file, which may have changed since the answer. A saved excerpt and generation label are not an immutable archived copy of the original PDF. Browser PDF viewing and page anchors can behave differently across devices.
+
+Replies render after the backend finishes; upstream model streaming does not currently provide token-by-token chat output. Raw HTML and remote images in model Markdown are intentionally disabled. Source-page previews are available, but this release does not automatically insert cropped figures into the answer. Processing status uses polling, so updates need not appear instantly.
+
+The production frontend still emits a large-bundle warning. Mobile, keyboard and source-preview checks covered selected paths, not every device, browser, screen reader or lengthy chat. Interface correctness and accessibility remain subjects for broader testing.
+
+**Practical response:** use the page/original link for full context and distinguish evidence excerpts from answer claims. Sources: [citation extraction](../server/services/documentCitations.ts), [source cards](../src/components/CopilotSources.tsx), [Markdown renderer](../src/components/CopilotMarkdown.tsx), [index status](../src/components/resource-profile/SemanticIndexPanel.tsx).
+
+### 7.12 Cloud dependencies, backups and recovery
+
+**Operational limits.** Drive, Neon, Vercel, Inngest and the model/embedding services have separate availability, credentials and quotas. A successful upload, Git push or Vercel build does not prove the indexing queue, provider calls, automatic backup and Google synchronization all succeeded. Application request rate limits are currently in-memory per server process, not a distributed budget across all Vercel instances. They cannot serve as a reliable account-wide spending ceiling.
+
+The verified pre-migration dump protects the database checkpoint; it is not a fresh backup of every Drive original. A complete portable backup separately reads referenced files, creates a ZIP in private storage and verifies the uploaded archive by reading it back. Missing/inaccessible originals or expired Drive access can abort that operation. Database rows are read in a consistent database snapshot, but external files are read afterwards; it is not one atomic point-in-time snapshot across Drive and Neon.
+
+Automatic backup is configured daily. Configuration alone is not proof the latest scheduled run succeeded; use a recent verified receipt. Full archives are not silently rotated, so retained backups also consume storage. Large exports/downloads and verification need time and bandwidth and are not proven to fit serverless limits for a huge library. A scalable backup strategy needs incremental originals, retention decisions, monitoring and restore exercises.
+
+Portable archives intentionally omit Google OAuth credentials and sync identifiers; reconnection is required after restore. Checksum verification establishes archive integrity, not that all provider connections and workflows will resume without setup. No production disaster-recovery time or maximum acceptable data-loss interval was measured here.
+
+**Practical response:** monitor last successful indexing, synchronization and verified backup separately; test restoration into an isolated database. Sources: [job dispatch](../server/services/resourceDispatch.ts), [rate limiter](../server/utils/rateLimit.ts), [scheduled backup](../server/services/scheduledBackup.ts), [portable archive](../server/services/portableBackup.ts), [cloud verification](../server/routes/backups.ts).
+
+### 7.13 Privacy, access and security boundaries
+
+**Design boundary.** Marina currently uses a private-workspace password gate and a primary Google connection. Goal/task resource scope narrows evidence selection; it is not separate per-user ownership or a complete multi-tenant permissions system. Scheduling can still read task and calendar facts outside the selected document context to calculate occupancy. The Drive root restriction is an application check, not a reduction of the OAuth grant itself to that folder.
+
+Hosting the UI locally or keeping originals in your Drive does not make processing local. In the cloud configuration, retrieved text can go to the chat/reranking provider, rendered pages to NVIDIA specialists, and embedding inputs to Gemini. The current embedding implementation still needs Gemini even with local chat. This audit did not establish provider retention/training policies or legal compliance; it documents where the implementation sends data.
+
+Source text is treated as untrusted and tool arguments/actions are validated. Those defenses and scripted injection tests do not prove immunity to every malicious document or model error. Moving a file outside the root prevents new guarded reads; it does not erase excerpts already saved in prior chat history. Sharing the workspace or extending it to multiple users needs an explicit authorization/data-retention design and security review.
+
+Sources: [workspace authentication](../server/utils/auth.ts), [Drive scopes](../server/services/googleDriveClient.ts), [scope enforcement](../shared/resourceScope.ts), [provider configuration](../server/config/providers.ts), [embedding calls](../server/embeddingProvider.ts).
+
+### 7.14 What the tests establish—and what remains unknown
+
+The dedicated synthetic audit was rerun for this inventory: **217 ordinary passing cases plus four expected-failure reproductions**. Vitest reports the expected failures as passes, yielding 221 reported passes. They are:
+
+| Issue | Meaning | Current status |
+| --- | --- | --- |
+| RAG-02 | An unrelated vector passage can survive retrieval. | Open relevance/abstention defect. |
+| CHAT-01 | A resource ID can reach proposal preparation as a task ID. | Open early-validation defect; Apply is still required. |
+| VIS-01 | Native PDF text extraction misses a code printed only inside an image. | Expected limit of that primitive; structured visual ingestion is separate. |
+| VIS-02 | Native PDF text extraction misses embedded chart labels. | Expected limit of that primitive; not proof that the visual pipeline fails or is always correct. |
+
+The earlier first-1,000-row research search and scheduling cycle/dependency reproductions (RAG-03, PLAN-01, PLAN-02) now pass as ordinary regression checks. They should not remain listed as current expected failures.
+
+The 1,214-unit and 167-integration results in section 6 are the implementation validation record; this documentation-only pass reran the dedicated audit, not the entire application suite. Integration tests use real PostgreSQL and HTTP behavior but mock external providers/storage. Scripted models test contracts, not real-model reasoning quality. The live visual fixture and one 6.9-second production document answer establish specific successful paths, not average/tail latency, accuracy across subjects or large-library throughput. The latter answer used Nemotron Super and does not benchmark Kimi.
+
+Not demonstrated: a thousand-document or terabyte ingestion run; a labeled multilingual/long-book/chart accuracy benchmark; a sustained concurrent-user load test; exhaustive mobile/accessibility coverage; a broad adversarial security assessment; and a full production-scale restore drill. Capacity should be measured using representative files, costs, queue lag, retrieval recall, supported citations and failure recovery before promising those capabilities.
+
+### 7.15 Suggested order for further work
+
+1. **Correctness:** reject wrong entity types before proposals; add evaluated relevance/abstention checks; make saved/searchable/partial-visual states unmistakable.
+2. **Large-file efficiency:** cache originals/rendered pages, detect changed pages and keep serving the last verified index while a replacement is built.
+3. **Freshness and operations:** measure the sync backlog; introduce change-based discovery, distributed processing/cost budgets and verified backup alerts.
+4. **Visual quality and research depth:** add detailed crops, table validation and representative multi-document/long-book evaluation; design resumable investigations for queries that exceed one turn.
+5. **Scale validation:** load-test increasing library sizes, review database/index and backup growth, and run restore and accessibility checks before making larger capacity claims.
+
+These are recommendations for subsequent implementation. This limitations update changes documentation only.
