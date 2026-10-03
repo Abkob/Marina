@@ -55,14 +55,14 @@ Vitest reports expected-failure assertions as passes. The receipt subtracts them
 
 ## Current arithmetic and identity consumers
 
-This inventory reflects completed P03.1 own-task accounting changes. Recheck call sites before the remaining P03/P17 work.
+This inventory reflects delivered P03.1 own-task accounting and P03.2 hierarchy changes. P03.2 is reopened for chatbot-answer and provider-recovery acceptance; deployed arithmetic alone does not close it. Recheck call sites before the remaining P03/P17 work.
 
 | Entry point | Current behavior / downstream consumers | Follow-up |
 | --- | --- | --- |
-| [AI context](../../server/routes/ai.ts), task summaries and retrieval | Shared own-task accounting; exhausted/stale forecasts remain unknown. Goal contexts retain known subtotals and unknown counts. | P03.1 completed; P03.2 retains hierarchy aggregation work. |
+| [AI context](../../server/routes/ai.ts), task summaries and retrieval | Shared own/subtree accounting; exhausted/stale forecasts remain unknown. Goal contexts retain known subtotals and unknown counts. | P03.1 complete; P03.2 must now verify these facts through the final chatbot answer. |
 | Same file, `loadSchedulerInputs` | Shared database snapshot separates remaining work, eligible reservations and new calendar demand. | P03.1 completed; broader scenario freshness remains P17. |
 | [Schedule preview](../../server/routes/schedule-preview.ts) | Same accounting loader as chat; direct task links, current versions, effective dates and explicit shared allocations. | P03.1 completed; overlapping interval union remains P03.3. |
-| [Planning buckets](../../server/services/planningBuckets.ts) | Shared arithmetic; unfinished overruns remain visible. | P03.1 completed; hierarchy selection remains P03.2. |
+| [Planning buckets](../../server/services/planningBuckets.ts) | Shared residual/hierarchy arithmetic; unfinished overruns remain visible. | P03.2 arithmetic delivered; answer consistency remains open. |
 | [Event autofill](../../src/utils/eventAutofill.ts), task/goal time displays | Shared forecasts and authoritative recorded work; no implicit completion or historical-velocity multiplication. | P03.1 completed; see [checkpoint](../../docs/planning-checkpoints/P03.1.md). |
 | [Estimate suggestions](../../server/services/estimateSuggest.ts) | Same-goal/global medians or labeled fallback; no document-based effort forecast. | P08; do not reinterpret current suggestions as calibrated predictions. |
 | [Scheduler](../../server/services/scheduler.ts), [clock layout](../../server/services/planLayout.ts) | Consume supplied minutes and enforce existing ordering/capacity constraints. They do not discover missing work. | P12; preserve current dependency regressions. |
@@ -83,6 +83,16 @@ One bounded snapshot is stored as an `evaluation_trace_v1` event in the existing
 
 Storage uses a short statement timeout and catches diagnostic failures; an unavailable sink cannot change a successful application result. It may add a bounded database operation after the core write. Real DB tests inject an INSERT failure and verify the chat still saves and returns success. New traces are an aid to investigation, not an assertion that every existing save path is failure-independent.
 
-No live model call or production load test is part of this baseline. The [P00 checkpoint](../../docs/planning-checkpoints/P00.md) records executed checks, limitations and the next section.
+No live model call or production load test is part of the P00 baseline. The [P00 checkpoint](../../docs/planning-checkpoints/P00.md) records that baseline's executed checks and limitations. Later P03.2 provider probes are separate evidence.
 
 P03.2 adds the [hierarchy checkpoint](../../docs/planning-checkpoints/P03.2.md), 14 real database/HTTP cases, deep/wide/generated-tree unit cases and a parent-breakdown flow on four viewports. `liveModels.ts` is an explicit opt-in real-provider harness; its protocol success requires a separate semantic review and is never included in the synthetic test totals.
+
+## Reopened P03.2 acceptance
+
+The [expanded repair checklist](../../docs/planning-checkpoints/P03.2.md#8-reopened-chatbot-correctness-and-provider-recovery-checklist) is the authoritative next scope: 13 open implementation children, 28 proposed regression case families and seven closure gates. These counts are planned coverage, not executed tests. The task is not ready to advance to P03.3.
+
+The original real answers confused a parent's residual with subtree completion, transferred an optional resource role to a task, invented parent-work meaning, contradicted their time allocations and made unsupported completion guarantees. Provider failures are recorded separately. The current code reviews proposals conditionally on actions; the expanded checklist requires coverage for factual planning replies with no actions too.
+
+Implementation must preserve these failures as negative fixtures, add independent expected facts and real tool-contract parity, and report transport, protocol, facts, scope, arithmetic, grounding, usefulness, side effects and persistence separately. Current `liveModels.ts` does not implement those new verdicts yet. Its existing `semantic_review: required` cannot be counted as a semantic pass. Unknown/unavailable evaluations, degraded facts-only responses and selected successful retries cannot inflate planning success.
+
+Use local mock providers for concurrent/large stress checks. Real live checks remain opt-in, serial and bounded, using synthetic tasks and no application mutations. The user's authorization for real chatbot testing remains valid; it does not require another permission round for each test. Deployment credential checks and real production verification must be labeled distinctly from calls using local saved credentials.
