@@ -1,6 +1,5 @@
 /** These are reproduced failures/primitive limitations, never repaired passes. */
 export const knownPlanningBaselineFailures = [
-  { id: 'CHAT-01', kind: 'defect', file: 'audits/copilot/conversation.test.ts', next: 'P01.1' },
   { id: 'RAG-02', kind: 'defect', file: 'audits/copilot/retrieval.test.ts', next: 'P06.1' },
   { id: 'VIS-01', kind: 'native-text limitation', file: 'audits/copilot/pdf.test.ts', next: 'P05.2' },
   { id: 'VIS-02', kind: 'native-text limitation', file: 'audits/copilot/pdf.test.ts', next: 'P05.2' },

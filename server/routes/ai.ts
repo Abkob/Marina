@@ -9,6 +9,8 @@ import { runCopilotConversation, type ConversationTurn } from '../services/copil
 import { EvaluationRecorder, classifyTraceFailure } from '../services/evaluationTrace.js';
 import { saveEvaluationTrace, loadEvaluationTraces } from '../services/evaluationTraceStore.js';
 import type { EvaluationTrace } from '../../shared/evaluationTrace.js';
+import { assertBoundedPayload } from '../../shared/planningContracts.js';
+import { actionReferences, unavailableReferences } from '../services/copilotReferences.js';
 import { createCopilotTools, readCopilotClock } from '../services/copilotTools.js';
 import { citationsForContext } from '../services/contextCitations.js';
 import { evidenceModelsSchema, resolveEvidenceModels, modelRoleCatalog, type EvidenceModels } from '../services/copilotModelRoles.js';
@@ -1400,6 +1402,11 @@ async function persistActionsAsProposals(
   const now = new Date().toISOString();
   for (const action of actions) {
     if (action.rejected_reason) continue;
+    const missing = await unavailableReferences(actionReferences(action.params));
+    if (missing.length) {
+      action.rejected_reason = `Active ${missing[0].kind} not found. Read current facts before proposing a change; no substitute target was selected.`;
+      continue;
+    }
     const payloadStr = JSON.stringify(action.params);
     const idemKey = crypto.createHash('sha256').update(`${action.type}\0${payloadStr}`).digest('hex');
     const { rows: inserted } = await query(
@@ -1480,6 +1487,7 @@ async function answerConversation(
 // Both chat entry points use the same model-led conversation and read-only tools.
 router.get('/model-roles', (_req, res) => res.json(modelRoleCatalog()));
 router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
+  try { assertBoundedPayload(req.body); } catch { return res.status(400).json({ error: 'Chat input exceeds size or structure limits.' }); }
   const schema = z.object({
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().min(1).max(16000) }).strict()).min(1).max(200),
     model: z.string().optional(),
@@ -1915,6 +1923,8 @@ async function loadEstimateTriage(notSchedulable: Array<{ task_id: string; title
 }
 
 async function buildPlanPayload(windowParams: PlanWindowParams) {
+  const missing = await unavailableReferences(actionReferences(windowParams as Record<string, unknown>));
+  if (missing.length) throw new Error('The requested task is unavailable. Read current task details; no substitute was selected.');
   // Resolve the window the user meant (a day, a range, an afternoon, "next
   // 3 hours") against the wall clock, then plan only inside it.
   const clock = await readCopilotClock();
@@ -2078,6 +2088,7 @@ const PlanApplySchema = z.object({
 }).strict();
 
 router.post('/schedule/plan/apply', async (req, res) => {
+  try { assertBoundedPayload(req.body); } catch { return res.status(422).json({ error: 'Plan input exceeds size or structure limits.' }); }
   const parsedBody = PlanApplySchema.safeParse(req.body);
   if (!parsedBody.success) {
     return res.status(422).json({
@@ -2628,6 +2639,7 @@ router.get('/sessions/:id/messages', async (req, res) => {
 
 // POST /api/ai/sessions/:id/chat — send a message in a session (history auto-loaded)
 router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), async (req, res) => {
+  try { assertBoundedPayload(req.body); } catch { return res.status(400).json({ error: 'Chat input exceeds size or structure limits.' }); }
   const input = z.object({ message: z.string().min(1).max(16000).refine(value => Boolean(value.trim())), model: z.string().optional(), evidence_models: evidenceModelsSchema.optional(), resource_scope: resourceScopeSchema.optional() }).strict().safeParse(req.body);
   if (!input.success) return res.status(400).json({ error: 'A message between 1 and 16000 characters is required.' });
   const { message, model } = input.data;

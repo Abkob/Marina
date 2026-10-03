@@ -280,11 +280,12 @@ function FeasibilityBanner({ f }: { f: FeasibilityResult }) {
 
 // ── Message Bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction }: {
+function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction, onReload }: {
   msg: ChatMessage;
   sessionId: string | null;
   onConfirmAction: (msgId: string, actionId: string) => void;
   onSkipAction:    (msgId: string, actionId: string) => void;
+  onReload: () => void;
 }) {
   const triggerToast = useAppStore(s => s.triggerToast);
   if (msg.role === 'user') {
@@ -318,9 +319,9 @@ function MessageBubble({ msg, sessionId, onConfirmAction, onSkipAction }: {
           </div>
         )}
         {msg.plan && (
-          <PlanCalendarWidget plan={msg.plan} sessionId={sessionId} messageId={msg.serverMsgId} />
+          <PlanCalendarWidget plan={msg.plan} sessionId={sessionId} messageId={msg.serverMsgId} onRetry={onReload} />
         )}
-        {msg.planOptions && <PlanOptionsWidget planOptions={msg.planOptions} />}
+        {msg.planOptions && <PlanOptionsWidget planOptions={msg.planOptions} onRetry={onReload} />}
         {msg.scheduleDayView && <DayScheduleWidget view={msg.scheduleDayView} />}
         {msg.overdueTasksView && <OverdueTasksWidget view={msg.overdueTasksView} />}
         {msg.feasibility && <FeasibilityBanner f={msg.feasibility} />}
@@ -1244,7 +1245,7 @@ export function CopilotView() {
             {STARTERS.map(starter => <button key={starter.label} onClick={() => void send(starter.prompt)}><starter.icon size={20} /><span>{starter.label}<small>{starter.detail}</small></span><ChevronRight size={15} /></button>)}
           </div>
         </div> : <div className="copilot-message-list">
-          {messages.map(msg => <MessageBubble key={msg.id} msg={msg} sessionId={activeSessionId} onConfirmAction={handleConfirmAction} onSkipAction={handleSkipAction} />)}
+          {messages.map(msg => <MessageBubble key={msg.id} msg={msg} sessionId={activeSessionId} onConfirmAction={handleConfirmAction} onSkipAction={handleSkipAction} onReload={() => { if (activeSessionId) void loadSession(activeSessionId); }} />)}
           {isLoading && <WorkingIndicator />}
         </div>}
       </div>

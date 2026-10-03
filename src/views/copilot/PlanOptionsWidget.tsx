@@ -1,5 +1,7 @@
 import { Layers3 } from 'lucide-react';
 import { PlanCalendarWidget, type ChatPlan } from './PlanCalendarWidget';
+import { readCalendarOptions } from '../../../shared/calendarPlanContract';
+import { InvalidPlanPreview } from './InvalidPlanPreview';
 
 export interface ChatPlanOption extends ChatPlan {
   option_id: string;
@@ -38,7 +40,10 @@ function StatusPill({ option }: { option: ChatPlanOption }) {
   );
 }
 
-export function PlanOptionsWidget({ planOptions }: { planOptions: ChatPlanOptions }) {
+export function PlanOptionsWidget({ planOptions: value, onRetry }: { planOptions: unknown; onRetry?: () => void }) {
+  const parsed = readCalendarOptions(value);
+  if (!parsed.ok) return <InvalidPlanPreview onRetry={onRetry} />;
+  const planOptions = parsed.data;
   if (!planOptions.options.length) return null;
   if (planOptions.options.length === 1) {
     return <PlanCalendarWidget plan={planOptions.options[0]} sessionId={null} />;

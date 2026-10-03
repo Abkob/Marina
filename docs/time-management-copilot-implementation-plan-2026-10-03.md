@@ -2,7 +2,7 @@
 
 Date: 3 October 2026. Planning baseline: `6f627ecbd37cce9dfe1e0e71f70dbfea5789e98a`. Source behavior is grounded in the current repository, the [implementation checkpoint](copilot-implementation-2026-10-03.md), and the [expanded research](time-management-copilot-research-2026-10-03.md#16-closer-alternatives-the-expanded-search-for-marinas-actual-objective).
 
-**Status: P00 implemented; 75 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures, baseline checks and diagnostic traces. The remaining document specifies proposed frontend/backend work, test oracles, stress experiments, dependencies, rollout and recovery. Historical checks run while preparing the plan remain separately labeled at the end. Proposed tests and performance targets are not passing results.
+**Status: P00 and P01.1 implemented; 74 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures, baseline checks and diagnostic traces; [P01.1](planning-checkpoints/P01.1.md) records typed identities and runtime validation. The user has authorized continuation through P02. The remaining document specifies proposed frontend/backend work, test oracles, stress experiments, dependencies, rollout and recovery. Historical checks remain separately labeled; proposed tests and targets are not passing results.
 
 **Execution style requested by the user:** implement and test small sections through successive prompts, inspect each section's results, then decide whether to continue, repair or expand. The default future implementation unit is one leaf ID, such as `P03.1`, not the whole document. A later user instruction can explicitly authorize a larger batch. Section 10 supplies copyable prompts, checkpoint records and the continuation protocol. This planning task does not start implementing the features.
 
@@ -173,7 +173,7 @@ Related contracts: none. Implemented under `audits/planning/`, shared diagnostic
 
 Related contracts: P00.1. Proposed home: `shared/planningContracts.ts`, existing copilot contracts/action validation.
 
-#### P01.1 [ ] Define typed references, work items and evidence status
+#### P01.1 [x] Define typed references, work items and evidence status
 
 - **Backend:** Discriminated task/goal/resource/work-item references; finite nonnegative minutes; ordered ranges; explicit unknown/partial/stale status; strict payload size limits.
 - **Frontend:** Shared parsing guards display invalid responses as recoverable errors; never coerce missing effort into “0 min.”

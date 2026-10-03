@@ -9,7 +9,7 @@ npm run test:planning
 npm run test:planning-baseline
 ```
 
-Without `DATABASE_URL_TEST`, the ten database/HTTP cases are **skipped**, and the receipt names them. A successful synthetic-only invocation does not satisfy P00's database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
+Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (19 at the P01.1 checkpoint). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
 
 For real integration checks, start an isolated local PostgreSQL cluster, then run:
 
@@ -45,9 +45,9 @@ Six UI stories cover absent, loading, partial evidence, ready plan, stale propos
 
 `run.ts` writes `tmp/planning-baseline/receipt.json` with starting commit, dirty-tree status, runtime, test names, per-suite failures, skipped cases and expected failures. Raw Vitest JSON and logs stay alongside it. The recorded checkpoint supplies the reviewable, tracked summary. Old receipts are removed before invoking each suite so a failed startup cannot reuse an earlier success.
 
-The four existing expected failures are individually inventoried in `knownFailures.ts`:
+Three remaining expected failures are individually inventoried in `knownFailures.ts`. The original P00 count is historical:
 
-- `CHAT-01`: observed resource IDs can pass the conversation's untyped known-ID check for a task proposal. Repair belongs to P01.1.
+- `CHAT-01` is repaired in P01.1 and runs as an ordinary regression, supplemented by real database/HTTP tests.
 - `RAG-02`: irrelevant retrieval candidates do not yet receive dependable relevance rejection. Repair belongs to P06.1.
 - `VIS-01` and `VIS-02`: native PDF text extraction alone cannot read embedded image content. These are primitive limitations. Positive structured OCR/vision pipeline tests remain separate; the fixture does not assert that the whole visual pipeline is broken.
 
@@ -66,7 +66,7 @@ This is an inventory, not a repair to time semantics. Recheck call sites before 
 | [Event autofill](../../src/utils/eventAutofill.ts) | Frontend estimated remaining work clamps after subtracting logged minutes. | P03.1; shared user-facing meaning. |
 | [Estimate suggestions](../../server/services/estimateSuggest.ts) | Same-goal/global medians or labeled fallback; no document-based effort forecast. | P08; do not reinterpret current suggestions as calibrated predictions. |
 | [Scheduler](../../server/services/scheduler.ts), [clock layout](../../server/services/planLayout.ts) | Consume supplied minutes and enforce existing ordering/capacity constraints. They do not discover missing work. | P12; preserve current dependency regressions. |
-| [Conversation](../../server/services/copilotConversation.ts), `collectIds` and final action filtering | Knows observed strings without a full entity-type discriminator; `CHAT-01` remains reproduced. | P01.1. |
+| [Conversation](../../server/services/copilotConversation.ts), typed observation and action filtering | P01.1 keys observations by kind and ID, ignores document metadata as identity, checks current tables before proposal persistence and rechecks at Apply. | P01.3/P17 for broader scope/freshness. |
 | [Action contracts](../../server/services/actionValidation.ts) | Validate supported action shapes/values, including a limited `update_task` field set. Rename is not currently a Copilot `update_task` field. | P21/P23; inventory capabilities before promising them. |
 | [Durable Apply](../../server/routes/ai-proposals.ts) | Validates payload, locks proposal and checks current archive/target facts within transaction. | P17 for broader freshness/idempotency protocol. |
 | [Calendar plan Apply](../../server/routes/ai.ts), `PlanApplySchema` | Separate legacy path validates blocks and active task IDs but has no proposal/run identity in its contract. | P17; P00 does not silently redesign or claim full trace correlation for this path. |

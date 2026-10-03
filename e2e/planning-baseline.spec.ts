@@ -44,3 +44,23 @@ for (const failed of [false, true]) test(`P00.2-F01/P00.3-F04 ${failed ? 'provid
   await page.reload({ waitUntil: 'domcontentloaded' }); await openChat(); await expect(details).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('P01.1 malformed schedule can reload using keyboard or touch', async ({ page, isMobile }, info) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const id = fixtureId(910); let requests = 0; let recovered = false;
+  const validPlan = { from: '2026-10-06', to: '2026-10-06', work_start: 9, work_end: 12, days: [], busy: [], blocks: [], unplaced: [], scheduler: { status: 'incomplete', gap_minutes: 0, unestimated_count: 1, overflow_count: 0 } };
+  await page.addInitScript(({ id }) => { localStorage.setItem('marina-os-ui-v1', JSON.stringify({ version: 0, state: { currentTab: 'Copilot', copilotActiveSessionId: id, copilotMessages: [] } })); }, { id });
+  await page.route(`**/api/ai/sessions/${id}/messages`, route => { requests++; return route.fulfill({ json: [{ id: fixtureId(911), role: 'assistant', content: 'Schedule preview', created_at: new Date().toISOString(), metadata: { plan: recovered ? validPlan : { blocks: null } } }] }); });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  if (isMobile) { await page.getByRole('button', { name: 'Open all pages' }).click(); await page.getByRole('button', { name: 'Open Copilot', exact: true }).click(); }
+  await expect(page.getByRole('alert')).toContainText('could not be read');
+  const retry = page.getByRole('button', { name: 'Reload conversation' }); await retry.scrollIntoViewIfNeeded();
+  const box = await retry.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: `tmp/planning-baseline/${info.project.name}-invalid-preview.png`, fullPage: true });
+  recovered = true;
+  if (isMobile) await retry.tap(); else { await retry.focus(); await page.keyboard.press('Enter'); }
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Apply 0 blocks' })).toBeDisabled();
+  expect(requests).toBeGreaterThanOrEqual(2); expect(errors).toEqual([]);
+});

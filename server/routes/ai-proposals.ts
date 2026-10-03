@@ -12,6 +12,8 @@ import { runInBackground } from '../utils/background.js';
 import { createRoutine, updateRoutine, checkInRoutine, createRoutineSchema, updateRoutineSchema, routineCheckInSchema } from '../services/routines.js';
 import { activeGoalSql } from '../utils/archiveVisibility.js';
 import { traceProposalApplied } from '../services/evaluationTraceStore.js';
+import { actionReferences, referenceTables } from '../services/copilotReferences.js';
+import { PLANNING_LIMITS } from '../../shared/planningContracts.js';
 
 // Durable proposals are shared by calendar, journal and Copilot UI controls.
 const router = Router();
@@ -54,7 +56,11 @@ router.post('/proposals/:id/apply', async (req, res) => {
     }
 
     let payload: Record<string, unknown> = {};
-    try { payload = JSON.parse(proposal.action_payload as string ?? '{}'); } catch { /* */ }
+    try {
+      const encoded = proposal.action_payload as string ?? '{}';
+      if (Buffer.byteLength(encoded) > PLANNING_LIMITS.bytes) throw new Error('Oversized proposal');
+      payload = JSON.parse(encoded);
+    } catch { throw Object.assign(new Error('Invalid proposal payload'), { status: 400 }); }
 
     const validated = validateModelActions([{ type: proposal.action_type, params: payload }])[0];
     if (validated.rejected_reason) throw Object.assign(new Error(`Invalid proposal: ${validated.rejected_reason}`), { status: 400 });
@@ -66,15 +72,8 @@ router.post('/proposals/:id/apply', async (req, res) => {
     if (proposalTouchesArchive(proposal, new Set(archivedRows.map(row => row.entity_key)))) {
       throw Object.assign(new Error('This proposal refers to archived work.'), { status: 409 });
     }
-    const references: Array<[unknown, string, string]> = [
-      [payload.task_id, 'tasks', 'task'], [payload.parent_task_id, 'tasks', 'task'],
-      [payload.goal_id, 'goals', 'goal'], [payload.milestone_id, 'goal_milestones', 'milestone'],
-      [payload.resource_id, 'resources', 'resource'],
-    ];
-    if (payload.target_id) references.push([payload.target_id,
-      payload.target_type === 'goal' ? 'goals' : payload.target_type === 'task' ? 'tasks' : 'goal_milestones', String(payload.target_type)]);
-    for (const [id, table, type] of references) {
-      if (typeof id !== 'string') continue;
+    for (const { id, kind: type } of actionReferences(payload).filter(ref => ref.kind !== 'routine')) {
+      const table = referenceTables[type];
       const { rows: found } = await client.query(`SELECT id FROM ${table} WHERE id=$1 AND ${activeEntitySql('$2::text', 'id')} FOR UPDATE`, [id, type]);
       if (!found.length) throw Object.assign(new Error(`Active ${type} not found`), { status: 404 });
     }

@@ -9,6 +9,8 @@ import { KIMI_MODEL } from '../config/nvidiaModels.js';
 import { conversationCapabilities } from './copilotCapabilities.js';
 import type { ResourceScope } from '../../shared/resourceScope.js';
 import { classifyTraceFailure, phaseForTool, type EvaluationRecorder } from './evaluationTrace.js';
+import { assertBoundedPayload, PLANNING_LIMITS, referenceKey } from '../../shared/planningContracts.js';
+import { actionReferences, observedReferences } from './copilotReferences.js';
 
 export interface ConversationTool {
   description: string;
@@ -45,18 +47,6 @@ const envelopeSchema = z.object({
 // Ignore non-actionable provider metadata; tools and action params stay strict.
 // An extra empty metadata key must not cost a second conversation call.
 }).strip();
-
-const REFERENCE_FIELDS = new Set(['task_id', 'parent_task_id', 'goal_id', 'milestone_id', 'resource_id', 'target_id', 'routine_id']);
-function collectIds(data: unknown, ids: Set<string>, entities: Map<string, { id: string; title: string }>): void {
-  if (!data || typeof data !== 'object') return;
-  const row = data as { id?: unknown; task_id?: unknown; title?: unknown };
-  const id = row.id ?? row.task_id;
-  if (typeof id === 'string' && typeof row.title === 'string') entities.set(id, { id, title: row.title.slice(0, 200) });
-  for (const [key, value] of Object.entries(data)) {
-    if ((key === 'id' || REFERENCE_FIELDS.has(key)) && typeof value === 'string') ids.add(value);
-    else if (typeof value === 'object') collectIds(value, ids, entities);
-  }
-}
 
 /** Limit old history by complete turns; retain the current message verbatim. */
 export function conversationHistory(turns: ConversationTurn[], maxChars = 32_000): ChatMessage[] {
@@ -113,7 +103,7 @@ export async function runCopilotConversation(options: {
   const maxRounds = options.maxToolRounds ?? 3;
   const deadlineMs = Date.now() + 180_000;
   const knownIds = new Set<string>();
-  const entities = new Map<string, { id: string; title: string }>();
+  const entities = new Map<string, { kind: string; id: string; title: string }>();
   const artifacts = new Map<string, ToolArtifact>();
   const executed = new Map<string, { callId: string; artifact?: ToolArtifact }>();
   const seenCallIds = new Set<string>();
@@ -150,7 +140,11 @@ export async function runCopilotConversation(options: {
       raw = await complete(messages, completionOptions);
     }
     let envelope: z.infer<typeof envelopeSchema>;
-    try { envelope = envelopeSchema.parse(parseJSON(raw)); }
+    try {
+      if (new TextEncoder().encode(raw).byteLength > PLANNING_LIMITS.bytes) throw new Error('Model response exceeds size limit');
+      const parsed = parseJSON(raw); assertBoundedPayload(parsed);
+      envelope = envelopeSchema.parse(parsed);
+    }
     catch {
       options.evaluation?.record({ phase: 'interpretation', status: 'failed', failure: 'invalid_response' });
       if (!protocolRetried) {
@@ -205,7 +199,10 @@ export async function runCopilotConversation(options: {
             for (const source of documentCitations(call.name, result.data)) {
               documentSources.set(`${source.entity_id}:${source.page_start}:${source.page_end}:${source.chunk_id ?? ''}`, source);
             }
-            collectIds(result.data, knownIds, entities);
+            for (const entity of observedReferences(call.name, result.data)) {
+              const key = referenceKey(entity); knownIds.add(key);
+              if (entity.title) entities.set(key, { ...entity, title: entity.title });
+            }
             if (result.artifact) artifacts.set(call.id, result.artifact);
             observation = { data: modelData, ...(result.artifact?.autoDisplay ? { attachment: { id: call.id, kind: result.artifact.kind, shown_by_default: true } } : {}) };
             executed.set(signature, { callId: call.id, artifact: result.artifact });
@@ -257,8 +254,8 @@ export async function runCopilotConversation(options: {
     }
     const actions: ValidatedAction[] = validated.map(action => {
       if (action.type === 'plan_schedule' || action.type === 'create_block_series') return { ...action, rejected_reason: 'Use a preview tool for a calendar proposal.' };
-      const unknown = Object.entries(action.params).find(([key, value]) => REFERENCE_FIELDS.has(key) && typeof value === 'string' && !knownIds.has(value));
-      return unknown ? { ...action, rejected_reason: `Read the current ${unknown[0]} before proposing a change; no substitute target was selected.` } : action;
+      const unknown = actionReferences(action.params).find(ref => !knownIds.has(referenceKey(ref)));
+      return unknown ? { ...action, rejected_reason: `Read the current ${unknown.field} as a ${unknown.kind} before proposing a change; no substitute target was selected.` } : action;
     });
     const displayed: Record<string, unknown> = {};
     const discarded = new Set(envelope.discard ?? []);
@@ -275,17 +272,16 @@ export async function runCopilotConversation(options: {
     const preview = displayed.plan as { from?: unknown; to?: unknown; blocks?: unknown[]; unplaced?: unknown } | undefined;
     let reply = envelope.reply;
     if (validActions.length) {
-      const referencedIds = new Set(validActions.flatMap(action => Object.entries(action.params)
-        .filter(([key, value]) => REFERENCE_FIELDS.has(key) && typeof value === 'string').map(([, value]) => String(value))));
+      const referencedIds = new Set(validActions.flatMap(action => actionReferences(action.params).map(referenceKey)));
       for (const block of preview?.blocks ?? []) {
         const id = (block as { task_id?: string }).task_id;
-        if (id) referencedIds.add(id);
+        if (id) referencedIds.add(referenceKey({ kind: 'task', id }));
       }
       const review = await reviewCopilotProposal({
         history: conversationHistory(options.turns, 20_000), clock: options.clock,
         actions: validActions, draftReply: envelope.reply,
         previews: preview ? [{ from: preview.from, to: preview.to, blocks: preview.blocks, unplaced: preview.unplaced }] : [],
-        entities: [...entities.values()].filter(entity => referencedIds.has(entity.id)), model: options.model, deadlineMs,
+        entities: [...entities.values()].filter(entity => referencedIds.has(referenceKey(entity))), model: options.model, deadlineMs,
         onTrace: options.onTrace, complete: options.reviewComplete ?? complete,
       });
       if (review.verdict === 'clarify') return {

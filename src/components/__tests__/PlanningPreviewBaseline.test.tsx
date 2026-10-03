@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PlanCalendarWidget, type ChatPlan } from '../../views/copilot/PlanCalendarWidget';
+import { PlanOptionsWidget } from '../../views/copilot/PlanOptionsWidget';
 
 const mocks = vi.hoisted(() => ({ patch: vi.fn(), post: vi.fn(), toast: vi.fn() }));
 vi.mock('../../utils/apiFetch', () => ({ apiPatch: mocks.patch, apiPost: mocks.post }));
@@ -37,5 +38,26 @@ describe('P00.2 existing calendar preview baseline', () => {
     expect(screen.getByRole('button', { name: 'Apply 1 block' })).toBeEnabled();
     expect(screen.queryByText('Added to your schedule')).not.toBeInTheDocument();
     expect(mocks.patch).not.toHaveBeenCalled();
+  });
+});
+
+describe('P01.1 recoverable preview parsing', () => {
+  it.each([null, { blocks: null }, { ...plan, to: '9999-12-31' }, { ...plan, unplaced: [{ task_id: 't', title: 'Unknown work', minutes: null }] }])('invalid plan cannot render Apply or mutate anything', async value => {
+    const retry = vi.fn();
+    render(<PlanCalendarWidget plan={value} sessionId="synthetic-session" onRetry={retry} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('could not be read');
+    expect(screen.queryByRole('button', { name: /Apply/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Reload conversation' }));
+    expect(retry).toHaveBeenCalledOnce(); expect(mocks.post).not.toHaveBeenCalled(); expect(mocks.patch).not.toHaveBeenCalled();
+  });
+  it('guards malformed option collections before reading option status', () => {
+    render(<PlanOptionsWidget planOptions={{ options: [{ scheduler: null }] }} />);
+    expect(screen.getByRole('alert')).toBeVisible();
+  });
+  it('recovers when reload replaces a malformed preview with a valid one', () => {
+    const view = render(<PlanCalendarWidget plan={{}} sessionId="synthetic-session" />);
+    view.rerender(<PlanCalendarWidget plan={plan} sessionId="synthetic-session" />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Synthetic report review')).toBeVisible();
   });
 });

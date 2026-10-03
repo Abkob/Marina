@@ -7,6 +7,8 @@ import {
   parseLocalDate, snapHour, type TimedBlock,
 } from '../../utils/calendar';
 import { planDayLoads, planFeedbackLine } from '../../utils/planFeedback';
+import { readCalendarPreview } from '../../../shared/calendarPlanContract';
+import { InvalidPlanPreview } from './InvalidPlanPreview';
 
 /**
  * The interactive calendar a "plan" chat turn renders instead of prose:
@@ -128,7 +130,15 @@ function SingleDayPlanAgenda({ plan, blocks, status, busy, onApply, onDiscard, o
   );
 }
 
-export function PlanCalendarWidget({ plan: initialPlan, sessionId, messageId }: {
+export function PlanCalendarWidget({ plan, onRetry, ...props }: {
+  plan: unknown; sessionId: string | null; messageId?: string; onRetry?: () => void;
+}) {
+  const parsed = readCalendarPreview(plan);
+  if (!parsed.ok) return <InvalidPlanPreview onRetry={onRetry} />;
+  return <ValidPlanCalendarWidget plan={parsed.data} {...props} />;
+}
+
+function ValidPlanCalendarWidget({ plan: initialPlan, sessionId, messageId }: {
   plan: ChatPlan;
   sessionId: string | null;
   messageId?: string;
@@ -184,9 +194,11 @@ export function PlanCalendarWidget({ plan: initialPlan, sessionId, messageId }: 
         `/api/ai/sessions/${sessionId}/messages/${messageId}/plan`,
         { refresh_window: { from_date: plan.from, to_date: plan.to, start_hour: plan.work_start, end_hour: plan.work_end } },
       );
-      if (r.plan) {
-        setPlan(r.plan);
-        setBlocks(r.plan.blocks);
+      const parsed = readCalendarPreview(r.plan);
+      if (!parsed.ok) throw new Error(parsed.error);
+      if (parsed.ok) {
+        setPlan(parsed.data);
+        setBlocks(parsed.data.blocks);
         adjustments.current = {};
         setTriage({});
       }

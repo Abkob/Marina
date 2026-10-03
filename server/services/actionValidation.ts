@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createRoutineSchema, updateRoutineSchema, routineCheckInSchema, routineIdSchema } from './routineContracts.js';
+import { assertBoundedPayload, planningId } from '../../shared/planningContracts.js';
 
 // ─── Model action validation ─────────────────────────────────────────────────
 // The model's proposed actions are untrusted output. Strict discriminated
@@ -17,9 +18,9 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
   update_routine: z.object({ routine_id: routineIdSchema, changes: updateRoutineSchema }).strict(),
   check_in_routine: z.object({ routine_id: routineIdSchema, entry: routineCheckInSchema }).strict(),
   create_task: z.object({
-    goal_id: z.string().optional(),
-    parent_task_id: z.string().optional(),
-    milestone_id: z.string().optional(),
+    goal_id: planningId.optional(),
+    parent_task_id: planningId.optional(),
+    milestone_id: planningId.optional(),
     title: z.string().min(1).max(500),
     due_date: isoDate.optional(),
     start_date: isoDate.optional(),
@@ -28,7 +29,7 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
     status: z.enum(['todo', 'in_progress', 'blocked', 'done']).optional(),
   }).strict(),
   break_down_task: z.object({
-    parent_task_id: z.string().min(1),
+    parent_task_id: planningId,
     tasks: z.array(z.object({
       title: z.string().min(1).max(500),
       due_date: isoDate.optional(),
@@ -38,13 +39,13 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
     }).strict()).min(2).max(12),
   }).strict(),
   update_task: z.object({
-    task_id: z.string().min(1),
+    task_id: planningId,
     due_date: isoDate.nullable().optional(),
     start_date: isoDate.nullable().optional(),
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     status: z.enum(['todo', 'in_progress', 'blocked', 'done']).optional(),
     estimated_minutes: taskEstimateMinutes.optional(),
-    milestone_id: z.string().nullable().optional(),
+    milestone_id: planningId.nullable().optional(),
   }).strict(),
   create_goal: z.object({
     title: z.string().min(1).max(500),
@@ -69,12 +70,12 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
     }).strict()).min(1).max(20),
   }).strict(),
   update_goal: z.object({
-    goal_id: z.string().min(1),
+    goal_id: planningId,
     deadline: isoDate.nullable().optional(),
     status: z.enum(['Safe', 'Watch', 'Risky']).optional(),
   }).strict(),
   create_milestone: z.object({
-    goal_id: z.string().min(1),
+    goal_id: planningId,
     title: z.string().min(1).max(500),
     description: z.string().max(5000).optional(),
     due_date: isoDate.optional(),
@@ -84,9 +85,9 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
   // 'attached_to' edge). Used when the user uploads a file in chat and asks
   // for it to be filed somewhere.
   attach_resource: z.object({
-    resource_id: z.string().min(1),
+    resource_id: planningId,
     target_type: z.enum(['goal', 'task', 'milestone']),
-    target_id: z.string().min(1),
+    target_id: planningId,
   }).strict(),
   // Ask for a visual schedule plan: the server runs the deterministic
   // scheduler over the requested window and the chat response carries an
@@ -95,8 +96,8 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
   // whatever the user meant: a horizon, a specific day, a date range, part of
   // a day, or "the next N hours" (resolved against the server clock).
   plan_schedule: z.object({
-    task_id: z.string().min(1).optional(),
-    task_ids: z.array(z.string().min(1)).min(1).max(30).optional(),
+    task_id: planningId.optional(),
+    task_ids: z.array(planningId).min(1).max(30).optional(),
     max_daily_minutes: z.number().int().min(15).max(960).optional(),
     horizon_days: z.number().int().min(1).max(90).optional(),
     from_date: isoDate.optional(),
@@ -124,7 +125,7 @@ export const ActionParamsSchemas: Record<string, z.ZodTypeAny> = {
     start_hour: z.number().min(0).max(23.75),
     end_hour: z.number().min(0.25).max(24),
     days_of_week: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
-    task_id: z.string().optional(),
+    task_id: planningId.optional(),
   }).strict(),
 };
 
@@ -166,6 +167,8 @@ function normalizeParams(actionType: string, params: Record<string, unknown>): R
 
 /** Validates raw model actions; invalid ones are kept with a rejected_reason so the UI can be honest about what was dropped. */
 export function validateModelActions(rawActions: unknown[]): ValidatedAction[] {
+  try { assertBoundedPayload(rawActions); if (rawActions.length > 30) throw new Error('Too many actions'); }
+  catch { return [{ id: 'invalid', type: 'unknown', description: null, params: {}, rejected_reason: 'Action payload exceeds validation limits' }]; }
   const out: ValidatedAction[] = [];
   for (let i = 0; i < rawActions.length; i++) {
     const a = rawActions[i] as { id?: string; type?: string; description?: string; params?: Record<string, unknown> };
@@ -174,7 +177,7 @@ export function validateModelActions(rawActions: unknown[]): ValidatedAction[] {
       out.push({ id, type: String(a?.type ?? 'unknown'), description: null, params: {}, rejected_reason: 'missing action type' });
       continue;
     }
-    const schema = ActionParamsSchemas[a.type];
+    const schema = Object.hasOwn(ActionParamsSchemas, a.type) ? ActionParamsSchemas[a.type] : undefined;
     if (!schema) {
       out.push({ id, type: a.type, description: a.description ?? null, params: {}, rejected_reason: `unknown action type '${a.type}'` });
       continue;

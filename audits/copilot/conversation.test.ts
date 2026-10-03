@@ -27,7 +27,7 @@ describe('Mixed document/scheduling conversations with a scripted model', () => 
     expect(sent).toContain('Study chapter 3'); expect(sent).toContain('study-task');
     expect(s.reviewComplete).toHaveBeenCalledOnce();
   });
-  it.fails('CHAT-01 rejects using a resource ID as a task ID before issuing an Apply proposal', async () => {
+  it('CHAT-01 rejects using a resource ID as a task ID before issuing an Apply proposal', async () => {
     const execute = vi.fn().mockResolvedValue({ data: { evidence: [{ resource_id: 'resource-not-task', title: 'Reading', passage: 'A chapter' }] } });
     const s = setup([read('source'), finish({ actions: [{ type: 'update_task', params: { task_id: 'resource-not-task', due_date: '2026-10-04' } }] })], execute);
     const result = await s.run();
