@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { CopilotMarkdown } from '../../components/CopilotMarkdown';
+import { CopilotMarkdown, normalizeCitationLinks } from '../../components/CopilotMarkdown';
 
 describe('Copilot answer formatting', () => {
   it('formats the screenshot’s italics, nested emphasis and numbered tasks as semantic Markdown', () => {
@@ -39,5 +39,15 @@ describe('Copilot answer formatting', () => {
     expect(container.querySelector('.katex')).not.toBeNull();
     expect(container.querySelector('img,script,iframe')).toBeNull();
     expect([...container.querySelectorAll('a')].some(a=>a.href.startsWith('javascript:'))).toBe(false);
+  });
+  it('repairs mixed model citation brackets into a usable, validated source link',()=>{
+    render(<CopilotMarkdown text={'Evidence.【Algebra, p. 94](/api/resources/blob/book#page=94)】'} />);
+    expect(screen.getByRole('link',{name:'Algebra, p. 94'})).toHaveAttribute('href','/api/resources/blob/book#page=94');
+  });
+  it('preserves malformed citation examples inside code and never makes an unsafe destination clickable',()=>{
+    const code='```text\n【Example](/api/resources/blob/book)】\n```\n`【inline](/api/resources/blob/book)】`';
+    expect(normalizeCitationLinks(code)).toBe(code);
+    render(<CopilotMarkdown text={'【unsafe](javascript:alert)】'} />);
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });
