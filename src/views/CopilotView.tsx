@@ -16,6 +16,7 @@ import { ResourceContextPicker, selectionScope, selectionTarget, type ResourceSe
 import { useResourceDirectory } from '../hooks/useResourceDirectory';
 import { CopilotSources, type ChatCitation } from '../components/CopilotSources';
 import { CopilotCallMetrics } from '../components/CopilotCallMetrics';
+import { CopilotTraceDetails } from '../components/CopilotTraceDetails';
 import type { ChatCallTrace } from '../types/copilotRuntime';
 import { WorkTimerIndicator } from '../components/WorkTimerIndicator';
 import { uploadResourceFile } from '../db/queries/resources';
@@ -76,6 +77,8 @@ interface ChatRuntime {
   fallback_model: string | null;
   local_fallback_model?: string | null;
   model_calls: ModelCallRuntime[];
+  evaluation_trace?: unknown;
+  diagnostics_unavailable?: boolean;
 }
 
 interface ChatMessage {
@@ -403,6 +406,7 @@ function RuntimeDisclosure({ runtime }: { runtime: ChatRuntime }) {
             {runtime.fallback_model ? ` Fallback: ${runtime.fallback_model}.` : ''}
             {runtime.local_fallback_model ? ` Final local fallback: ${runtime.local_fallback_model}.` : ''}
           </div>
+          {(runtime.evaluation_trace || runtime.diagnostics_unavailable) && <CopilotTraceDetails value={runtime.evaluation_trace} />}
         </div>
       )}
     </div>

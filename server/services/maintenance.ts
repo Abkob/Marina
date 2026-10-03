@@ -4,6 +4,7 @@ import { reconcileUploads } from './resourceUploads.js';
 import { dispatchResourceEvents, reconcileResourceDispatch, durableProcessingConfigured } from './resourceDispatch.js';
 import { processPendingResources } from './resourceProcessing.js';
 import { reconcileDriveResources } from './googleDrive.js';
+import { pruneEvaluationTraces } from './evaluationTraceStore.js';
 
 export async function retryPendingJournalEntries(limit = 3): Promise<number> {
   const { rows } = await query<{ id: string }>(
@@ -37,5 +38,6 @@ export async function runMaintenance() {
   const retried_journals = await retryPendingJournalEntries();
   const { rollupCaptureWalls } = await import('../routes/journal.js');
   const capture_rollups = await rollupCaptureWalls();
-  return { reclaimed, embeddings, retried_journals, capture_rollups, recovered_uploads, resource_jobs, drive_resources_checked };
+  const expired_diagnostics_removed = await pruneEvaluationTraces().catch(() => null);
+  return { reclaimed, embeddings, retried_journals, capture_rollups, recovered_uploads, resource_jobs, drive_resources_checked, expired_diagnostics_removed };
 }

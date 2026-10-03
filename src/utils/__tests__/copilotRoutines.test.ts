@@ -141,7 +141,7 @@ describe('native routine proposal application', () => {
   it('creates a real routine in the proposal transaction without making tasks or events', async () => {
     const { execute, res, promise } = await apply('create_routine', nativeRoutine);
     await promise;
-    expect(res.json).toHaveBeenCalledWith({ ok: true, action_type: 'create_routine', id: routineId });
+    expect(res.json).toHaveBeenCalledWith({ ok: true, action_type: 'create_routine', id: routineId, diagnostics_recorded: false });
     expect(execute.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO routines'))).toHaveLength(1);
     expect(execute.mock.calls.at(-1)![0]).toContain("status='applied'");
     expect(execute.mock.calls.some(([sql]) => /INSERT INTO (tasks|events|work_sessions)/.test(sql))).toBe(false);

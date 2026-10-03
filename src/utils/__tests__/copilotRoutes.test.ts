@@ -92,6 +92,6 @@ describe('shared conversation endpoints', () => {
     vi.mocked(runCopilotConversation).mockRejectedValueOnce(new Error('Provider unavailable'));
     const response = await request('/chat', { messages: [{ role: 'user', content: 'what is overdue' }] });
     expect(response.status).toHaveBeenCalledWith(502);
-    expect(response.json).toHaveBeenCalledWith({ error: 'Provider unavailable' });
+    expect(response.json).toHaveBeenCalledWith({ error: 'Provider unavailable', evaluation_trace: expect.objectContaining({ version: 1, run_id: null, storage: 'unavailable' }) });
   });
 });

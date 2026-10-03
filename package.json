@@ -26,6 +26,8 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:copilot-audit": "vitest run --config vitest.copilot-audit.config.ts",
+    "test:planning": "vitest run --config vitest.planning.config.ts",
+    "test:planning-baseline": "tsx audits/planning/run.ts",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test"

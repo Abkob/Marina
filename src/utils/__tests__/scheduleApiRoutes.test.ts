@@ -100,7 +100,7 @@ describe('restored durable proposal controls', () => {
   const pending = { status: 'pending', action_type: 'update_task', action_payload: JSON.stringify({ task_id: 't1', due_date: '2026-09-25' }) };
   it('applies a validated proposal and marks it applied inside one locked transaction', async () => {
     const execute = transactionData(pending);
-    expect((await request('post', '/proposals/:id/apply')).json).toHaveBeenCalledWith({ ok: true, action_type: 'update_task' });
+    expect((await request('post', '/proposals/:id/apply')).json).toHaveBeenCalledWith({ ok: true, action_type: 'update_task', diagnostics_recorded: false });
     expect(execute.mock.calls[0][0]).toContain('FOR UPDATE');
     expect(execute.mock.calls.some(([sql]) => sql.startsWith('UPDATE tasks SET'))).toBe(true);
     expect(execute.mock.calls.at(-1)![0]).toContain("status='applied'");

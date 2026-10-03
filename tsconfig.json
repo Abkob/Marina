@@ -1,4 +1,5 @@
 {
+  "exclude": ["node_modules", "tmp", "dist", "backups", ".vercel"],
   "compilerOptions": {
     "target": "ES2022",
     "experimentalDecorators": true,

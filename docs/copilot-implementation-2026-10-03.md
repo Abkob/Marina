@@ -12,6 +12,8 @@ The [detailed implementation game plan](time-management-copilot-implementation-p
 
 ## 1. The folder and context contract
 
+Follow-up implementation: **P00 is complete**, covering reproducible fixtures, explicit baseline/known-failure receipts and bounded response-phase diagnostics. The [P00 checkpoint](planning-checkpoints/P00.md) records its actual tests, trace retention/privacy, delivery and remaining limits. Persistent plans, resource-based effort forecasting and subsequent game-plan sections remain proposed.
+
 The stored Google Drive root ID is the boundary. Matching a folder named “Marina” is insufficient. Import, browsing, downloading, synchronization, candidate retrieval, exact page reads and visual inspection now verify ancestry back to that ID. Trashed folders, missing parents, shortcuts, cycles and ambiguous ancestry fail closed. Cached parent metadata lives for one operation only, so a later move outside the root is checked again. Temporary provider failure is reported rather than treated as proof that no resources exist.
 
 New uploads use the selected target:

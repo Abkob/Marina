@@ -11,6 +11,7 @@ import { markEmbeddingStale, queueEmbeddingUpsert } from '../services/embeddingL
 import { runInBackground } from '../utils/background.js';
 import { createRoutine, updateRoutine, checkInRoutine, createRoutineSchema, updateRoutineSchema, routineCheckInSchema } from '../services/routines.js';
 import { activeGoalSql } from '../utils/archiveVisibility.js';
+import { traceProposalApplied } from '../services/evaluationTraceStore.js';
 
 // Durable proposals are shared by calendar, journal and Copilot UI controls.
 const router = Router();
@@ -412,7 +413,8 @@ router.post('/proposals/:id/apply', async (req, res) => {
     delete actionResult.created_milestone_id;
   }
 
-  res.json({ ok: true, action_type: actionType, ...actionResult });
+  const diagnosticsRecorded = await traceProposalApplied(proposalId);
+  res.json({ ok: true, action_type: actionType, ...actionResult, diagnostics_recorded: diagnosticsRecorded });
 });
 
 // POST /api/ai/proposals/:id/reject — only pending proposals may be rejected

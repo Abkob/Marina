@@ -2,7 +2,7 @@
 
 Date: 3 October 2026. Planning baseline: `6f627ecbd37cce9dfe1e0e71f70dbfea5789e98a`. Source behavior is grounded in the current repository, the [implementation checkpoint](copilot-implementation-2026-10-03.md), and the [expanded research](time-management-copilot-research-2026-10-03.md#16-closer-alternatives-the-expanded-search-for-marinas-actual-objective).
 
-**Status: proposed implementation, not a delivered runtime feature.** All work-package checkboxes below are intentionally open. This document specifies the combination recommended after research, its frontend/backend work, test oracles, stress experiments, dependencies, rollout and recovery. Baseline tests run while preparing this plan are recorded separately at the end. Proposed tests and performance targets are not passing results.
+**Status: P00 implemented; 75 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures, baseline checks and diagnostic traces. The remaining document specifies proposed frontend/backend work, test oracles, stress experiments, dependencies, rollout and recovery. Historical checks run while preparing the plan remain separately labeled at the end. Proposed tests and performance targets are not passing results.
 
 **Execution style requested by the user:** implement and test small sections through successive prompts, inspect each section's results, then decide whether to continue, repair or expand. The default future implementation unit is one leaf ID, such as `P03.1`, not the whole document. A later user instruction can explicitly authorize a larger batch. Section 10 supplies copyable prompts, checkpoint records and the continuation protocol. This planning task does not start implementing the features.
 
@@ -140,9 +140,9 @@ Each package lists related contracts to explain integration scope. These are not
 
 ### P00 — Baseline and reproducible evaluation fixtures
 
-Related contracts: none. Proposed home: `audits/planning/`, fixture helpers and evaluation scripts; reuse current test infrastructure. All work remains open.
+Related contracts: none. Implemented under `audits/planning/`, shared diagnostic contracts and current chat routes/components. See the [P00 acceptance checkpoint](planning-checkpoints/P00.md) for executed cases and explicit instrumentation boundaries.
 
-#### P00.1 [ ] Freeze representative work and calendar fixtures
+#### P00.1 [x] Freeze representative work and calendar fixtures
 
 - **Backend:** Define immutable synthetic task/goal/resource/calendar snapshots with clock, timezone, source versions and expected evidence. Include no-resource, book, client deliverable and mixed work/study cases.
 - **Frontend:** Provide fixture states for absent plan, loading, partial evidence, ready plan, stale proposal and provider failure; reuse them in component tests.
@@ -151,7 +151,7 @@ Related contracts: none. Proposed home: `audits/planning/`, fixture helpers and 
 - **Stress/failure:** S1 seeds 1–100 permute entity insertion order; truncate a fixture file and require a clear validation failure, not silent defaults.
 - **Done:** Fixtures and expected outcomes are reviewed, versioned and reproducible without live model calls.
 
-#### P00.2 [ ] Establish current behavior and known-failure accounting
+#### P00.2 [x] Establish current behavior and known-failure accounting
 
 - **Backend:** Run the current audit and focused scheduling/scope/context suites; inventory all consumers of remaining-work arithmetic and proposal identity validation.
 - **Frontend:** Record current chat, source-card and preview behavior before changing it; retain existing accessible controls and scope persistence.
@@ -160,7 +160,7 @@ Related contracts: none. Proposed home: `audits/planning/`, fixture helpers and 
 - **Stress/failure:** S1 verify a deliberately failing assertion makes the runner fail. Expected failures must be listed separately from ordinary passes.
 - **Done:** Baseline receipt includes commit, test names, skips and known failures, not just a total green count.
 
-#### P00.3 [ ] Build evaluator traces and failure classification
+#### P00.3 [x] Build evaluator traces and failure classification
 
 - **Backend:** Capture bounded event traces for context reads, evidence selection, forecasts, scenario validation and Apply; record source/config versions without secrets.
 - **Frontend:** Extend response details with understandable phases and omissions; detailed payload inspection stays a secondary action.
@@ -1279,7 +1279,7 @@ Update this leaf's checkpoint and recommend continue, repair or expand. Stop bef
 implementing another leaf so I can review the result.
 ```
 
-The first recommended prompt is P00.1. P00.2 then records the reproducible baseline, P01 establishes contracts, and P03 corrects time semantics early. Do not begin with a large frontend rewrite or a provider/model swap; those cannot establish the missing accounting and persistent state.
+P00.1–P00.3 are complete as the first authorized batch. The next recommended prompt is P01.1. P01 establishes contracts, and P03 corrects time semantics early. Do not begin with a large frontend rewrite or a provider/model swap; those cannot establish the missing accounting and persistent state.
 
 ### 10.5 Copyable review and continuation prompts
 
@@ -1318,7 +1318,7 @@ it completes. Use the same test/evidence/delivery protocol and stop at its check
 
 ### 10.6 Required checkpoint record
 
-Store future receipts under `docs/planning-checkpoints/` with a stable leaf filename. It is intentionally not populated with fictitious implementation results now. Each receipt includes:
+Store receipts under `docs/planning-checkpoints/` with a stable leaf filename, or a package filename for an explicitly authorized batch such as [P00](planning-checkpoints/P00.md). Record actual implementation evidence. Each receipt includes:
 
 ```text
 Leaf: Pxx.y; title; date; starting commit; final commit
@@ -1397,7 +1397,7 @@ An eventual terabyte-sized Drive needs measured page/chunk/index growth, a migra
 
 ### 12.1 Executed baseline checks
 
-These checks test the existing implementation; no proposed runtime feature was implemented in this planning task.
+These are historical checks from the planning-only task. Later P00 implementation results are recorded in its [separate checkpoint](planning-checkpoints/P00.md); the historical counts below are not the latest acceptance totals.
 
 | Check | Observed result | Interpretation |
 | --- | --- | --- |

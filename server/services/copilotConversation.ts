@@ -8,6 +8,7 @@ import { documentCitations, documentEvidenceWarning, type DocumentCitation } fro
 import { KIMI_MODEL } from '../config/nvidiaModels.js';
 import { conversationCapabilities } from './copilotCapabilities.js';
 import type { ResourceScope } from '../../shared/resourceScope.js';
+import { classifyTraceFailure, phaseForTool, type EvaluationRecorder } from './evaluationTrace.js';
 
 export interface ConversationTool {
   description: string;
@@ -89,11 +90,23 @@ export async function runCopilotConversation(options: {
   complete?: typeof chat;
   reviewComplete?: typeof chat;
   maxToolRounds?: number;
+  evaluation?: EvaluationRecorder;
 }) {
   const documentSources = new Map<string, DocumentCitation>();
   const evidenceWarnings = new Set<string>();
   const withEvidenceWarnings = (reply: string) => evidenceWarnings.size ? `${reply}\n\n${[...evidenceWarnings].join('\n\n')}` : reply;
-  const complete = options.complete ?? chat;
+  const providerComplete = options.complete ?? chat;
+  const complete: typeof chat = async (messages, completionOptions) => {
+    const started = Date.now();
+    try {
+      const result = await providerComplete(messages, completionOptions);
+      options.evaluation?.record({ phase: 'interpretation', status: 'completed', duration_ms: Date.now() - started });
+      return result;
+    } catch (error) {
+      options.evaluation?.record({ phase: 'interpretation', status: 'failed', duration_ms: Date.now() - started, failure: classifyTraceFailure(error, 'interpretation') });
+      throw error;
+    }
+  };
   const capabilities = conversationCapabilities(options.tools);
   if (options.resourceScope && Object.keys(options.resourceScope).length) capabilities.activateForTool('find_resources');
   const messages: ChatMessage[] = [{ role: 'system', content: capabilities.prompt(options.clock, options.resourceScope) }, ...conversationHistory(options.turns)];
@@ -139,6 +152,7 @@ export async function runCopilotConversation(options: {
     let envelope: z.infer<typeof envelopeSchema>;
     try { envelope = envelopeSchema.parse(parseJSON(raw)); }
     catch {
+      options.evaluation?.record({ phase: 'interpretation', status: 'failed', failure: 'invalid_response' });
       if (!protocolRetried) {
         protocolRetried = true;
         messages.push({ role: 'user', content: 'The response could not be read as the documented JSON format. Return a complete valid JSON object. No actions or tools from the invalid response were executed.' });
@@ -156,6 +170,7 @@ export async function runCopilotConversation(options: {
       const observations: unknown[] = [];
       for (const call of envelope.tool_calls) {
         let observation: unknown;
+        const toolStarted = Date.now();
         try {
           const tool = capabilities.tools[call.name];
           if (!tool) {
@@ -176,6 +191,7 @@ export async function runCopilotConversation(options: {
             // Check forbidden facts BEFORE field names become table columns.
             // The wire budget applies after lossless encoding, not before it.
             assertSafeAIContext(result.data, 500_000);
+            options.evaluation?.tool(call.name, result.data, Date.now() - toolStarted);
             const modelData = context.encode(call.id, result.data);
             const evidenceWarning = documentEvidenceWarning(call.name, result.data);
             if (evidenceWarning) evidenceWarnings.add(evidenceWarning);
@@ -200,6 +216,7 @@ export async function runCopilotConversation(options: {
           calls.push({ name: call.name, status: 'completed' });
           await options.onTool?.(call.name, 'completed');
         } catch (error) {
+          options.evaluation?.record({ phase: phaseForTool(call.name), status: 'failed', duration_ms: Date.now() - toolStarted, failure: classifyTraceFailure(error, phaseForTool(call.name)) });
           observation = { error: error instanceof z.ZodError ? error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ') : error instanceof Error ? error.message : 'Tool failed' };
           calls.push({ name: call.name, status: 'failed' });
           await options.onTool?.(call.name, 'failed');
@@ -232,6 +249,7 @@ export async function runCopilotConversation(options: {
       proposalIssues.push('Before proposing create_routine, use read_routines to inspect existing native routines for duplicates. No routine has been saved.');
     }
     if (proposalIssues.length) {
+      options.evaluation?.record({ phase: 'proposal', status: 'failed', failure: 'invalid_proposal', count: proposalIssues.length });
       if (proposalRetried) throw new Error('Copilot could not produce a valid proposal. Nothing was changed. Please try again.');
       proposalRetried = true;
       messages.push(assistantMessage ?? { role: 'assistant', content: raw }, { role: 'user', content: `Proposal validation feedback (not a new user request): ${JSON.stringify(proposalIssues)}. Nothing was saved or applied. Correct the structured proposal while preserving the user's request; use any required read tool first. If it cannot be supported, explain the limitation without claiming success. Return the documented JSON format.` });
@@ -252,6 +270,8 @@ export async function runCopilotConversation(options: {
       if (artifact && !discarded.has(id)) displayed[artifact.kind] = artifact.data;
     }
     const validActions = actions.filter(action => !action.rejected_reason);
+    if (actions.length) options.evaluation?.record({ phase: 'proposal', status: validActions.length === actions.length ? 'completed' : 'partial', count: validActions.length,
+      ...(validActions.length < actions.length ? { failure: 'invalid_proposal' as const } : {}) });
     const preview = displayed.plan as { from?: unknown; to?: unknown; blocks?: unknown[]; unplaced?: unknown } | undefined;
     let reply = envelope.reply;
     if (validActions.length) {

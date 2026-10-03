@@ -6,6 +6,9 @@ import { Router } from 'express';
 import { resourceScopeSchema, type ResourceScope } from '../../shared/resourceScope.js';
 import { historyInScope } from '../services/scopedConversation.js';
 import { runCopilotConversation, type ConversationTurn } from '../services/copilotConversation.js';
+import { EvaluationRecorder, classifyTraceFailure } from '../services/evaluationTrace.js';
+import { saveEvaluationTrace, loadEvaluationTraces } from '../services/evaluationTraceStore.js';
+import type { EvaluationTrace } from '../../shared/evaluationTrace.js';
 import { createCopilotTools, readCopilotClock } from '../services/copilotTools.js';
 import { citationsForContext } from '../services/contextCitations.js';
 import { evidenceModelsSchema, resolveEvidenceModels, modelRoleCatalog, type EvidenceModels } from '../services/copilotModelRoles.js';
@@ -92,6 +95,7 @@ interface ChatRuntime {
   fallback_model: string | null;
   local_fallback_model: string | null;
   model_calls: ChatRuntimeCall[];
+  evaluation_trace?: EvaluationTrace;
 }
 
 type TaskDeadlineRow = {
@@ -1421,7 +1425,7 @@ async function persistActionsAsProposals(
 
 async function answerConversation(
   turns: ConversationTurn[],
-  options: { model?: string; evidenceModels?: Partial<EvidenceModels>; resourceScope?: ResourceScope; source: string; sessionId: string | null; onTrace?: (trace: ChatCallTrace) => void; agentRunId?: string },
+  options: { model?: string; evidenceModels?: Partial<EvidenceModels>; resourceScope?: ResourceScope; source: string; sessionId: string | null; onTrace?: (trace: ChatCallTrace) => void; agentRunId?: string; evaluation?: EvaluationRecorder },
 ) {
   const evidenceModels = resolveEvidenceModels(options.evidenceModels);
   const contexts = new Map<string, Awaited<ReturnType<typeof getScheduleContext>>>();
@@ -1443,6 +1447,7 @@ async function answerConversation(
     clock: await readCopilotClock(),
     model: options.model,
     onTrace: options.onTrace,
+    evaluation: options.evaluation,
     onTool: options.agentRunId ? async (name, status) => {
       await appendAgentEvent(options.agentRunId!, 'conversation_tool', `Read-only tool: ${name}`, null, { tool: name, status });
     } : undefined,
@@ -1456,11 +1461,18 @@ async function answerConversation(
       overdueTasks: async () => rememberContext({ tasks: (await loadContext()).overdue_tasks }),
     }),
   });
+  let actions: Awaited<ReturnType<typeof persistActionsAsProposals>>;
+  try { actions = await persistActionsAsProposals(result.actions, options.source, options.sessionId); }
+  catch (error) {
+    options.evaluation?.record({ phase: 'persistence', status: 'failed', failure: 'storage_failed' });
+    throw error;
+  }
+  options.evaluation?.proposals(actions.flatMap(action => action.proposal_id ? [action.proposal_id] : []));
   return {
     ...result,
     evidence_models: evidenceModels,
     resource_scope: options.resourceScope ?? {},
-    actions: await persistActionsAsProposals(result.actions, options.source, options.sessionId),
+    actions,
     citations: [...citations.values(), ...result.document_citations],
   };
 }
@@ -1479,10 +1491,14 @@ router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
   let model: string;
   try { model = resolveChatModel(parsed.data.model); }
   catch (error) { return res.status(400).json({ error: String(error) }); }
+  const evaluation = new EvaluationRecorder({ configuration: { model, evidence: resolveEvidenceModels(parsed.data.evidence_models), policy: 'modular-v1' } });
   try {
-    res.json(await answerConversation(parsed.data.resource_scope ? parsed.data.messages.slice(-1) : parsed.data.messages, { model, evidenceModels: parsed.data.evidence_models, resourceScope: parsed.data.resource_scope, source: 'chat', sessionId: null }));
+    const result = await answerConversation(parsed.data.resource_scope ? parsed.data.messages.slice(-1) : parsed.data.messages, { model, evidenceModels: parsed.data.evidence_models, resourceScope: parsed.data.resource_scope, source: 'chat', sessionId: null, evaluation });
+    evaluation.storage('unavailable'); // Stateless endpoint has no durable run.
+    res.json({ ...result, evaluation_trace: evaluation.snapshot() });
   } catch (error) {
-    res.status(502).json({ error: error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.' });
+    evaluation.storage('unavailable');
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.', evaluation_trace: evaluation.snapshot() });
   }
 });
 
@@ -2597,6 +2613,16 @@ router.get('/sessions/:id/messages', async (req, res) => {
       return { ...m, metadata: null, metadata_json: undefined };
     }
   });
+  const runIds = hydrated.flatMap(m => m.metadata?.agent_run_id ? [m.metadata.agent_run_id] : []);
+  const traces = await loadEvaluationTraces(runIds).catch(() => null);
+  for (const message of hydrated) {
+    if (message.metadata?.runtime && message.metadata.agent_run_id) {
+      const trace = traces?.get(message.metadata.agent_run_id);
+      // Trace retention is independent of chat history. Do not retain copies in metadata.
+      if (trace) message.metadata.runtime.evaluation_trace = trace;
+      else message.metadata.runtime.diagnostics_unavailable = true;
+    }
+  }
   res.json(hydrated);
 });
 
@@ -2607,6 +2633,7 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
   const { message, model } = input.data;
   const requestStartedAt = Date.now();
   const modelCalls: ChatRuntimeCall[] = [];
+  let evaluation: EvaluationRecorder | undefined;
 
   // Load or create session
   const { rows: sessionRows } = await query<{ id: string; model: string | null }>(
@@ -2630,6 +2657,7 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
     fallback_model: null,
     local_fallback_model: null,
     model_calls: [...modelCalls],
+    evaluation_trace: evaluation?.snapshot(),
   });
 
   // Preserve both sides of the exchange plus saved card facts. No classifier
@@ -2657,12 +2685,17 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
     source: 'copilot_chat', agentKind: 'conversation', sessionId: req.params.id,
     userMessage: message, model: selectedModel, metadata: { history_messages: history.length, routing: 'model_led' },
   });
+  evaluation = new EvaluationRecorder({ runId: agentRunId, configuration: { model: selectedModel, evidence: resolveEvidenceModels(input.data.evidence_models), policy: 'modular-v1' } });
+  evaluation.record({ phase: 'context', status: 'completed', count: history.length, duration_ms: Date.now() - requestStartedAt });
+  let responsePrepared = false;
   try {
     const result = await answerConversation([...history, { role: 'user', content: message }], {
-      model: selectedModel, evidenceModels: input.data.evidence_models, resourceScope: input.data.resource_scope, source: 'chat_session', sessionId: req.params.id, agentRunId,
+      model: selectedModel, evidenceModels: input.data.evidence_models, resourceScope: input.data.resource_scope, source: 'chat_session', sessionId: req.params.id, agentRunId, evaluation,
       onTrace: trace => modelCalls.push({ phase: 'answer', ...trace }),
     });
-    const runtime = runtimeInfo();
+    responsePrepared = true;
+    const { evaluation_trace: _transientTrace, ...runtime } = runtimeInfo();
+    const persistenceStarted = Date.now();
     const now = new Date().toISOString();
     const userMessageId = crypto.randomUUID(); const messageId = crypto.randomUUID();
     const metadata = { ...result, agent_run_id: agentRunId, model: selectedModel, runtime };
@@ -2670,14 +2703,19 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
       VALUES ($1,$2,'user',$3,$8,$4),($5,$2,'assistant',$6,$7,$4)`,
       [userMessageId,req.params.id,message,now,messageId,result.reply,JSON.stringify(metadata),JSON.stringify({ resource_scope: input.data.resource_scope ?? {} })]);
     await query('UPDATE chat_sessions SET updated_at=$1 WHERE id=$2', [now,req.params.id]);
+    evaluation.record({ phase: 'persistence', status: 'completed', duration_ms: Date.now() - persistenceStarted });
     await setAgentIntent(agentRunId, result.conversation.needs_clarification ? 'clarification' : result.actions[0]?.type ?? 'conversation', 0, { routing: 'model_led', action_count: result.actions.length });
     await finishAgentRun(agentRunId, 'completed', result.reply, { metadata: { action_count: result.actions.length, tool_calls: result.conversation.tool_calls, runtime } });
-    res.json({ ...result, session_id: req.params.id, message_id: messageId, agent_run_id: agentRunId, runtime });
+    await saveEvaluationTrace(evaluation);
+    res.json({ ...result, session_id: req.params.id, message_id: messageId, agent_run_id: agentRunId, runtime: runtimeInfo() });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Copilot could not finish this reply. Please try again.';
-    const runtime = runtimeInfo();
+    if (responsePrepared) evaluation.record({ phase: 'persistence', status: 'failed', failure: classifyTraceFailure(error, 'persistence') });
+    else if (!evaluation.snapshot().events.some(event => event.status === 'failed')) evaluation.record({ phase: 'interpretation', status: 'failed', failure: 'unknown' });
+    const { evaluation_trace: _transientTrace, ...runtime } = runtimeInfo();
     await finishAgentRun(agentRunId, 'failed', null, { error: message, metadata: { runtime } }).catch(() => {});
-    res.status(502).json({ error: message, runtime });
+    await saveEvaluationTrace(evaluation);
+    res.status(502).json({ error: message, runtime: runtimeInfo() });
   }
 });
 
