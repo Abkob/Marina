@@ -54,7 +54,7 @@ An additive page-checkpoint table stores document identity, generation, source h
 - Parse extracts reading order, headings and table markup.
 - Omni describes figures, diagrams, charts, labels and relationships.
 
-Successful role outputs survive a partial failure. Only missing roles retry, up to three attempts per page. Truncated OCR is incomplete coverage. Exhausted visual failures preserve native text and successful evidence, and remain visible after indexing finishes. Lease checks prevent stale workers publishing a replacement. The old chunk set remains intact until the new generation is atomically written; a pending replacement is not reported as ready. Unchanged pages can reuse evidence when their source hash and extractor/model version match.
+Successful role outputs survive a partial failure. Only missing roles retry, up to three attempts per page. Truncated OCR is incomplete coverage. Exhausted visual failures preserve native text and successful evidence, and remain visible after indexing finishes. Lease checks prevent stale workers publishing a replacement. The old chunk set remains intact until the new generation is atomically written; a pending replacement is not reported as ready. Ready pages can reuse evidence when the **whole file's SHA-256**, page number and extractor/model version match. This is not independent change detection for each page: changing one page can invalidate reuse across the document.
 
 Chunking respects physical page and evidence-kind boundaries, then Markdown sections/paragraphs, then a 2,000-character ceiling with Unicode-safe splitting. Heading, evidence kind, model and generation accompany passages. Native quotations, OCR, extracted structure and visual interpretations are distinguishable in retrieval and citation cards. This is not a fully validated table-cell graph or an assertion that model-generated text is verbatim source material.
 
@@ -64,7 +64,42 @@ Document and research search now share the PostgreSQL lexical/vector pipeline an
 
 One live **synthetic** image probe completed OCR, Parse and Omni in 26.5 seconds. All three outputs contained the calibration code; OCR was not truncated. This demonstrates endpoint compatibility, not general OCR accuracy or a speed guarantee. Private documents were not used for that probe.
 
+### 3.1 When indexing runs
+
+Indexing builds a reusable search representation: passages, page information, extracted visual evidence and embeddings. Asking a question searches that saved representation; it does not rebuild the whole library. Originals remain in Drive or their preserved legacy storage. The index occupies Neon database storage and grows with the amount of indexed material.
+
+| Trigger | Current behavior |
+| --- | --- |
+| Upload or import a new supported document | Automatically queues that document for background processing. PDFs and supported images use the visual pipeline when NVIDIA document analysis is enabled and configured. |
+| Ask about an already indexed document | Searches the saved evidence; the assistant can request a separate page inspection when needed. |
+| Select `@goal` or `@task` | Checks the selected directory, imports newly discovered supported files, and queues files whose saved Drive version changed. Unchanged, available files retain their index. |
+| Edit a saved Drive document | A synchronization check detects the changed Drive version and queues that document. Detection happens when a check runs, not instantly after every Drive edit. |
+| Press **Re-index** in one document's Semantic Index panel | Queues that document, preserving its original. An already queued/running job is reused; a failed embedding stage can resume without repeating extraction. |
+| Deploy this release with older text-only indexes | Preserves those indexes. Unchanged older PDFs need a deliberate **Re-index** to gain automatic visual coverage; no whole-library upgrade was started. |
+
+For example, selecting a goal with 1,000 already indexed, unchanged documents checks its directory without analyzing all 1,000 again. Discovering 1,000 previously unimported supported files queues their first processing. Directory checks still incur work and API requests; “not re-indexing” does not mean a large folder refresh is free or instantaneous. A failed upgrade may need a retry, and future extractor changes may require another upgrade.
+
+### 3.2 How images become usable in chat
+
+For PDFs, the pipeline renders each page so the specialist models can see embedded diagrams, charts, tables, screenshots and scanned text. Native text is retained; OCR supplements low-text pages, Parse extracts structure, and Omni writes visual descriptions with visible labels and relationships. Structure and visual analysis currently run on every processed PDF page, including pages with native text. Supported standalone images are PNG, JPEG and WebP.
+
+The extracted descriptions are indexed with the document and physical page number. This makes a diagram discoverable by its subject even when that subject is absent from the PDF's native text. These are searchable textual descriptions, not a separate image-vector index. At question time the assistant can retrieve them alongside text and call `inspect_document_page` to examine the actual page more closely, within the selected resource scope. Page inspection is a tool available to the assistant, not a guarantee that it is called on every visual question.
+
+Example: `@Biology Explain the diagram showing how substances cross the cell membrane, and cite its page.` Retrieval can locate the saved diagram description; a subsequent page inspection can ground a more detailed explanation. Source cards distinguish visual interpretation, OCR and native text, and link to the source/page. They do not present a model description as a verbatim quotation.
+
+New PDFs receive this processing automatically when the visual pipeline is available. Older text-only PDFs need Re-index to make their images searchable across the document, although a known page can still be inspected on demand. Incomplete indexing, tiny labels and ambiguous charts can limit coverage or accuracy. Check the visible processing status; a searchable text index alone does not prove all images were analyzed successfully.
+
+### 3.3 Large-library work still to do
+
+The current implementation has not been demonstrated at terabyte scale. In addition to whole-file change detection, each durable page invocation materializes the original again; a large PDF can be downloaded repeatedly during one indexing run. Visual model calls, database growth, provider quotas and job volume remain material costs.
+
+The following are proposed improvements, **not completed features**: cache an immutable downloaded original or rendered pages across jobs; use page-level hashes to reuse unaffected evidence after an edit; and add explicit library-wide processing budgets and rate controls on top of the existing bounded jobs and retries. These changes need throughput and recovery tests before making large-library capacity claims. Existing folder scope and incremental per-document synchronization reduce unnecessary work but do not establish terabyte readiness.
+
+Implementation references: [Drive synchronization](../server/services/googleDrive.ts), [directory refresh](../server/services/driveDirectoryScan.ts), [processing and retry](../server/services/resourceProcessing.ts), [page evidence and reuse](../server/services/structuredIngestion.ts), [chat resource tools](../server/services/copilotTools.ts), and [per-document Re-index control](../src/components/resource-profile/SemanticIndexPanel.tsx).
+
 ## 4. Scheduling invariants
+
+In everyday terms, `Read chapter → Solve exercises → Submit homework` must stay in that order. If reading needs two hours, scheduling only 30 minutes does not make the exercises ready. A missing reading task is not proof that it was completed. If reading and exercises depend on each other, they form an impossible loop; submission is blocked behind the loop without being one of its causes. Exercises also cannot start at 10:30 when reading ends at 11:00, or overlap an existing calendar event.
 
 The scheduler remains deterministic. Following the precedence and no-overlap constraints in [Google OR-Tools job-shop guidance](https://developers.google.com/optimization/scheduling/job_shop), the fixes enforce these independently:
 
@@ -75,6 +110,8 @@ The scheduler remains deterministic. Following the precedence and no-overlap con
 - Clock placement checks prerequisite completion as well as daily capacity and calendar overlap.
 
 Tests cover missing blockers, partial prerequisites, recovery ordering, self-cycles, downstream tasks, zero-minute cyclic tasks and a 10,000-task chain without recursion overflow. Existing randomized calendar/capacity tests remain. This does not replace the greedy planner with a global optimization solver or promise an optimal schedule.
+
+“Deterministic” means the same task facts, calendar, settings and reference time produce the same scheduling result. A greedy planner makes successive local placement choices. A global optimization solver would consider combinations against an explicit objective, such as minimizing missed deadlines. The tests check feasibility rules and regressions; the 10,000-task chain exercises dependency handling, not whole-product throughput or a guarantee of the best arrangement.
 
 ## 5. Chat presentation
 
