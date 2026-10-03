@@ -4,6 +4,8 @@ Implementation checkpoint, 3 October 2026. This follows the [architecture compar
 
 **Primary product objective, clarified by the user:** Marina is a time-management copilot. Its main job is to help the user manage priorities, workload, deadlines, commitments and progress across goals and tasks, discuss realistic options, and adapt plans as circumstances change. Resources provide context for understanding the work and estimating its effort. Studying is one task type, not the product's primary purpose. The user wants a model-led discussion of meaningful alternatives, without a hard-coded strategy or fixed planning menu. Section 8 records this objective and distinguishes the existing capabilities from the remaining gaps.
 
+The follow-up [time-management research and implementation recommendation](time-management-copilot-research-2026-10-03.md) compares current products, pinned open-source implementations and research papers. It develops section 8 into a proposed architecture, staged delivery plan and evaluation strategy; those additions are recommendations, not newly implemented features.
+
 ## 1. The folder and context contract
 
 The stored Google Drive root ID is the boundary. Matching a folder named “Marina” is insufficient. Import, browsing, downloading, synchronization, candidate retrieval, exact page reads and visual inspection now verify ancestry back to that ID. Trashed folders, missing parents, shortcuts, cycles and ambiguous ancestry fail closed. Cached parent metadata lives for one operation only, so a later move outside the root is checked again. Temporary provider failure is reported rather than treated as proof that no resources exist.
