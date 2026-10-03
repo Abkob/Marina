@@ -175,7 +175,7 @@ export function InteractiveTaskTimeline({ diagnostics, taskLookup, goalTitles, a
   const estimate = Number(task?.estimated_minutes ?? selectedDiagnostic?.required_minutes ?? 0);
   const logged = Number(task?.logged_minutes ?? 0);
   const committed = Number(task?.committed_minutes ?? 0);
-  const currentRemaining = Number(task?.remaining_minutes ?? selectedDiagnostic?.required_minutes ?? 0);
+  const currentRemaining = Number((task?.work_accounting ? task.unscheduled_minutes : task?.remaining_minutes) ?? selectedDiagnostic?.required_minutes ?? 0);
   const goalTitle = task?.goal_id ? goalTitles[task.goal_id] ?? task.goal_title : task?.goal_title;
   const isOverflow = selectedDiagnostic?.outcome === 'overflow';
   const isUnknown = selectedDiagnostic?.outcome === 'unestimated';
@@ -287,9 +287,9 @@ export function InteractiveTaskTimeline({ diagnostics, taskLookup, goalTitles, a
             </div>
 
             <div className="grid gap-3 p-4 sm:grid-cols-4">
-              <div className="rounded-2xl bg-slate-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Estimate</p><p className="mt-1 text-lg font-bold text-slate-900">{estimate > 0 ? duration(estimate) : 'Missing'}</p></div>
-              <div className="rounded-2xl bg-emerald-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Already logged</p><p className="mt-1 text-lg font-bold text-emerald-800">{logged > 0 ? `- ${duration(logged)}` : '0m'}</p></div>
-              <div className="rounded-2xl bg-blue-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">On calendar</p><p className="mt-1 text-lg font-bold text-blue-800">{committed > 0 ? `- ${duration(committed)}` : '0m'}</p></div>
+              <div className="rounded-2xl bg-slate-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Work remaining</p><p className="mt-1 text-lg font-bold text-slate-900">{isUnknown ? 'Unknown' : duration(task?.work_accounting?.remaining_minutes ?? (currentRemaining + committed))}</p></div>
+              <div className="rounded-2xl bg-emerald-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600">Already logged</p><p className="mt-1 text-lg font-bold text-emerald-800">{logged > 0 ? duration(logged) : '0m'}</p></div>
+              <div className="rounded-2xl bg-blue-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">On calendar</p><p className="mt-1 text-lg font-bold text-blue-800">{committed > 0 ? duration(committed) : '0m'}</p></div>
               <div className={`rounded-2xl p-3 ${isOverflow ? 'bg-red-50' : isUnknown ? 'bg-amber-50' : 'bg-indigo-50'}`}><p className={`text-[11px] font-bold uppercase tracking-wide ${isOverflow ? 'text-red-600' : isUnknown ? 'text-amber-600' : 'text-indigo-600'}`}>Unscheduled now</p><p className={`mt-1 text-lg font-bold ${isOverflow ? 'text-red-800' : isUnknown ? 'text-amber-800' : 'text-indigo-800'}`}>{isUnknown ? '?' : duration(currentRemaining)}</p></div>
             </div>
 
@@ -340,7 +340,7 @@ export function InteractiveTaskTimeline({ diagnostics, taskLookup, goalTitles, a
                       <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{deadline ? isOverdue ? 'Deadline passed' : 'Deadline' : work ? 'Work slice' : isOverdue ? 'Today' : 'Starting point'}</p>
                       <p className="mt-1 font-bold text-slate-900">{dateLabel(item.date)}</p>
                       <p className={`mt-2 text-sm font-bold ${deadline && item.remaining > 0 ? 'text-red-700' : item.remaining === 0 ? 'text-emerald-700' : 'text-indigo-700'}`}>
-                        {work ? `${duration(item.allocated)} work -> ` : ''}{isUnknown ? '? left' : item.remaining === 0 ? 'Done' : `${duration(item.remaining)} left`}
+                        {work ? `${duration(item.allocated)} work -> ` : ''}{isUnknown ? '? left' : item.remaining === 0 ? 'Time allocated' : `${duration(item.remaining)} left`}
                       </p>
                     </motion.button>
                   );
@@ -366,7 +366,7 @@ export function InteractiveTaskTimeline({ diagnostics, taskLookup, goalTitles, a
               </label>
               <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${isOverflow ? 'bg-red-50 text-red-700' : isUnknown ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                 {isOverflow ? <AlertTriangle size={16} /> : isUnknown ? <CircleHelp size={16} /> : <CheckCircle2 size={16} />}
-                {isOverflow ? `${duration(selectedDiagnostic.shortfall_minutes)} misses cutoff` : isUnknown ? 'Add estimate to unlock' : 'Fits before cutoff'}
+                {isOverflow ? `${duration(selectedDiagnostic.shortfall_minutes)} misses cutoff` : isUnknown ? 'Review remaining work' : 'Fits before cutoff'}
               </div>
             </div>
 

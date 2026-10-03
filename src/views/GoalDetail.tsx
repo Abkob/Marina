@@ -1896,6 +1896,7 @@ function GoalTimePanel({ tasks }: { tasks: DBTask[] }) {
         )}
       </div>
 
+      {stats.unknownRemainingCount > 0 && <p className="mb-3 text-xs text-amber-700">{stats.unknownRemainingCount} task(s) need a remaining-work forecast. Known subtotal: {formatTaskTime(stats.knownRemainingMinutes)}.</p>}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-3">
         <div>
           <p className="font-mono text-[9px] uppercase tracking-widest text-gray-400 mb-0.5">Spent</p>
@@ -1905,13 +1906,13 @@ function GoalTimePanel({ tasks }: { tasks: DBTask[] }) {
         <div>
           <p className="font-mono text-[9px] uppercase tracking-widest text-gray-400 mb-0.5">Remaining</p>
           <p className="text-sm font-bold text-gray-900">
-            {adjustedRemainingMinutes != null ? formatTaskTime(adjustedRemainingMinutes) : '—'}
+            {adjustedRemainingMinutes != null ? formatTaskTime(adjustedRemainingMinutes) : 'Unknown'}
           </p>
           {velocityRatio !== null && adjustedRemainingMinutes !== stats.estimatedRemainingMinutes && (
             <p className="font-mono text-[9px] text-gray-400">adjusted</p>
           )}
           {adjustedRemainingMinutes === stats.estimatedRemainingMinutes && stats.estimatedRemainingMinutes !== null && (
-            <p className="font-mono text-[9px] text-gray-400">estimated</p>
+            <p className="font-mono text-[9px] text-gray-400">current forecast</p>
           )}
         </div>
         <div>
@@ -1953,8 +1954,8 @@ function GoalTimePanel({ tasks }: { tasks: DBTask[] }) {
         if (!finishDate) return null;
         return (
           <p className="font-mono text-[10px] text-gray-400 flex items-center gap-1.5">
-            <span>At your pace:</span>
-            <span className="font-bold text-gray-700">done by {formatProjectedDate(finishDate)}</span>
+            <span>Illustration at 4h/day:</span>
+            <span className="font-bold text-gray-700">{formatProjectedDate(finishDate)} · calendar not checked</span>
           </p>
         );
       })()}

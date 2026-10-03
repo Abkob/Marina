@@ -1,9 +1,10 @@
 import type { DBTask } from '../db/schema';
+import { accountWork } from '../../shared/workAccounting';
 
 const MAX_TASK_MINUTES = 60 * 1000;
 
 export function normalizeTaskMinutes(value: number | null | undefined): number | null {
-  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
   return Math.min(MAX_TASK_MINUTES, Math.max(0, Math.round(value)));
 }
 
@@ -33,7 +34,7 @@ export function parseTaskTimeInput(value: string | null | undefined): number | n
 }
 
 export function formatTaskTime(minutes: number | null | undefined): string {
-  const normalized = normalizeTaskMinutes(minutes);
+  const normalized = typeof minutes === 'number' && Number.isFinite(minutes) && minutes >= 0 ? Math.round(minutes) : null;
   if (normalized === null || normalized === 0) return 'Time';
   if (normalized < 60) return `${normalized}m`;
 
@@ -43,7 +44,7 @@ export function formatTaskTime(minutes: number | null | undefined): string {
 }
 
 export function formatTaskTimeLong(minutes: number): string {
-  const normalized = normalizeTaskMinutes(minutes) ?? 0;
+  const normalized = Number.isFinite(minutes) && minutes >= 0 ? Math.round(minutes) : 0;
   if (normalized < 60) return `${normalized} min`;
 
   const hours = Math.floor(normalized / 60);
@@ -82,7 +83,7 @@ export interface RolledUpActualTime {
 
 /** Actual time is additive: every session belongs to one task and rolls up to its ancestors. */
 export function getRolledUpActualTime(task: DBTask, allTasks: DBTask[]): RolledUpActualTime {
-  const ownMinutes = normalizeTaskMinutes(task.actual_minutes) ?? 0;
+  const ownMinutes = accountWork(task).logged_minutes;
   const directChildren = allTasks.filter(t => t.parent_task_id === task.id);
   let childrenMinutes = 0;
   let contributingChildren = 0;
@@ -91,7 +92,7 @@ export function getRolledUpActualTime(task: DBTask, allTasks: DBTask[]): RolledU
     const childActual = getRolledUpActualTime(child, allTasks);
     childrenMinutes += childActual.minutes;
     contributingChildren += childActual.contributingChildren;
-    if ((normalizeTaskMinutes(child.actual_minutes) ?? 0) > 0) contributingChildren += 1;
+    if (accountWork(child).logged_minutes > 0) contributingChildren += 1;
   }
 
   return { minutes: ownMinutes + childrenMinutes, ownMinutes, childrenMinutes, contributingChildren };
@@ -125,9 +126,9 @@ export function getTaskLeafProgress(task: DBTask, allTasks: DBTask[]): number {
 export interface TaskTimeProgress {
   /** 0–1 completion ratio, time-weighted when leaf estimates exist, count-based otherwise. */
   ratio: number;
-  /** Sum of estimated_minutes for incomplete leaves (null when no incomplete leaf has a time). */
+  /** Sum of current remaining-work estimates for incomplete leaves; null if any is unknown. */
   remainingMinutes: number | null;
-  /** Sum of actual_minutes logged on completed leaves (0 when nothing logged). */
+  /** Recorded work on leaves, including unfinished work. */
   spentMinutes: number;
   /** True when at least one leaf has time data (so ratio is time-weighted, not count-based). */
   isTimeWeighted: boolean;
@@ -139,7 +140,7 @@ export interface TaskTimeProgress {
  * Unlike getTaskLeafProgress (which counts tasks), this weights each leaf
  * by its estimated time so that completing a 3h task moves the bar more
  * than completing a 30m task. remainingMinutes is the direct sum of
- * incomplete leaves' estimates — not derived from the ratio.
+ * incomplete leaves' current forecasts — not derived from the completion ratio.
  */
 export function getTaskTimeProgress(task: DBTask, allTasks: DBTask[]): TaskTimeProgress {
   const isDone = task.completed || task.status === 'done';
@@ -148,7 +149,7 @@ export function getTaskTimeProgress(task: DBTask, allTasks: DBTask[]): TaskTimeP
     return {
       ratio: 1,
       remainingMinutes: 0,
-      spentMinutes: task.actual_minutes ?? 0,
+      spentMinutes: accountWork(task).logged_minutes,
       isTimeWeighted: est !== null || (task.actual_minutes ?? 0) > 0,
     };
   }
@@ -159,8 +160,8 @@ export function getTaskTimeProgress(task: DBTask, allTasks: DBTask[]): TaskTimeP
   if (leaves.length === 0) {
     return {
       ratio: 0,
-      remainingMinutes: getTaskEstimatedMinutes(task),
-      spentMinutes: task.actual_minutes ?? 0,
+      remainingMinutes: accountWork(task).remaining_minutes,
+      spentMinutes: accountWork(task).logged_minutes,
       isTimeWeighted: getTaskEstimatedMinutes(task) !== null,
     };
   }
@@ -172,7 +173,7 @@ export function getTaskTimeProgress(task: DBTask, allTasks: DBTask[]): TaskTimeP
   const pendingEst = pendingLeaves.reduce((s, l) => s + (getTaskEstimatedMinutes(l) ?? 0), 0);
   const totalEst   = doneEst + pendingEst;
 
-  const spentMinutes = doneleaves.reduce((s, l) => s + (l.actual_minutes ?? 0), 0);
+  const spentMinutes = leaves.reduce((s, l) => s + accountWork(l).logged_minutes, 0);
 
   const isTimeWeighted = totalEst > 0;
 
@@ -180,9 +181,8 @@ export function getTaskTimeProgress(task: DBTask, allTasks: DBTask[]): TaskTimeP
     ? doneEst / totalEst
     : leaves.length > 0 ? doneleaves.length / leaves.length : 0;
 
-  const remainingMinutes = pendingLeaves.some(l => getTaskEstimatedMinutes(l) !== null)
-    ? pendingEst
-    : null;
+  const forecasts = pendingLeaves.map(l => accountWork(l).remaining_minutes);
+  const remainingMinutes = forecasts.some(minutes => minutes === null) ? null : forecasts.reduce<number>((sum, minutes) => sum + (minutes ?? 0), 0);
 
   return { ratio, remainingMinutes, spentMinutes, isTimeWeighted };
 }

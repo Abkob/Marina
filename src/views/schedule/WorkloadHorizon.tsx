@@ -124,7 +124,7 @@ export function buildWorkloadHorizonModel({
     const estimate = Number(info?.estimated_minutes ?? 0);
     const logged = Number(info?.logged_minutes ?? 0);
     const committed = Number(info?.committed_minutes ?? 0);
-    const remaining = Number(info?.remaining_minutes ?? item.required_minutes ?? 0);
+    const remaining = Number((info?.work_accounting ? info.unscheduled_minutes : info?.remaining_minutes) ?? item.required_minutes ?? 0);
     const creditedTotal = Math.max(0, estimate - remaining);
     const creditedLogged = Math.min(logged, creditedTotal);
     const creditedCommitted = Math.min(committed, Math.max(0, creditedTotal - creditedLogged));
@@ -265,8 +265,8 @@ export function WorkloadHorizon({
   const creditedHandled = model.creditedLoggedMinutes + model.creditedCommittedMinutes;
   const routineMinutes = scheduler.capacity_days.filter(day => day.date >= rangeStart && day.date <= rangeEnd).reduce((sum, day) => sum + (day.routine_minutes ?? 0), 0);
   const explanation = pressureCount > 0
-    ? `${duration(model.remainingMinutes)} of known work is still unfinished in this view.${model.unestimatedCount ? ` ${model.unestimatedCount} unestimated task${model.unestimatedCount === 1 ? ' is' : 's are'} visible but excluded from the hour total.` : ''}`
-    : `${duration(model.remainingMinutes)} remains, and every estimated task in this view can currently be placed.`;
+    ? `${duration(model.remainingMinutes)} of known work still needs calendar time in this view.${model.unestimatedCount ? ` ${model.unestimatedCount} unestimated task${model.unestimatedCount === 1 ? ' is' : 's are'} visible but excluded from the hour total.` : ''}`
+    : `${duration(model.remainingMinutes)} needs calendar time, and every estimated task in this view can currently be placed.`;
 
   return (
     <section className="mb-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -281,7 +281,7 @@ export function WorkloadHorizon({
         <span className="min-w-0 flex-1">
           <span className="block text-xs font-bold text-slate-900">Schedule explanation</span>
           <span className="mt-0.5 block truncate text-[11px] text-slate-500">
-            {duration(model.remainingMinutes)} left
+            {duration(model.remainingMinutes)} needs time
             {model.overdueCount ? ` · ${model.overdueCount} overdue` : ''}
             {model.missedCount ? ` · ${model.missedCount} deadline${model.missedCount === 1 ? '' : 's'} need attention` : ''}
             {model.unestimatedCount ? ` · ${model.unestimatedCount} need estimates` : ''}
@@ -306,19 +306,19 @@ export function WorkloadHorizon({
 
         <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Known estimates" value={duration(model.estimateMinutes)} note="Actionable leaf tasks only; parents are not double-counted" tone="indigo" />
-          <Metric label="Already handled" value={duration(creditedHandled)} note={`${duration(model.loggedMinutes)} worked · ${duration(model.committedMinutes)} recorded on calendar${model.commitmentOverageMinutes ? ` · ${duration(model.commitmentOverageMinutes)} exceeds its task estimate` : ''}`} tone="emerald" />
-          <Metric label="Still left" value={duration(model.remainingMinutes)} note={`${duration(model.plannedMinutes)} suggested by the planner in this view · ${duration(model.remainingAfterRangeMinutes)} later`} tone={model.overdueCount || model.missedCount ? 'red' : 'slate'} />
+          <Metric label="Logged work" value={duration(model.loggedMinutes)} note={`${duration(model.committedMinutes)} separately reserved on calendar; reserved work is still unfinished`} tone="emerald" />
+          <Metric label="Needs calendar time" value={duration(model.remainingMinutes)} note={`${duration(model.plannedMinutes)} suggested by the planner in this view · ${duration(model.remainingAfterRangeMinutes)} later`} tone={model.overdueCount || model.missedCount ? 'red' : 'slate'} />
           <Metric label="Usable time in view" value={duration(model.availableMinutes)} note={`Planner uses ${utilisation}% · ${duration(model.freeMinutes)} open after fixed events${routineMinutes ? ` and ${duration(routineMinutes)} of routines` : ''}`} tone={utilisation > 90 ? 'amber' : 'slate'} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold">
-          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600">Estimate {duration(model.estimateMinutes)}</span>
-          <span className="text-slate-300">−</span>
+          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600">Original estimates {duration(model.estimateMinutes)}</span>
+          <span className="text-slate-300">·</span>
           <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-emerald-700">worked {duration(model.creditedLoggedMinutes)}</span>
-          <span className="text-slate-300">−</span>
-          <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-indigo-700">calendar credit {duration(model.creditedCommittedMinutes)}</span>
-          <span className="text-slate-300">=</span>
-          <span className="rounded-full border border-slate-300 bg-slate-950 px-2.5 py-1 text-white">{duration(model.remainingMinutes)} left</span>
+          <span className="text-slate-300">·</span>
+          <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-indigo-700">reserved {duration(model.committedMinutes)}</span>
+          <span className="text-slate-300">·</span>
+          <span className="rounded-full border border-slate-300 bg-slate-950 px-2.5 py-1 text-white">{duration(model.remainingMinutes)} needs time</span>
         </div>
       </div>
 
@@ -326,7 +326,7 @@ export function WorkloadHorizon({
         <div className="grid gap-2 border-b border-slate-100 bg-slate-50/70 p-4 lg:grid-cols-3 lg:px-6">
           {model.overdueCount > 0 && <div className="flex gap-2 rounded-xl border border-red-100 bg-white p-3 text-xs leading-5 text-slate-700"><History size={15} className="mt-0.5 shrink-0 text-red-600" /><p><strong className="text-red-700">{model.overdueCount} overdue · {duration(model.overdueMinutes)} still left.</strong> The old date stays red, but the work is carried into the next available catch-up slots.</p></div>}
           {model.missedCount > 0 && <div className="flex gap-2 rounded-xl border border-orange-100 bg-white p-3 text-xs leading-5 text-slate-700"><AlertTriangle size={15} className="mt-0.5 shrink-0 text-orange-600" /><p><strong className="text-orange-700">{model.missedCount} upcoming cutoff{model.missedCount === 1 ? '' : 's'} miss by {duration(model.shortfallMinutes)}.</strong> {scheduler.gap_minutes > 0 ? `${duration(scheduler.gap_minutes)} is free later, but later hours cannot repair an earlier deadline.` : 'There is not enough reachable capacity before those dates.'}</p></div>}
-          {model.unestimatedCount > 0 && <div className="flex gap-2 rounded-xl border border-amber-100 bg-white p-3 text-xs leading-5 text-slate-700"><TimerReset size={15} className="mt-0.5 shrink-0 text-amber-600" /><p><strong className="text-amber-700">{model.unestimatedCount} task{model.unestimatedCount === 1 ? '' : 's'} need a rough estimate.</strong> They remain visible, but Marina will not invent hours for them.</p></div>}
+          {model.unestimatedCount > 0 && <div className="flex gap-2 rounded-xl border border-amber-100 bg-white p-3 text-xs leading-5 text-slate-700"><TimerReset size={15} className="mt-0.5 shrink-0 text-amber-600" /><p><strong className="text-amber-700">{model.unestimatedCount} task{model.unestimatedCount === 1 ? '' : 's'} need a remaining-work forecast.</strong> They remain visible, but Marina will not invent hours for them.</p></div>}
         </div>
       )}
 

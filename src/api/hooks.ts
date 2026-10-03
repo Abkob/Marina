@@ -1,3 +1,4 @@
+import type { WorkAccounting } from '../../shared/workAccounting';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { DBGoal, DBTask, DBTaskNote, DBTaskNoteFile, DBNote, DBEvent, DBResource, DBMeeting, DBDeadline, DBMilestone, DBSchedulePrefs, DBWorkSession, DBJournalEntry, IngestionStatus, DBEdge } from '../db/schema';
 import { apiFetch, apiPost, apiDelete } from '../utils/apiFetch';
@@ -478,7 +479,9 @@ export interface ScheduleTaskInfo {
   estimated_minutes: number;
   logged_minutes: number;
   committed_minutes: number;
-  remaining_minutes: number;
+  remaining_minutes: number | null;
+  unscheduled_minutes?: number | null;
+  work_accounting?: WorkAccounting | null;
   start_date: string | null;
   due_date: string | null;
   start_date_source: ScheduleTimelineSource | null;

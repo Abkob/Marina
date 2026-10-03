@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { workAccountingRouter } from './work-accounting.js';
 import { activeTaskSql } from '../utils/archiveVisibility.js';
 import { query, buildUpdate, transaction } from '../db.js';
 import { syncGoalMetrics } from './goals.js';
@@ -15,6 +16,7 @@ import {
 } from '../utils/taskDeadline.js';
 
 const router = Router();
+router.use('/:taskId/work-accounting', workAccountingRouter);
 
 const TASK_UPDATE_FIELDS = new Set([
   'goal_id', 'parent_task_id', 'milestone_id', 'deadline_id',
@@ -85,17 +87,17 @@ router.get('/', async (req, res) => {
   let countResult;
   if (goal_id) {
     [result, countResult] = await Promise.all([
-      query(`SELECT * FROM tasks WHERE goal_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [goal_id, limit, offset]),
+      query(`SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE goal_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [goal_id, limit, offset]),
       query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE goal_id = $1 AND ${visible}`, [goal_id]),
     ]);
   } else if (parent_task_id) {
     [result, countResult] = await Promise.all([
-      query(`SELECT * FROM tasks WHERE parent_task_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [parent_task_id, limit, offset]),
+      query(`SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE parent_task_id = $1 AND ${visible} ORDER BY position ASC, created_at ASC LIMIT $2 OFFSET $3`, [parent_task_id, limit, offset]),
       query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE parent_task_id = $1 AND ${visible}`, [parent_task_id]),
     ]);
   } else {
     [result, countResult] = await Promise.all([
-      query(`SELECT * FROM tasks WHERE ${visible} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      query(`SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE ${visible} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
       query<{ total: string }>(`SELECT COUNT(*)::int AS total FROM tasks WHERE ${visible}`),
     ]);
   }
@@ -106,7 +108,7 @@ router.get('/', async (req, res) => {
 
 // GET /api/tasks/:id
 router.get('/:id', async (req, res) => {
-  const { rows } = await query('SELECT * FROM tasks WHERE id = $1', [req.params.id]);
+  const { rows } = await query('SELECT tasks.*, (SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=tasks.id) AS logged_minutes FROM tasks WHERE id = $1', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
   res.json(rows[0]);
 });

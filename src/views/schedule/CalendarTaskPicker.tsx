@@ -1,3 +1,4 @@
+import { accountWork } from '../../../shared/workAccounting';
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { DBGoal, DBTask } from '../../db/schema';
@@ -67,7 +68,7 @@ export function TaskPicker({ tasks, goals, onPick }: { tasks: DBTask[]; goals: D
           <p className="px-3 py-2 text-[11px] text-gray-400">No open task matches "{q}".</p>
         )}
         {filtered.slice(0, 60).map(({ task, depth, context }) => {
-          const remaining = remainingMinutes(task.estimated_minutes, task.actual_minutes ?? 0);
+          const remaining = accountWork(task).remaining_minutes;
           return (
             <button
               key={task.id}

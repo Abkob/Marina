@@ -2,7 +2,7 @@
 
 Date: 3 October 2026. Planning baseline: `6f627ecbd37cce9dfe1e0e71f70dbfea5789e98a`. Source behavior is grounded in the current repository, the [implementation checkpoint](copilot-implementation-2026-10-03.md), and the [expanded research](time-management-copilot-research-2026-10-03.md#16-closer-alternatives-the-expanded-search-for-marinas-actual-objective).
 
-**Status: P00–P02 implemented; 69 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures and diagnostics; [P01.1](planning-checkpoints/P01.1.md) records typed identities. The [P01–P02 checkpoint](planning-checkpoints/P01-P02.md) expands each new leaf into reviewed child steps, with frontend/backend behavior, concurrency and recovery tests, migration evidence and limitations. Persistent manual plan memory is implemented; automatic chat use, workload inference and effort forecasting remain later work. The remaining document specifies proposed work; proposed tests are not passing results.
+**Status: P00–P02 and P03.1 implemented; 68 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures and diagnostics; [P01.1](planning-checkpoints/P01.1.md) records typed identities. The [P01–P02 checkpoint](planning-checkpoints/P01-P02.md) expands each new leaf into reviewed child steps, with frontend/backend behavior, concurrency and recovery tests, migration evidence and limitations. [P03.1](planning-checkpoints/P03.1.md) now unifies own-task time accounting, versioned remaining forecasts and eligible reservations. Persistent manual plan memory is implemented; automatic chat use, workload inference and effort forecasting remain later work. The remaining document specifies proposed work; proposed tests are not passing results.
 
 **Execution style requested by the user:** implement and test small sections through successive prompts, inspect each section's results, then decide whether to continue, repair or expand. The default future implementation unit is one leaf ID, such as `P03.1`, not the whole document. A later user instruction can explicitly authorize a larger batch. Section 10 supplies copyable prompts, checkpoint records and the continuation protocol. This planning task does not start implementing the features.
 
@@ -235,7 +235,7 @@ Related contracts: P01.1–P01.3. Implemented in `server/services/planning/`, sh
 
 Related contracts: P01.1, P00.2. Proposed home: `workAccounting`; adapt every existing scheduler-input route.
 
-#### P03.1 [ ] Separate estimate, effort remaining and time reservation
+#### P03.1 [x] Separate estimate, effort remaining and time reservation
 
 - **Backend:** Return user estimate, measured/reported time, explicit remaining forecast, overrun/unknown state and future eligible reservations separately. Reconcile reservations only against the same task/window/work version.
 - **Frontend:** Show “remaining unknown” for an unfinished overrun; distinguish “work remains” from “needs more calendar time.” Explain forecast basis on demand.
@@ -1279,7 +1279,7 @@ Update this leaf's checkpoint and recommend continue, repair or expand. Stop bef
 implementing another leaf so I can review the result.
 ```
 
-P00–P02 are complete under the authorized batches. The next recommended prompt is P03.1, correcting time semantics across existing consumers. Persistent plan storage is now available, but conversational use and resource-informed forecasting still require their later leaves. Do not substitute a provider/model swap for the remaining accounting work.
+P00–P02 and P03.1 are complete under the authorized batches. The next recommended prompt is P03.2, unifying additive and inclusive hierarchy rollups. See the P03.1 checkpoint for executed checks and remaining interval/forecast limitations. Persistent plan storage is now available, but conversational use and resource-informed forecasting still require their later leaves. Do not substitute a provider/model swap for the remaining accounting work.
 
 ### 10.5 Copyable review and continuation prompts
 

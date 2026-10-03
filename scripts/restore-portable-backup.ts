@@ -111,6 +111,13 @@ try {
     transactionOpen = true;
     await client.query("SELECT pg_advisory_xact_lock(hashtext('marina-portable-restore'))");
     await client.query(schema);
+    // Restoring historical rows is not new work. Keep saved version stamps intact.
+    // These application triggers are transactionally re-enabled before commit.
+    const { rows: accountingTriggers } = await client.query<{ table_name: string; trigger_name: string }>(
+      `SELECT c.relname AS table_name,t.tgname AS trigger_name FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND t.tgenabled='O'
+         AND (c.relname,t.tgname) IN (('tasks','task_work_version'),('work_sessions','session_work_version'),('event_task_links','link_work_version'))`);
+    for (const { table_name, trigger_name } of accountingTriggers) await client.query(`ALTER TABLE ${quoteIdentifier(table_name)} DISABLE TRIGGER ${quoteIdentifier(trigger_name)}`);
 
     const tableNames = manifest.database.tables.map(table => table.name);
     const tableSet = new Set(tableNames);
@@ -198,6 +205,7 @@ try {
       if (actual !== table.row_count) throw new Error(`Final count mismatch for ${table.name}: expected ${table.row_count}, got ${actual}`);
     }
 
+    for (const { table_name, trigger_name } of accountingTriggers) await client.query(`ALTER TABLE ${quoteIdentifier(table_name)} ENABLE TRIGGER ${quoteIdentifier(trigger_name)}`);
     await client.query('COMMIT');
     transactionOpen = false;
     console.log(JSON.stringify({

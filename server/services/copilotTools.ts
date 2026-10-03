@@ -1,3 +1,4 @@
+import { accountWork, workColumns } from './workAccounting.js';
 import { z } from 'zod';
 import { query } from '../db.js';
 import { activeTaskSql, activeEventSql, activeMeetingSql } from '../utils/archiveVisibility.js';
@@ -121,14 +122,14 @@ export function createCopilotTools(dependencies: {
         const { rows } = await query<{ id: string }>(
           `SELECT t.id, t.title, t.description, t.goal_id, t.parent_task_id, t.milestone_id,
                   t.status, t.priority, t.completed, t.start_date, t.due_date, t.target_date,
-                  t.hard_deadline, t.estimated_minutes, t.actual_minutes, t.scheduling_enabled, t.kind,
+                  t.hard_deadline, t.estimated_minutes, ${workColumns()}, t.scheduling_enabled, t.kind,
                   COALESCE((SELECT json_agg(e.source_id) FROM edges e WHERE e.relationship='blocks'
                     AND e.source_type='task' AND e.target_type='task' AND e.target_id=t.id AND ${activeTaskSql('e.source_id')}), '[]'::json) AS blocker_ids,
-                  COALESCE((SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=t.id),0) AS logged_minutes
+                  COALESCE((SELECT SUM(ws.minutes) FROM work_sessions ws WHERE ws.task_id=t.id),t.actual_minutes,0) AS logged_minutes
            FROM tasks t WHERE (t.id = ANY($1) OR t.parent_task_id = ANY($1)) AND ${activeTaskSql('t.id')}
            ORDER BY (t.id = ANY($1)) DESC, t.position, t.title LIMIT 101`, [ids],
         );
-        const tasks = rows.slice(0, 100);
+        const tasks = rows.slice(0, 100).map(row => ({ ...row, work_accounting: accountWork(row as Record<string, unknown>) }));
         return { data: { tasks, missing_ids: ids.filter(id => !tasks.some(row => row.id === id)), limit: 100,
           children_has_more: rows.length > 100, more_children_tool: 'find_tasks with parent_task_id' } };
       },

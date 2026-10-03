@@ -1,3 +1,4 @@
+import { accountWork, workColumns } from './workAccounting.js';
 import { activeTaskSql, activeEntitySql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
 import {
@@ -64,8 +65,8 @@ async function sqlRetrieval(opts: RetrievalOptions): Promise<EntityCard[]> {
   // 3. ALL undated tasks (not just high/medium) — without this, backlog tasks are invisible to AI
   let sql = `
     SELECT t.id, t.title, t.status, t.priority, t.feel_score, t.due_date, t.estimated_minutes,
-           t.actual_minutes, t.goal_id, t.milestone_id,
-           COALESCE(ws.logged, 0) as logged_minutes,
+           ${workColumns()}, t.goal_id, t.milestone_id,
+           COALESCE(ws.logged, t.actual_minutes, 0) as logged_minutes,
            es_plan.summary_text as planning_summary,
            es_sem.summary_text as semantic_summary
     FROM tasks t
@@ -113,7 +114,7 @@ async function sqlRetrieval(opts: RetrievalOptions): Promise<EntityCard[]> {
       due_date: r.due_date as string | null,
       estimated_minutes: est || null,
       logged_minutes: logged,
-      remaining_minutes: est > 0 ? Math.max(0, est - logged) : null,
+      remaining_minutes: accountWork(r).remaining_minutes,
       planning_summary: (r.planning_summary as string | null) ?? null,
       semantic_summary: (r.semantic_summary as string | null) ?? null,
       goal_id: r.goal_id as string | null,
@@ -169,8 +170,8 @@ async function graphRetrieval(seedEntityIds: string[], depth = 1): Promise<Entit
   // Fetch task-type neighbors as entity cards (main use case for planning context)
   const { rows: taskRows } = await query(
     `SELECT t.id, t.title, t.status, t.priority, t.feel_score, t.due_date, t.estimated_minutes,
-            t.actual_minutes, t.goal_id, t.milestone_id,
-            COALESCE(ws.logged, 0) as logged_minutes,
+            ${workColumns()}, t.goal_id, t.milestone_id,
+            COALESCE(ws.logged, t.actual_minutes, 0) as logged_minutes,
             es.summary_text as planning_summary
      FROM tasks t
      LEFT JOIN (SELECT task_id, SUM(minutes) as logged FROM work_sessions WHERE minutes IS NOT NULL GROUP BY task_id) ws ON ws.task_id=t.id
@@ -189,7 +190,7 @@ async function graphRetrieval(seedEntityIds: string[], depth = 1): Promise<Entit
     due_date: r.due_date as string | null,
     estimated_minutes: Number(r.estimated_minutes ?? 0) || null,
     logged_minutes: Number(r.logged_minutes ?? 0),
-    remaining_minutes: r.estimated_minutes ? Math.max(0, Number(r.estimated_minutes) - Number(r.logged_minutes ?? 0)) : null,
+    remaining_minutes: accountWork(r).remaining_minutes,
     planning_summary: (r.planning_summary as string | null) ?? null,
     goal_id: r.goal_id as string | null,
     milestone_id: r.milestone_id as string | null,

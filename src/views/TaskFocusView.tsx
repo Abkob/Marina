@@ -1,5 +1,6 @@
 import { MobileDisclosure } from '../components/MobileDisclosure';
 import { PlanPanel } from '../components/planning/PlanPanel';
+import { WorkAccountingPanel } from '../components/planning/WorkAccountingPanel';
 import { useEffect, useRef, useState } from 'react';
 import {
   Calendar, CalendarClock, CalendarPlus, Check, CheckSquare, ChevronLeft, ChevronRight, Clock, Download,
@@ -303,7 +304,7 @@ function SectionPlanningWidgets({
     <div className={`grid grid-cols-2 gap-2 ${className}`}>
       <div className="min-w-0 rounded-lg border border-gray-150 bg-[#f8f9fa] px-2.5 py-2">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="font-mono text-[8px] font-bold uppercase tracking-widest text-gray-400">Time Needed</span>
+          <span className="font-mono text-[8px] font-bold uppercase tracking-widest text-gray-400">Original Estimate</span>
           <Clock size={10} className="shrink-0 text-gray-300" />
         </div>
         <TimePill
@@ -1502,6 +1503,7 @@ export function TaskFocusView() {
         />
       </header>
       <PlanPanel root={{ kind: 'task', id: task.id }} />
+      <WorkAccountingPanel taskId={task.id} />
 
       <div className="mb-4"><MobileDisclosure title="Calendar & time blocks" storageKey="task-calendar"><TaskCalendarPanel task={task} subtreeIds={subtreeIds} allTasks={allTasks} /></MobileDisclosure></div>
 

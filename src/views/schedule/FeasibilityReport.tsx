@@ -422,7 +422,7 @@ export function FeasibilityReport({
             const estimate = Number(task?.estimated_minutes ?? diagnostic.required_minutes);
             const logged = Number(task?.logged_minutes ?? 0);
             const committed = Number(task?.committed_minutes ?? 0);
-            const currentRemaining = Number(task?.remaining_minutes ?? diagnostic.required_minutes);
+            const currentRemaining = Number((task?.work_accounting ? task.unscheduled_minutes : task?.remaining_minutes) ?? diagnostic.required_minutes);
             const isCovered = diagnostic.outcome === 'fit' && estimate > 0 && currentRemaining === 0;
             const dueDate = diagnostic.due_date;
             const slackDays = finishDate && dueDate ? calendarDayDifference(finishDate, dueDate) : null;
@@ -461,16 +461,16 @@ export function FeasibilityReport({
                   {diagnostic.outcome === 'unestimated' ? (
                     <div className="rounded-xl border border-amber-200 bg-white p-4">
                       <p className="text-sm font-bold text-amber-800">No honest time math is possible yet.</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">Add a rough estimate. Marina will subtract logged focus time and calendar work automatically on the next refresh.</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">Review the remaining-work forecast in the task. An exhausted estimate is not evidence of completion.</p>
                     </div>
                   ) : (
                     <>
                       <div className="rounded-xl border border-indigo-100 bg-white p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">What is left right now</p>
+                        <p className="text-xs font-bold uppercase tracking-wide text-indigo-600">Work and calendar time</p>
                         <p className="mt-2 text-lg font-bold tracking-tight text-slate-950">
-                          {duration(estimate)} estimate <span className="text-slate-400">-</span> {duration(logged)} logged <span className="text-slate-400">-</span> {duration(committed)} already on calendar <span className="text-slate-400">-&gt;</span> <span className="text-indigo-700">{duration(currentRemaining)} left</span>
+                          {duration(task?.work_accounting?.remaining_minutes ?? (currentRemaining + committed))} work remaining · {duration(committed)} reserved · <span className="text-indigo-700">{duration(currentRemaining)} needs calendar time</span>
                         </p>
-                        <p className="mt-2 text-xs leading-5 text-slate-500">Finishing a focus session increases "logged"; adding a timed calendar block increases "already on calendar". The remaining number shrinks on refresh and stops at zero.</p>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">Logged work, remaining forecasts and reservations are separate. A scheduled slice is still work to do; it does not mark the task complete.</p>
                       </div>
 
                       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -482,12 +482,12 @@ export function FeasibilityReport({
                             <li key={slice.date} className="grid grid-cols-[minmax(120px,1fr)_auto_auto] gap-3 px-4 py-3 text-sm">
                               <span className="font-semibold text-slate-800">{dateLabel(slice.date)}</span>
                               <span className="font-bold text-indigo-700">{duration(slice.allocated_minutes)}</span>
-                              <span className={`text-right font-bold ${slice.remaining_after ? 'text-slate-700' : 'text-emerald-700'}`}>{slice.remaining_after ? `${duration(slice.remaining_after)} left` : 'Done'}</span>
+                              <span className={`text-right font-bold ${slice.remaining_after ? 'text-slate-700' : 'text-emerald-700'}`}>{slice.remaining_after ? `${duration(slice.remaining_after)} left` : 'Time allocated'}</span>
                             </li>
                           ))}
                           {!slices.some(slice => slice.allocated_minutes > 0) && (
                             <li className="px-4 py-4 text-sm text-slate-500">
-                              {isCovered ? 'No new slice is needed: the full estimate is already logged or placed on the calendar.' : 'No usable work slice exists between the start and deadline.'}
+                              {isCovered ? 'No new slice is needed: the current remaining-work forecast already has calendar coverage.' : 'No usable work slice exists between the start and deadline.'}
                             </li>
                           )}
                         </ol>

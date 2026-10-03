@@ -54,6 +54,14 @@ export type CriticalPathStatus = 'Completed' | 'In Progress' | 'Future';
 export type TaskTimeRollupMode = 'additive' | 'inclusive';
 
 export interface DBTask {
+  work_version?: number;
+  worklog_version?: number;
+  logged_minutes?: number | null;
+  remaining_forecast_minutes?: number | null;
+  remaining_forecast_work_version?: number | null;
+  remaining_forecast_log_version?: number | null;
+  remaining_forecast_updated_at?: string | null;
+  forecast_revision?: number;
   id: string;
   goal_id: string | null;              // null = standalone task
   parent_task_id: string | null;       // null = top-level task

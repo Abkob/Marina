@@ -73,6 +73,35 @@ test('P02 real goal plan saves, preserves a local draft and recovers after reloa
   }finally{await client.query('DELETE FROM goals WHERE id=$1',[id]);await client.end();}
 });
 
+test('P03.1 remaining forecast saves, reloads and detects changed work on this viewport', async ({ page, isMobile }, info) => {
+  const client = new pg.Client({ connectionString: validatePlanningTestUrl(process.env.DATABASE_URL_TEST, process.env.PLANNING_TEST_DB) });
+  await client.connect(); await assertPlanningTestDatabase(client as any);
+  const goal = randomUUID(); const task = randomUUID(); const session = randomUUID(); const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await client.query("INSERT INTO goals(id,title,created_at,updated_at) VALUES ($1,'Accounting browser goal',NOW()::text,NOW()::text)", [goal]);
+    await client.query("INSERT INTO tasks(id,goal_id,title,estimated_minutes,created_at,updated_at) VALUES ($1,$2,'Accounting browser task',60,NOW()::text,NOW()::text)", [task, goal]);
+    await client.query("INSERT INTO work_sessions(id,task_id,minutes,started_at,created_at) VALUES ($1,$2,70,NOW()::text,NOW()::text)", [session, task]);
+    await page.goto(`/?view=goals&goal=${goal}&task=${task}`, { waitUntil: 'domcontentloaded' });
+    const panel = page.getByRole('region', { name: 'Work and calendar time' });
+    await expect(panel.getByText('Work remaining')).toBeVisible(); await expect(panel.getByText('Unknown')).toHaveCount(2);
+    const details = panel.getByRole('button', { name: /Time details/ }); await details.scrollIntoViewIfNeeded();
+    if (isMobile) await details.tap(); else { await details.focus(); await page.keyboard.press('Enter'); }
+    const field = panel.getByRole('spinbutton'); await field.fill('90');
+    const save = panel.getByRole('button', { name: 'Save forecast' }); await save.scrollIntoViewIfNeeded();
+    expect((await save.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await save.click(); await expect(panel.getByRole('status')).toHaveText('Forecast saved.');
+    await page.reload({ waitUntil: 'domcontentloaded' }); await expect(panel.getByText('1h 30m')).toHaveCount(2);
+    await panel.getByRole('button', { name: /Time details/ }).click(); await field.fill('45');
+    await client.query('UPDATE work_sessions SET minutes=80 WHERE id=$1', [session]);
+    await save.click(); await expect(panel.getByRole('alert')).toContainText('changed'); await expect(field).toHaveValue('45');
+    await panel.getByRole('button', { name: 'Refresh' }).click(); await expect(panel.getByText(/forecast needs review/)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: `tmp/planning-baseline/${info.project.name}-work-accounting.png`, fullPage: true });
+    expect(errors).toEqual([]);
+  } finally { await client.query('DELETE FROM work_sessions WHERE id=$1', [session]); await client.query('DELETE FROM tasks WHERE id=$1', [task]); await client.query('DELETE FROM goals WHERE id=$1', [goal]); await client.end(); }
+});
+
 test('P01.1 malformed schedule can reload using keyboard or touch', async ({ page, isMobile }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const id = fixtureId(910); let requests = 0; let recovered = false;

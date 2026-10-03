@@ -51,7 +51,7 @@ describe('calendar API contracts mounted independently of chatbot routing', () =
     expect(data.task_lookup).toEqual({});
     expect(chat).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
-    expect(vi.mocked(query).mock.calls.every(([sql]) => sql.trimStart().startsWith('SELECT'))).toBe(true);
+    expect(vi.mocked(query).mock.calls.every(([sql]) => /^(SELECT|WITH)\b/.test(sql.trimStart()) && !/\b(INSERT|UPDATE|DELETE|TRUNCATE|ALTER)\b/.test(sql))).toBe(true);
   });
   it('rejects invalid dates before database reads and bounds large display ranges', async () => {
     const invalid = await request('get', '/schedule-preview', { query: { from: '2026-02-30' } });

@@ -1,3 +1,4 @@
+import { accountWork, loadWorkAccounting, workColumns } from '../services/workAccounting.js';
 import { loadBusyWindow } from '../services/calendarBusy.js';
 import { schedulePreviewRouter } from './schedule-preview.js';
 import { aiProposalsRouter } from './ai-proposals.js';
@@ -192,35 +193,25 @@ async function getScheduleContext(userQuery?: string) {
     [goalIds],
   ) as { rows: Record<string, unknown>[] } : { rows: [] };
 
-  // ── Task metrics per goal (lightweight: counts + totals only) ─────────────
-  const { rows: taskMetrics } = goalIds.length ? await query(
-    `SELECT t.goal_id,
-            COUNT(*) FILTER (WHERE NOT t.completed) as incomplete_count,
-            COALESCE(SUM(t.estimated_minutes) FILTER (
-              WHERE NOT t.completed
-                AND NOT EXISTS (
-                  SELECT 1 FROM tasks child
-                  WHERE child.parent_task_id = t.id
-                    AND child.completed = false AND ${activeTaskSql('child.id')}
-                )
-            ), 0) as mins_remaining,
-            COALESCE(SUM(ws.logged) FILTER (
-              WHERE NOT t.completed
-                AND NOT EXISTS (
-                  SELECT 1 FROM tasks child
-                  WHERE child.parent_task_id = t.id
-                    AND child.completed = false AND ${activeTaskSql('child.id')}
-                )
-            ), 0) as mins_logged
-     FROM tasks t
-     LEFT JOIN (SELECT task_id, SUM(minutes) as logged FROM work_sessions WHERE minutes IS NOT NULL GROUP BY task_id) ws ON ws.task_id=t.id
-     WHERE t.goal_id = ANY($1) AND ${activeTaskSql('t.id')}
-     GROUP BY t.goal_id`,
-    [goalIds],
-  ) as { rows: { goal_id: string; incomplete_count: number; mins_remaining: number; mins_logged: number }[] }
-  : { rows: [] };
-  const metricsMap: Record<string, typeof taskMetrics[0]> = {};
-  for (const m of taskMetrics) metricsMap[m.goal_id] = m;
+  // Own-work accounting precedes aggregation; missing estimates never become zero.
+  const { rows: metricRows } = goalIds.length ? await query(
+    `SELECT t.*, COALESCE(ws.logged,t.actual_minutes) AS logged_minutes,
+      NOT EXISTS (SELECT 1 FROM tasks child WHERE child.parent_task_id=t.id AND NOT child.completed AND ${activeTaskSql('child.id')}) AS is_leaf
+      FROM tasks t LEFT JOIN (SELECT task_id,SUM(minutes) AS logged FROM work_sessions WHERE minutes IS NOT NULL GROUP BY task_id) ws ON ws.task_id=t.id
+      WHERE t.goal_id=ANY($1) AND ${activeTaskSql('t.id')}`, [goalIds]) : { rows: [] };
+  const metricsMap: Record<string, { incomplete_count: number; mins_remaining: number | null; known_minutes: number; unknown_count: number; mins_logged: number }> = {};
+  for (const task of metricRows) {
+    const goalId=String(task.goal_id);
+    const metric=metricsMap[goalId] ??= { incomplete_count:0,mins_remaining:0,known_minutes:0,unknown_count:0,mins_logged:0 };
+    const work=accountWork(task);
+    metric.mins_logged+=work.logged_minutes;
+    if (task.completed || task.status==='done') continue;
+    metric.incomplete_count++;
+    if (!task.is_leaf) continue;
+    if (work.remaining_minutes===null) metric.unknown_count++;
+    else metric.known_minutes+=work.remaining_minutes;
+    metric.mins_remaining=metric.unknown_count ? null : metric.known_minutes;
+  }
 
   // ── Task coverage buckets (counts for AI honesty — Epic 40.3) ─────────────
   // These counts let the AI report omissions accurately instead of silently
@@ -250,8 +241,8 @@ async function getScheduleContext(userQuery?: string) {
   const { rows: planningTaskRows } = await query(
     `SELECT t.id, t.title, t.goal_id, g.title AS goal_title, t.parent_task_id, t.milestone_id,
             t.status, t.priority, t.feel_score, t.kind, t.due_date, t.start_date, t.target_date, t.hard_deadline,
-            t.scheduling_enabled, t.estimated_minutes, t.last_activity_at, t.updated_at,
-            COALESCE(ws.logged_minutes, 0) AS logged_minutes,
+            t.scheduling_enabled, t.estimated_minutes, t.last_activity_at, t.updated_at, ${workColumns()},
+            COALESCE(ws.logged_minutes, t.actual_minutes, 0) AS logged_minutes,
             COUNT(child.id)::int AS child_count
      FROM tasks t
      LEFT JOIN goals g ON g.id = t.goal_id
@@ -416,11 +407,7 @@ async function getScheduleContext(userQuery?: string) {
     if (!inheritedDue) return { deadline: null, deadline_kind: null };
     return { deadline: inheritedDue, deadline_kind: task.due_date ? 'due_date' : 'inherited_due_date' };
   };
-  const remainingPlanningMinutes = (task: PlanningTaskInput): number | null => {
-    const estimate = Number(task.estimated_minutes ?? 0);
-    if (!(estimate > 0)) return null;
-    return Math.max(0, Math.round(estimate - Number(task.logged_minutes ?? 0)));
-  };
+  const remainingPlanningMinutes = (task: PlanningTaskInput): number | null => accountWork(task).remaining_minutes;
   const isParentPlanningTask = (task: PlanningTaskInput) => Number(task.child_count ?? 0) > 0;
   const isSchedulablePlanningLeaf = (task: PlanningTaskInput) =>
     !isParentPlanningTask(task)
@@ -485,15 +472,19 @@ async function getScheduleContext(userQuery?: string) {
     if (priority === 'low') return 'low';
     return 'medium';
   };
+  const contextWork = await loadWorkAccounting(todayStr, addDaysStr(todayStr, 13), prefs.timezone as string | undefined, planningTaskRows.map(task => task.id));
   const canonicalSchedulerTasks = planningTaskRows.flatMap(task => {
     if (!isSchedulablePlanningLeaf(task)) return [];
     const { deadline } = effectivePlanningDeadline(task);
     if (!deadline) return [];
-    const remaining = remainingPlanningMinutes(task);
+    const work = contextWork.accounting.get(task.id);
+    const remaining = work?.unscheduled_minutes ?? null;
     return [{
       id: task.id,
       title: task.title,
       estimated_minutes: remaining ?? 0,
+      has_estimate: remaining !== null,
+      work_accounting: work,
       due_date: deadline,
       priority: normalizeSchedulerPriority(task.priority),
       blocker_ids: planningBlockerMap.get(task.id) ?? [],
@@ -907,7 +898,8 @@ async function getScheduleContext(userQuery?: string) {
       status: goal.status,
       deadline: goal.deadline ?? null,
       total_incomplete_tasks: Number(metrics?.incomplete_count ?? 0),
-      total_remaining_minutes: Number(metrics?.mins_remaining ?? 0),
+      total_remaining_minutes: metrics ? metrics.mins_remaining : 0,
+      unknown_remaining_tasks: metrics?.unknown_count ?? 0,
       total_logged_minutes: Number(metrics?.mins_logged ?? 0),
       milestones: (allMilestones
         .filter(milestone => milestone.goal_id === goalId)
@@ -928,6 +920,7 @@ async function getScheduleContext(userQuery?: string) {
       deadline: null,
       total_incomplete_tasks: rootNodesByGoal.get('unassigned')!.length,
       total_remaining_minutes: 0,
+      unknown_remaining_tasks: 0,
       total_logged_minutes: 0,
       milestones: [],
       tasks: rootNodesByGoal.get('unassigned')!,
@@ -1017,7 +1010,7 @@ async function getScheduleContext(userQuery?: string) {
 
   const goalContexts = goals.map(goal => {
     const metrics = metricsMap[goal.id as string];
-    const minsRemaining = Number(metrics?.mins_remaining ?? 0);
+    const minsRemaining = metrics ? metrics.mins_remaining : 0;
     const deadline = goal.deadline as string | null;
     let feasibility: string | null = null;
     let daysUntilDeadline: number | null = null;
@@ -1025,7 +1018,7 @@ async function getScheduleContext(userQuery?: string) {
       const dl = new Date(deadline);
       daysUntilDeadline = Math.ceil((dl.getTime() - today.getTime()) / 86400000);
       const available = Math.max(0, daysUntilDeadline) * effectiveCapacity;
-      feasibility = daysUntilDeadline < 0 ? 'overdue' : minsRemaining === 0 ? 'on_track' : minsRemaining > available * 0.9 ? 'at_risk' : 'on_track';
+      feasibility = daysUntilDeadline < 0 ? 'overdue' : minsRemaining === null ? 'unknown' : minsRemaining === 0 ? 'on_track' : minsRemaining > available * 0.9 ? 'at_risk' : 'on_track';
     }
 
     return {
@@ -1038,6 +1031,8 @@ async function getScheduleContext(userQuery?: string) {
       feasibility,
       total_incomplete_tasks: Number(metrics?.incomplete_count ?? 0),
       total_mins_remaining: minsRemaining,
+      known_remaining_minutes: metrics?.known_minutes ?? 0,
+      unknown_remaining_tasks: metrics?.unknown_count ?? 0,
       total_mins_logged: Number(metrics?.mins_logged ?? 0),
       planning_summary: (goal.planning_summary as string | null) ?? null,
       milestones: (milestonesByGoal[goal.id as string] ?? []).map(m => ({
@@ -1079,7 +1074,9 @@ async function getScheduleContext(userQuery?: string) {
     entity_type: 'task',
     entity_id: task.id,
     title: task.title,
-    remaining_minutes: task.estimated_minutes > 0 ? task.estimated_minutes : null,
+    remaining_minutes: task.has_estimate ? task.estimated_minutes : null,
+    has_estimate: task.has_estimate,
+    work_accounting: task.work_accounting,
     estimated_minutes: task.estimated_minutes > 0 ? task.estimated_minutes : null,
     due_date: task.due_date,
     priority: task.priority,
@@ -1103,7 +1100,8 @@ async function getScheduleContext(userQuery?: string) {
         title: c.title,
         // Use remaining work (est - logged) so time already spent is not double-counted.
         // 0 = unestimated — the scheduler flags rather than schedules it.
-        estimated_minutes: c.remaining_minutes ?? c.estimated_minutes ?? 0,
+        estimated_minutes: c.remaining_minutes ?? 0,
+        has_estimate: c.has_estimate,
         due_date: c.due_date ?? null,
         priority: (c.priority ?? 'medium') as 'high' | 'medium' | 'low',
         blocker_ids: c.blocker_ids ?? [],
@@ -1683,7 +1681,7 @@ Existing day overrides: ${JSON.stringify(existingOverrides)}`;
 // Each draft runs the SAME deterministic scheduler under a different strategy;
 // nothing mutates until the user applies a chosen draft.
 
-async function loadSchedulerInputs(horizonDays: number) {
+export async function loadSchedulerInputs(horizonDays: number) {
   const { rows: prefsRows } = await query("SELECT * FROM user_schedule_prefs WHERE id='default'");
   const prefs = (prefsRows[0] ?? { work_days: '[1,2,3,4,5]', daily_capacity_minutes: 480, buffer_ratio: 0.15 }) as Record<string, unknown>;
   const tz = prefs.timezone as string | undefined;
@@ -1702,7 +1700,7 @@ async function loadSchedulerInputs(horizonDays: number) {
     { rows: taskDeadlineRows },
     { rows: goalTimelineRows },
     { rows: milestoneTimelineRows },
-    { rows: plannedRows },
+    workSnapshot,
   ] = await Promise.all([
     query(
       `SELECT t.id, t.title, t.goal_id, g.title AS goal_title, t.milestone_id, t.parent_task_id,
@@ -1735,15 +1733,7 @@ async function loadSchedulerInputs(horizonDays: number) {
     ),
     query(`SELECT id, start_date, target_date, hard_deadline, deadline FROM goals WHERE archived_at IS NULL`),
     query(`SELECT id, start_date, due_date, hard_deadline FROM goal_milestones WHERE ${activeMilestoneSql()}`),
-    query(
-      `SELECT etl.task_id,
-              COALESCE(SUM(COALESCE(etl.planned_minutes, ROUND(e.duration_hours * 60))), 0)::int AS planned_minutes
-       FROM event_task_links etl
-       JOIN events e ON e.id = etl.event_id
-       WHERE ${activeTaskSql('etl.task_id')} AND (e.week_start::date + e.day_index) BETWEEN $1::date AND $2::date
-       GROUP BY etl.task_id`,
-      [todayStr, endStr],
-    ),
+    loadWorkAccounting(todayStr, endStr, tz),
   ]);
   const resolveTaskTimeline = buildTaskTimelineResolver(
     taskDeadlineRows as unknown as TaskTimelineRow[],
@@ -1756,23 +1746,6 @@ async function loadSchedulerInputs(horizonDays: number) {
     if (!blockerMap.has(e.task_id)) blockerMap.set(e.task_id, []);
     blockerMap.get(e.task_id)!.push(e.blocker_id);
   }
-  const plannedMinutesByTask = new Map(
-    (plannedRows as Array<{ task_id: string; planned_minutes: number }>).map(row => [row.task_id, Number(row.planned_minutes ?? 0)]),
-  );
-  const schedulerTaskRowById = new Map((schedTasks as Record<string, unknown>[]).map(row => [String(row.id), row]));
-  const committedMinutesFor = (task: Record<string, unknown>) => {
-    let id: string | null = String(task.id);
-    let committed = 0;
-    const seen = new Set<string>();
-    while (id && !seen.has(id)) {
-      seen.add(id);
-      committed += plannedMinutesByTask.get(id) ?? 0;
-      const row = schedulerTaskRowById.get(id);
-      id = row?.parent_task_id ? String(row.parent_task_id) : null;
-    }
-    return committed;
-  };
-
   // THE SCHEDULING GATE: Marina manages a task's time only when ALL hold —
   //   scheduling is enabled, a duration estimate exists, and a real date
   //   (hard_deadline > target_date > legacy due_date) exists. Everything else
@@ -1790,7 +1763,8 @@ async function loadSchedulerInputs(horizonDays: number) {
   }> = [];
   const notSchedulable: Array<{ task_id: string; title: string; goal_id: string | null; reasons: string[] }> = [];
   for (const t of schedTasks as Record<string, unknown>[]) {
-    const remaining = Math.max(0, Number(t.estimated_minutes ?? 0) - Number(t.logged_minutes ?? 0) - committedMinutesFor(t));
+    const work = workSnapshot.accounting.get(String(t.id));
+    const remaining = work?.unscheduled_minutes ?? null;
     const timeline = resolveTaskTimeline(t as Partial<TaskTimelineRow> & { id: unknown });
     const effectiveDue = timeline.due_date;
     const reasons: string[] = [];
@@ -1800,8 +1774,8 @@ async function loadSchedulerInputs(horizonDays: number) {
     if (Number(t.child_count ?? 0) > 0) reasons.push('parent task rolls up from child tasks');
     // A critical-path item with no active children is executable work. Only
     // parent rollups are excluded (already covered by child_count above).
-    if (!(Number(t.estimated_minutes ?? 0) > 0)) reasons.push('missing estimated duration');
-    else if (remaining === 0) reasons.push('estimate already fully logged or placed on the calendar');
+    if (remaining === null) reasons.push(work?.remaining_state === 'overrun' ? 'remaining work unknown: original estimate exhausted' : work?.remaining_state === 'stale_forecast' ? 'remaining forecast needs review after work or log changes' : 'missing estimated duration');
+    else if (remaining === 0) reasons.push('no additional calendar time needed in this window');
     if (!effectiveDue) reasons.push('missing target date or deadline');
     if (reasons.length) {
       notSchedulable.push({ task_id: t.id as string, title: t.title as string, goal_id: (t.goal_id as string | null) ?? null, reasons });
@@ -1812,7 +1786,7 @@ async function loadSchedulerInputs(horizonDays: number) {
       title: t.title as string,
       goal_id: (t.goal_id as string | null) ?? null,
       goal_title: (t.goal_title as string | null) ?? null,
-      estimated_minutes: remaining,
+      estimated_minutes: remaining ?? 0,
       start_date: timeline.start_date,
       due_date: effectiveDue,
       priority: (t.priority as string) ?? 'medium',
@@ -1822,6 +1796,7 @@ async function loadSchedulerInputs(horizonDays: number) {
 
   return {
     todayStr,
+    work_accounting: Object.fromEntries(workSnapshot.accounting),
     taskById: new Map((schedTasks as Record<string, unknown>[]).map(t => [t.id as string, t])),
     tasks,
     notSchedulable,

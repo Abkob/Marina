@@ -1680,7 +1680,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     const key = `${task.id}|${date}|${hour}`;
     if (scheduling.current.has(key)) return;
     scheduling.current.add(key);
-    const fill = autofillFromTask({ title: task.title, estimated_minutes: task.estimated_minutes }, task.actual_minutes ?? 0);
+    const fill = autofillFromTask({ ...task, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0);
     const duration = Math.max(.25, Math.min(drawnDuration ?? fill.duration_hours, 24 - hour));
     setFeedback({ label: `Scheduling ${task.title}…` });
     try {
@@ -1875,7 +1875,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
             <div className="schedule-planning-content">
               {planningPanel === 'tasks' && <TaskTreeDrawer embedded tasks={allTasks} goals={goals} draggableIds={draggableIds} scheduledDates={scheduledDates}
                 onCollapse={() => setPlanningPanel(null)} onCreateTask={createCalendarTask}
-                onScheduleTask={task => { setPlanningPanel(null); setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ title: task.title, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0).duration_hours, linkedTaskId: task.id }); }} />}
+                onScheduleTask={task => { setPlanningPanel(null); setComposer({ mode: 'create', date: focusedDate, startHour: 9, durationHours: autofillFromTask({ ...task, estimated_minutes: task.estimated_minutes ?? null }, task.actual_minutes ?? 0).duration_hours, linkedTaskId: task.id }); }} />}
               {planningPanel === 'routines' && <div className="p-3"><RoutinesPanel date={focusedDate} today={todayStr} goals={goals} onCreate={() => openRoutine()} onEdit={openRoutine} onStartFocus={startRoutineFocus} /></div>}
               {planningPanel === 'assist' && <PlanAssistPanel suggestions={suggestions} taskLookup={taskLookup} unestimated={unestimated} rollupCount={rollupTasks.length}
                 onPlace={(taskId, date) => move.mutateAsync({ taskId, date }).then(() => {}).catch(() => { /* The mutation shows its save error. */ })} onPlaceAll={placeAllSuggestions} />}

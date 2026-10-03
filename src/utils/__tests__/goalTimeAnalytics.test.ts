@@ -39,12 +39,12 @@ function makeTask(overrides: Partial<DBTask> = {}): DBTask {
 // ─── computeGoalTimeStats ─────────────────────────────────────────────────────
 
 describe('computeGoalTimeStats', () => {
-  it('returns zeros and nulls for empty task list', () => {
+  it('has zero remaining work for an empty task list', () => {
     const s = computeGoalTimeStats([]);
     expect(s.spentMinutes).toBe(0);
     expect(s.velocityRatio).toBeNull();
-    expect(s.estimatedRemainingMinutes).toBeNull();
-    expect(s.adjustedRemainingMinutes).toBeNull();
+    expect(s.estimatedRemainingMinutes).toBe(0);
+    expect(s.adjustedRemainingMinutes).toBe(0);
     expect(s.velocityConfidence).toBe('none');
     expect(s.taskCount).toBe(0);
   });
@@ -90,15 +90,14 @@ describe('computeGoalTimeStats', () => {
     expect(computeGoalTimeStats(Array.from({ length: 8 }, pair)).velocityConfidence).toBe('high');
   });
 
-  it('adjusts remaining by velocity ratio', () => {
-    // Velocity 1.5×, 60 min remaining → adjusted = 90
+  it('shows historical velocity without silently changing a current forecast', () => {
     const tasks = [
       makeTask({ completed: true, estimated_minutes: 60, actual_minutes: 90 }),
       makeTask({ completed: false, estimated_minutes: 60 }),
     ];
     const s = computeGoalTimeStats(tasks);
     expect(s.estimatedRemainingMinutes).toBe(60);
-    expect(s.adjustedRemainingMinutes).toBe(90);
+    expect(s.adjustedRemainingMinutes).toBe(60);
   });
 
   it('remaining equals estimated when no velocity data', () => {
@@ -152,7 +151,7 @@ describe('projectedFinishDate', () => {
     expect(result!.toDateString()).toBe(expected.toDateString());
   });
 
-  it('8h remaining at 2.0× velocity, 4h/day → 4 days from today', () => {
+  it('8h remaining at 4h/day is a 2-day illustration regardless of historical velocity', () => {
     const tasks = [
       makeTask({ completed: true, estimated_minutes: 60, actual_minutes: 120 }), // 2× velocity
       makeTask({ completed: false, estimated_minutes: 480 }),                     // 8h estimated
@@ -161,7 +160,7 @@ describe('projectedFinishDate', () => {
     // adjustedRemainingMinutes = 480 * 2.0 = 960 min = 16h / 4h/day = 4 days
     const result = projectedFinishDate(s, 4);
     expect(result).not.toBeNull();
-    const expected = new Date('2026-06-28');
+    const expected = new Date('2026-06-26');
     expect(result!.toDateString()).toBe(expected.toDateString());
   });
 

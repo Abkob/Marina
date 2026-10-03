@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db.js';
+import { loadWorkAccounting } from '../services/workAccounting.js';
+import type { WorkAccounting } from '../../shared/workAccounting.js';
 import { computeSchedule } from '../services/scheduler.js';
 import { loadRoutineReservations, routineCapacity } from '../services/routinePlanning.js';
 import { activeProposals } from '../services/activeProposals.js';
@@ -54,7 +56,7 @@ router.get('/schedule-preview', async (req, res) => {
     { rows: milestoneTimelineRows },
     { rows: schedulerMeetings },
     { rows: schedulerOverrides },
-    { rows: previewPlannedRows },
+    workSnapshot,
   ] = await Promise.all([
     query(
       `SELECT id, title, goal_id, milestone_id, parent_task_id, start_date, due_date,
@@ -88,7 +90,6 @@ router.get('/schedule-preview', async (req, res) => {
          AND COALESCE(t.scheduling_enabled, true) = true
          AND COALESCE(g.scheduling_enabled, true) = true
          AND COALESCE(gm.scheduling_enabled, true) = true
-         AND t.kind <> 'critical_path'
          AND NOT EXISTS (
            SELECT 1 FROM tasks child
            WHERE child.parent_task_id = t.id
@@ -99,7 +100,8 @@ router.get('/schedule-preview', async (req, res) => {
     ),
     query(
       `SELECT source_id as blocker_id, target_id as task_id
-       FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}`,
+       FROM edges WHERE relationship='blocks' AND source_type='task' AND target_type='task' AND ${activeTaskSql('source_id')} AND ${activeTaskSql('target_id')}
+         AND EXISTS (SELECT 1 FROM tasks blocker WHERE blocker.id=source_id AND NOT blocker.completed)`,
     ),
     query(
       `SELECT id, parent_task_id, goal_id, milestone_id, start_date, due_date, target_date, hard_deadline
@@ -113,15 +115,7 @@ router.get('/schedule-preview', async (req, res) => {
       [todayStr, schedulerEndStr],
     ),
     query(`SELECT date, available_minutes, note FROM schedule_day_overrides WHERE date BETWEEN $1 AND $2`, [todayStr, schedulerEndStr]),
-    query(
-      `SELECT etl.task_id,
-              COALESCE(SUM(COALESCE(etl.planned_minutes, ROUND(e.duration_hours * 60))), 0)::int AS planned_minutes
-       FROM event_task_links etl
-       JOIN events e ON e.id = etl.event_id
-       WHERE ${activeTaskSql('etl.task_id')} AND ${activeEventSql('e.id')} AND (e.week_start::date + e.day_index) BETWEEN $1::date AND $2::date
-       GROUP BY etl.task_id`,
-      [todayStr, schedulerEndStr],
-    ),
+    loadWorkAccounting(todayStr, schedulerEndStr, tz),
   ]);
   const resolveTaskTimeline = buildTaskTimelineResolver(
     taskDeadlineRows as unknown as TaskTimelineRow[],
@@ -174,38 +168,14 @@ router.get('/schedule-preview', async (req, res) => {
     }
   }
 
-  const previewPlannedByTask = new Map(
-    (previewPlannedRows as Array<{ task_id: string; planned_minutes: number }>).map(row => [row.task_id, Number(row.planned_minutes ?? 0)]),
-  );
-  const previewParentByTask = new Map(
-    (taskDeadlineRows as unknown as TaskTimelineRow[]).map(row => [row.id, row.parent_task_id]),
-  );
-  const previewCommittedMinutes = (taskId: string) => {
-    let id: string | null = taskId;
-    let committed = 0;
-    const seen = new Set<string>();
-    while (id && !seen.has(id)) {
-      seen.add(id);
-      committed += previewPlannedByTask.get(id) ?? 0;
-      id = previewParentByTask.get(id) ?? null;
-    }
-    return committed;
-  };
-
   const schedulerInputTasks = (allSchedulerTasks as Record<string, unknown>[]).map(t => {
     const timeline = resolveTaskTimeline(t as Partial<TaskTimelineRow> & { id: unknown });
+    const work = workSnapshot.accounting.get(String(t.id));
     return ({
       id: t.id as string,
       title: t.title as string,
-      // Canonical remaining minutes: estimate minus logged work. NULL estimate
-      // maps to 0, which the scheduler classifies as unestimated. (The old
-      // `|| estimated_minutes` fallback resurrected the FULL estimate for
-      // exactly-exhausted tasks — a double count.)
-      estimated_minutes: Math.max(
-        0,
-        Number(t.estimated_minutes ?? 0) - Number(t.logged_minutes ?? 0) - previewCommittedMinutes(String(t.id)),
-      ),
-      has_estimate: Number(t.estimated_minutes ?? 0) > 0,
+      estimated_minutes: work?.unscheduled_minutes ?? 0,
+      has_estimate: work?.remaining_minutes != null,
       start_date: timeline.start_date,
       due_date: timeline.due_date,
       start_date_source: timeline.start_source,
@@ -302,7 +272,9 @@ router.get('/schedule-preview', async (req, res) => {
     estimated_minutes: number;
     logged_minutes: number;
     committed_minutes: number;
-    remaining_minutes: number;
+    remaining_minutes: number | null;
+    unscheduled_minutes: number | null;
+    work_accounting: WorkAccounting | null;
     start_date: string | null;
     due_date: string | null;
     start_date_source: TimelineSource | null;
@@ -310,16 +282,18 @@ router.get('/schedule-preview', async (req, res) => {
   }> = {};
   for (const t of allSchedulerTasks as Record<string, unknown>[]) {
     const id = t.id as string;
-    const committedMinutes = previewCommittedMinutes(id);
+    const work = workSnapshot.accounting.get(id);
     taskLookup[t.id as string] = {
       title: t.title as string,
       goal_id: (t as Record<string, unknown>).goal_id as string | null ?? null,
       goal_title: (t.goal_title as string | null) ?? null,
       priority: t.priority as string ?? 'medium',
       estimated_minutes: Number(t.estimated_minutes ?? 0),
-      logged_minutes: Number(t.logged_minutes ?? 0),
-      committed_minutes: committedMinutes,
-      remaining_minutes: schedulerInputById.get(id)?.estimated_minutes ?? 0,
+      logged_minutes: work?.logged_minutes ?? 0,
+      committed_minutes: work?.reserved_minutes ?? 0,
+      remaining_minutes: work?.remaining_minutes ?? null,
+      unscheduled_minutes: work?.unscheduled_minutes ?? null,
+      work_accounting: work ?? null,
       start_date: schedulerInputById.get(id)?.start_date ?? null,
       due_date: schedulerInputById.get(id)?.due_date ?? null,
       start_date_source: schedulerInputById.get(id)?.start_date_source ?? null,

@@ -1,4 +1,5 @@
-export interface PlanningTaskInput {
+import { accountWork, type WorkInputs } from '../../shared/workAccounting.js';
+export interface PlanningTaskInput extends WorkInputs {
   id: string;
   title: string;
   goal_id?: string | null;
@@ -101,9 +102,7 @@ export function resolvePlanningDeadline(task: PlanningTaskInput): {
 
 function normalizeTask(task: PlanningTaskInput, today: string): PlanningBucketTask {
   const { deadline, deadline_kind } = resolvePlanningDeadline(task);
-  const estimate = Number(task.estimated_minutes ?? 0);
-  const logged = Number(task.logged_minutes ?? 0);
-  const remaining = estimate > 0 ? Math.max(0, Math.round(estimate - logged)) : null;
+  const remaining = accountWork(task).remaining_minutes;
 
   return {
     id: task.id,

@@ -1,3 +1,4 @@
+import { accountWork } from '../../shared/workAccounting';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { ArrowUp, ArrowDown, Keyboard, SquarePen, Copy, Zap, RefreshCw, CheckCircle, X, AlertTriangle, ChevronRight, ChevronDown, Diamond, Calendar, ChevronLeft, MessageSquare, Plus, Paperclip, SlidersHorizontal, Target } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -107,9 +108,9 @@ interface GoalHealth {
   title: string;
   deadline: string | null;
   days_until_deadline: number | null;
-  feasibility: 'on_track' | 'at_risk' | 'overdue' | null;
+  feasibility: 'on_track' | 'at_risk' | 'overdue' | 'unknown' | null;
   total_incomplete_tasks: number;
-  total_mins_remaining: number;
+  total_mins_remaining: number | null;
   category: string;
 }
 
@@ -445,7 +446,9 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
         const health = await Promise.all(active.map(async g => {
           const tasks = await apiFetch<Record<string, unknown>[]>(`/api/tasks?goal_id=${g.id}`);
           const incomplete = tasks.filter(t => !t.completed && t.status !== 'done');
-          const totalMins  = incomplete.reduce((s, t) => s + (Number(t.estimated_minutes) || 0), 0);
+          const parentIds = new Set(incomplete.map(task => task.parent_task_id));
+          const remaining = incomplete.filter(task => !parentIds.has(task.id)).map(task => accountWork(task).remaining_minutes);
+          const totalMins = remaining.some(value => value === null) ? null : remaining.reduce((sum, value) => sum + (value ?? 0), 0);
           const deadline   = g.deadline as string | null;
           let feasibility: GoalHealth['feasibility'] = null;
           let daysUntil: number | null = null;
@@ -453,7 +456,7 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
             const dl = new Date(deadline);
             daysUntil = Math.ceil((dl.getTime() - today.getTime()) / 86400000);
             const avail = Math.max(0, daysUntil) * 8 * 60;
-            feasibility = daysUntil < 0 ? 'overdue' : totalMins > avail * 0.9 ? 'at_risk' : 'on_track';
+            feasibility = daysUntil < 0 ? 'overdue' : totalMins === null ? 'unknown' : totalMins > avail * 0.9 ? 'at_risk' : 'on_track';
           }
           return { id: String(g.id), title: String(g.title), deadline, days_until_deadline: daysUntil, feasibility, total_incomplete_tasks: incomplete.length, total_mins_remaining: totalMins, category: String(g.category ?? '') };
         }));
@@ -511,6 +514,7 @@ function GoalHealthPanel({ onGoalClick }: { onGoalClick: (title: string) => void
                 {g.total_incomplete_tasks > 0 && (
                   <span className="text-[10px] text-slate-500">{g.total_incomplete_tasks} tasks</span>
                 )}
+                {g.total_mins_remaining === null && <span className="text-[10px] text-amber-700">Remaining unknown</span>}
                 {g.total_mins_remaining > 0 && (
                   <span className="text-[10px] text-slate-500">{fmtMins(g.total_mins_remaining)}</span>
                 )}

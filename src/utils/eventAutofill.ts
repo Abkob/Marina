@@ -4,7 +4,8 @@
  * composer and the week grid both consume these.
  */
 
-export interface AutofillSource {
+import { accountWork, type WorkInputs } from '../../shared/workAccounting';
+export interface AutofillSource extends WorkInputs {
   title: string;
   estimated_minutes: number | null;
 }
@@ -24,8 +25,7 @@ export function remainingMinutes(
   estimated: number | null | undefined,
   loggedMinutes = 0,
 ): number | null {
-  if (!estimated || estimated <= 0) return null;
-  return Math.max(0, estimated - Math.max(0, loggedMinutes));
+  return accountWork({ estimated_minutes: estimated, logged_minutes: loggedMinutes }).remaining_minutes;
 }
 
 /**
@@ -34,7 +34,7 @@ export function remainingMinutes(
  * at a 4-hour block), and how many task-minutes this block is planned to cover.
  */
 export function autofillFromTask(task: AutofillSource, loggedMinutes = 0): EventAutofill {
-  const remaining = remainingMinutes(task.estimated_minutes, loggedMinutes);
+  const remaining = accountWork({ ...task, logged_minutes: task.logged_minutes ?? task.actual_minutes ?? loggedMinutes }).remaining_minutes;
   const hasWork = remaining !== null && remaining > 0;
   const duration_hours = hasWork
     ? Math.min(MAX_BLOCK_HOURS, Math.max(MIN_BLOCK_HOURS, Math.ceil(remaining / 30) / 2))

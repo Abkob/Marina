@@ -9,8 +9,8 @@ describe('remainingMinutes', () => {
     expect(remainingMinutes(120, 45)).toBe(75);
   });
 
-  it('never goes below zero', () => {
-    expect(remainingMinutes(60, 90)).toBe(0);
+  it('keeps unfinished overruns unknown', () => {
+    expect(remainingMinutes(60, 90)).toBeNull();
   });
 
   it('returns null when there is no estimate', () => {
@@ -18,8 +18,8 @@ describe('remainingMinutes', () => {
     expect(remainingMinutes(0)).toBeNull();
   });
 
-  it('ignores negative logged minutes', () => {
-    expect(remainingMinutes(60, -30)).toBe(60);
+  it('requires correction of invalid negative logs', () => {
+    expect(remainingMinutes(60, -30)).toBeNull();
   });
 });
 

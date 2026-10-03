@@ -1,3 +1,4 @@
+import { accountWork } from '../../shared/workAccounting';
 import type { DBTask } from '../db/schema';
 import { formatTaskTime } from './taskTime';
 
@@ -12,26 +13,26 @@ export interface GoalTimeStats {
   completedCount: number;
   tasksWithEstimate: number;
   completedWithActual: number;
+  unknownRemainingCount: number;
+  knownRemainingMinutes: number;
 }
 
 /**
  * Computes goal-level time intelligence from ALL tasks (any depth).
  * velocityRatio = actual/estimated for completed tasks with both values.
- * adjustedRemainingMinutes applies that ratio to outstanding estimates — this is
- * what the scheduler AI should use to project finish time.
+ * Historical pace is descriptive; it does not automatically rewrite the current forecast.
  */
 export function computeGoalTimeStats(tasks: DBTask[]): GoalTimeStats {
-  const completed  = tasks.filter(t => t.completed);
-  const incomplete = tasks.filter(t => !t.completed);
+  const completed  = tasks.filter(t => t.completed || t.status === 'done');
+  const incomplete = tasks.filter(t => !t.completed && t.status !== 'done');
 
-  // Use actual when logged; fall back to estimated so completing a task
-  // immediately shows time in the panel even without explicit time logging.
-  const spentMinutes = completed.reduce((s, t) => s + (t.actual_minutes ?? t.estimated_minutes ?? 0), 0);
+  // Measured/reported time only: completing an estimate does not log work.
+  const spentMinutes = tasks.reduce((sum, task) => sum + accountWork(task).logged_minutes, 0);
 
   // Velocity: only from tasks where we have BOTH actual AND estimated
-  const pairedTasks = completed.filter(t => t.actual_minutes != null && (t.estimated_minutes ?? 0) > 0);
+  const pairedTasks = completed.filter(t => (t.logged_minutes != null || t.actual_minutes != null) && (t.estimated_minutes ?? 0) > 0);
   const velocityRatio = pairedTasks.length > 0
-    ? pairedTasks.reduce((s, t) => s + t.actual_minutes!, 0) /
+    ? pairedTasks.reduce((s, t) => s + accountWork(t).logged_minutes, 0) /
       pairedTasks.reduce((s, t) => s + t.estimated_minutes!, 0)
     : null;
 
@@ -40,17 +41,12 @@ export function computeGoalTimeStats(tasks: DBTask[]): GoalTimeStats {
     pairedTasks.length < 3  ? 'low'  :
     pairedTasks.length < 8  ? 'medium' : 'high';
 
-  // Remaining estimate (raw)
-  const taskWithRemainingEst = incomplete.filter(t => (t.estimated_minutes ?? 0) > 0);
-  const estimatedRemainingMinutes = taskWithRemainingEst.length > 0
-    ? taskWithRemainingEst.reduce((s, t) => s + t.estimated_minutes!, 0)
-    : null;
-
-  // Remaining estimate adjusted by velocity
-  const adjustedRemainingMinutes =
-    estimatedRemainingMinutes !== null && velocityRatio !== null
-      ? Math.round(estimatedRemainingMinutes * velocityRatio)
-      : estimatedRemainingMinutes;
+  const remaining = incomplete.map(task => accountWork(task).remaining_minutes);
+  const unknownRemainingCount = remaining.filter(value => value === null).length;
+  const knownRemainingMinutes = remaining.reduce((sum, value) => sum + (value ?? 0), 0);
+  const estimatedRemainingMinutes = unknownRemainingCount ? null : knownRemainingMinutes;
+  // Historical ratios are descriptive, not a calibrated forecast.
+  const adjustedRemainingMinutes = estimatedRemainingMinutes;
 
   // Total estimated across all tasks
   const allWithEst = tasks.filter(t => (t.estimated_minutes ?? 0) > 0);
@@ -60,6 +56,8 @@ export function computeGoalTimeStats(tasks: DBTask[]): GoalTimeStats {
 
   return {
     spentMinutes,
+    unknownRemainingCount,
+    knownRemainingMinutes,
     estimatedRemainingMinutes,
     adjustedRemainingMinutes,
     totalEstimatedMinutes,

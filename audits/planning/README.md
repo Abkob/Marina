@@ -9,7 +9,7 @@ npm run test:planning
 npm run test:planning-baseline
 ```
 
-Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (42 at the P02 checkpoint: 19 prior cases and 23 persistent-plan cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
+Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (56 at P03.1: 19 prior cases, 23 persistent-plan cases and 14 accounting cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
 
 For real integration checks, start an isolated local PostgreSQL cluster, then run:
 
@@ -55,15 +55,15 @@ Vitest reports expected-failure assertions as passes. The receipt subtracts them
 
 ## Current arithmetic and identity consumers
 
-This is an inventory, not a repair to time semantics. Recheck call sites before P03/P17 implementation.
+This inventory reflects completed P03.1 own-task accounting changes. Recheck call sites before the remaining P03/P17 work.
 
 | Entry point | Current behavior / downstream consumers | Follow-up |
 | --- | --- | --- |
-| [AI context](../../server/routes/ai.ts), `remainingPlanningMinutes` | Clamps positive estimate minus logged time at zero; feeds task cards, trees, overdue summaries, context and goal summaries. Unknown estimates remain null in some views and become zero in others. | P03.1; cover every consuming context projection. |
-| Same file, `loadSchedulerInputs` | Subtracts logged and eligible committed minutes before day allocation. Filters missing estimates/deadlines and parent work. Used by schedule proposals, chat plan previews and alternative strategies. | P03.1–P03.3; unify with preview route. |
-| [Schedule preview](../../server/routes/schedule-preview.ts) | Independently computes estimate minus logs minus commitments; builds remaining work for clock layout. | P03.1; same snapshot must produce consistent facts across routes. |
-| [Planning buckets](../../server/services/planningBuckets.ts) | Separate estimate-minus-logged clamp and bucket classification. | P03.1/P03.2; unfinished overruns must not vanish. |
-| [Event autofill](../../src/utils/eventAutofill.ts) | Frontend estimated remaining work clamps after subtracting logged minutes. | P03.1; shared user-facing meaning. |
+| [AI context](../../server/routes/ai.ts), task summaries and retrieval | Shared own-task accounting; exhausted/stale forecasts remain unknown. Goal contexts retain known subtotals and unknown counts. | P03.1 completed; P03.2 retains hierarchy aggregation work. |
+| Same file, `loadSchedulerInputs` | Shared database snapshot separates remaining work, eligible reservations and new calendar demand. | P03.1 completed; broader scenario freshness remains P17. |
+| [Schedule preview](../../server/routes/schedule-preview.ts) | Same accounting loader as chat; direct task links, current versions, effective dates and explicit shared allocations. | P03.1 completed; overlapping interval union remains P03.3. |
+| [Planning buckets](../../server/services/planningBuckets.ts) | Shared arithmetic; unfinished overruns remain visible. | P03.1 completed; hierarchy selection remains P03.2. |
+| [Event autofill](../../src/utils/eventAutofill.ts), task/goal time displays | Shared forecasts and authoritative recorded work; no implicit completion or historical-velocity multiplication. | P03.1 completed; see [checkpoint](../../docs/planning-checkpoints/P03.1.md). |
 | [Estimate suggestions](../../server/services/estimateSuggest.ts) | Same-goal/global medians or labeled fallback; no document-based effort forecast. | P08; do not reinterpret current suggestions as calibrated predictions. |
 | [Scheduler](../../server/services/scheduler.ts), [clock layout](../../server/services/planLayout.ts) | Consume supplied minutes and enforce existing ordering/capacity constraints. They do not discover missing work. | P12; preserve current dependency regressions. |
 | [Conversation](../../server/services/copilotConversation.ts), typed observation and action filtering | P01.1 keys observations by kind and ID, ignores document metadata as identity, checks current tables before proposal persistence and rechecks at Apply. | P01.3/P17 for broader scope/freshness. |
