@@ -84,7 +84,7 @@
 .copilot-source-passage-label { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; font-size: 11px; color: #64748b; }
 .copilot-source-passage-label a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; border-radius: 6px; color: #4338ca; font-size: 12px; }
 .copilot-source-excerpt { font-size: 13px; line-height: 1.75; color: #475569; white-space: pre-wrap; overflow-wrap: anywhere; }
-.copilot-source-more { min-height: 44px; font-size: 12px; color: #64748b; text-decoration: underline; text-underline-offset: 3px; border-radius: 4px; }
+.copilot-source-more { display: inline-flex; align-items: center; min-height: 44px; margin-inline-end: 12px; font-size: 12px; color: #64748b; text-decoration: underline; text-underline-offset: 3px; border-radius: 4px; }
 .copilot-source-note { margin-top: 7px; font-size: 11px; line-height: 1.6; color: #64748b; }
 .copilot-source-details > summary, .copilot-context-details > summary { min-height: 44px; align-content: center; cursor: pointer; font-size: 12px; color: #64748b; border-radius: 6px; }
 .copilot-source-card > .copilot-source-details { border-top: 1px solid #e2e8f0; }
