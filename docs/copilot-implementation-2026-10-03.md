@@ -2,6 +2,8 @@
 
 Implementation checkpoint, 3 October 2026. This follows the [architecture comparison](copilot-architecture-review-2026-10-02.md), which contains the detailed comparison of Open WebUI, LibreChat, Onyx, RAGFlow, assistant-ui, AI Elements and OpenAI tool orchestration. The earlier document describes the baseline; this document describes the resulting changes and their tested limits.
 
+**Primary product objective, clarified by the user:** Marina should help the user discuss and develop study plans using the actual collection of resources for a task, its time constraints and the user's progress. Resource questions and retrieval support that objective. The user does not want a hard-coded choice between “essential material” and “full coverage,” or a fixed planning menu. Section 8 records the requested model-led planning behavior and distinguishes it from the features already implemented.
+
 ## 1. The folder and context contract
 
 The stored Google Drive root ID is the boundary. Matching a folder named “Marina” is insufficient. Import, browsing, downloading, synchronization, candidate retrieval, exact page reads and visual inspection now verify ancestry back to that ID. Trashed folders, missing parents, shortcuts, cycles and ambiguous ancestry fail closed. Cached parent metadata lives for one operation only, so a later move outside the root is checked again. Temporary provider failure is reported rather than treated as proof that no resources exist.
@@ -316,10 +318,69 @@ Not demonstrated: a thousand-document or terabyte ingestion run; a labeled multi
 
 ### 7.15 Suggested order for further work
 
-1. **Correctness:** reject wrong entity types before proposals; add evaluated relevance/abstention checks; make saved/searchable/partial-visual states unmistakable.
-2. **Large-file efficiency:** cache originals/rendered pages, detect changed pages and keep serving the last verified index while a replacement is built.
-3. **Freshness and operations:** measure the sync backlog; introduce change-based discovery, distributed processing/cost budgets and verified backup alerts.
-4. **Visual quality and research depth:** add detailed crops, table validation and representative multi-document/long-book evaluation; design resumable investigations for queries that exceed one turn.
-5. **Scale validation:** load-test increasing library sizes, review database/index and backup growth, and run restore and accessibility checks before making larger capacity claims.
+The user's clarified priority is resource-informed study planning. The following order reflects that objective rather than treating document question-answering as the finished product:
+
+1. **Study-planning context:** connect a task's resource collection, section-level evidence, learning activities, effort uncertainty and actual available time so the model can discuss meaningful alternatives (section 8).
+2. **Correctness of the resulting proposals:** reject wrong entity types early; evaluate relevance and source support; expose incomplete analysis and unscheduled work. Arithmetic and scope checks support the conversation without choosing a study strategy for it.
+3. **Efficient, fresh understanding:** cache originals/rendered pages, detect changed pages, keep serving the last verified index during replacement and measure the sync backlog. Add change-based discovery and distributed processing/cost controls.
+4. **Visual and planning quality:** add detailed crops and table validation; evaluate real multi-resource study scenarios and revision after user feedback, not just isolated document answers. Support resumable investigations when one turn is insufficient.
+5. **Scale and recovery validation:** load-test increasing library sizes, review database/index and backup growth, and run restore and accessibility checks before making larger capacity claims.
 
 These are recommendations for subsequent implementation. This limitations update changes documentation only.
+
+## 8. Primary workflow: discussing study plans with resource context
+
+### 8.1 What the user wants
+
+The assistant should understand what the user is trying to achieve with a task and what its attached resources contain, then help the user decide how to study within the available time. The useful outcome is a conversation such as “What could I realistically do with these readings and exercises before Friday, and what are the tradeoffs?” It is not limited to locating a passage or assigning an existing duration to an empty calendar slot.
+
+The user explicitly rejected a fixed default strategy for insufficient time. Marina should reason about the relevant options for this particular task and discuss them. Essential-topic coverage, broad review, worked examples, practice-first study, prerequisite work, deeper study of fewer sections, or proposing more time can be appropriate in different circumstances. These are examples of alternatives, not predefined branches that every request must follow. “All options” means considering meaningful alternatives and consequences; it should not become a claim that every mathematically possible plan was enumerated.
+
+### 8.2 The working context needed
+
+| Context | What it contributes to the conversation |
+| --- | --- |
+| Task purpose | Whether the user needs to solve an assignment, prepare for an exam, understand a topic, produce a report or complete another concrete outcome. A resource's existence does not make every page required. |
+| Actual resource collection | The linked books, notes, slides, exercises and diagrams, with identities, versions, indexing status and the boundaries of the selected goal/task. Missing or unanalyzed resources remain explicit. |
+| Organization of the material | Outlines, sections, topic coverage, relevant page ranges, examples, exercises and figures. Versioned summaries help orient the model; exact passages/pages support specific claims. |
+| Relationships across resources | Overlapping explanations, complementary examples, task-relevant sections and possible prerequisites. The model should inspect evidence before deciding two readings are redundant or a prerequisite is essential. |
+| User's starting point | What the user says they already understand, completed sections, practice results and relevant study history. Opening a file or logging time is not proof of mastery. Unknown knowledge stays unknown until there is useful evidence. |
+| Effort and uncertainty | Separate possible reading, understanding, practice and review work. Offer provisional time ranges and explain their basis; distinguish a user-provided budget from a prediction of how long learning may take. |
+| Time constraints | Deadline, available study windows, fixed commitments, other work and whether a stated constraint is firm or negotiable. Calendar tools check that a candidate fits the time actually available. |
+| Decisions already made | The user's latest corrections and preferences, chosen coverage and progress. The conversation can revise a plan without silently discarding previously stated constraints. |
+
+This working context should be built from scoped, inspectable evidence and reusable resource structure. It should not require putting every original PDF into every prompt, nor imply that twelve retrieved passages constitute a complete analysis of a collection. Collection coverage and analysis gaps must remain available to the model when it proposes a plan.
+
+### 8.3 Model reasoning and deterministic calculations have different jobs
+
+The model develops and explains candidate study approaches in conversation. There should be no fixed rule such as “a short deadline always means skip optional chapters,” no forced number of options, and no canned study sequence selected by a keyword classifier. A user can challenge an estimate, change priorities or ask why one source matters, and the assistant should investigate or revise the proposal accordingly.
+
+Deterministic tools supply trustworthy facts and calculations: which resources belong to the task, which passages support a claim, how many free minutes exist, and whether candidate blocks overlap or violate prerequisites. They do not choose the pedagogical strategy. An option requiring five hours when only three are available must be described with its two-hour gap; the model must not quietly stretch the user's budget or claim it fits.
+
+Estimates should be explicitly provisional when knowledge and personal pace are uncertain. Page count alone is insufficient: twenty pages of proofs can involve different work from twenty pages of familiar slides. A range should separate what is known from assumptions about reading, problem-solving and review. General task-history medians are weak evidence for a particular reading assignment; topic/activity-specific history would be more informative when enough comparable observations exist. A short initial session can provide feedback for revising the remaining estimate, without treating elapsed time as automatic learning success.
+
+### 8.4 Example of the intended interaction
+
+Hypothetical task: finish an algebra assignment by Friday, with four available study hours. Attached material includes a textbook chapter, lecture notes and an exercise sheet.
+
+After inspecting the collection, the assistant could explain which notes overlap with the chapter, which definitions the exercises require, which diagram is worth reviewing, and which parts remain unanalyzed. It could discuss working through the exercises while consulting the notes, doing a prerequisite session first, or studying the chapter more deeply with less practice. Each suggestion should name the actual sections/problems, explain the tradeoff and show provisional effort and fit against the four-hour budget.
+
+If the user says “I know the definitions but struggle with proofs,” the assistant should shift its proposed activities toward proof examples and practice supported by those resources. If the user instead wants complete chapter coverage, it should estimate the additional work and show any time shortfall. No deadline or saved task estimate should be changed merely to make an option appear feasible. Calendar/task writes remain reviewable proposals requiring Apply.
+
+### 8.5 What is present and what is still missing
+
+**Present:** scoped resource discovery, text/visual page evidence, saved resource-to-task/goal relationships, task estimates and actual-time records, calendar reads, deterministic scheduling previews and reviewable action proposals. The model can combine these tools for a limited, evidence-backed discussion today.
+
+**Missing as a dedicated, validated capability:** a reusable map of the task's whole study collection; section-level learning activities and coverage state; resource-grounded effort ranges calibrated to relevant personal history; and a connected way to compare alternative content plans against calendar capacity before committing task changes. A persistent learner/mastery model and automatic adaptive study curriculum have not been implemented.
+
+The current [estimate helper](../server/services/estimateSuggest.ts) uses the median actual duration of completed tasks in the same goal, then broader completed-task history, then a 60-minute starting guess. It does **not** inspect resource content, chapter difficulty, exercises or diagrams. [Resource context](../server/services/resourceContext.ts) returns relationships and indexing information, not a complete material/workload analysis. [Schedule previews](../server/services/copilotTools.ts) work from existing eligible tasks and estimates; they do not yet constitute a dedicated comparison engine for hypothetical, resource-derived study activities.
+
+Consequently, the earlier implementation should be described as the retrieval and scheduling foundation for the user's objective, not as a completed resource-informed study planner. The next implementation should add this connection rather than impose a fixed planning strategy through additional prompt rules.
+
+### 8.6 How to validate the next implementation
+
+Use task-level scenarios with several actual or synthetic resources: overlapping notes and a textbook, an exercise sheet requiring an earlier concept, image-dependent material, incomplete indexing, a user who already knows part of the topic, and a deadline with insufficient capacity. Validate source/page support, explicit analysis coverage, disclosed estimation assumptions, correct time arithmetic and preservation of the user's scope and deadlines.
+
+Evaluate a multi-turn discussion: the user challenges an estimate, changes the learning objective, reports difficulty or rejects an option. The assistant should adapt the content plan and show revised tradeoffs without inventing mastery, silently dropping resources or forcing the same menu. Scripted contract tests can check these boundaries; representative real-model evaluations and user study-session feedback are needed to assess whether the recommendations are useful.
+
+This section records the clarified product direction and current gap. It does not claim the missing planning layer was implemented by this documentation update.
