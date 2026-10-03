@@ -1,3 +1,4 @@
+import { loadBusyWindow } from '../services/calendarBusy.js';
 import { schedulePreviewRouter } from './schedule-preview.js';
 import { aiProposalsRouter } from './ai-proposals.js';
 import { activeProposals } from '../services/activeProposals.js';
@@ -1844,51 +1845,6 @@ async function loadSchedulerInputs(horizonDays: number) {
 // days into concrete timed blocks around meetings and existing calendar
 // blocks. Nothing is written — the payload lives on the chat message until
 // the user applies it from the widget.
-/** Timed meetings + existing dated blocks between two dates — the fixed
- *  context every plan/series lays itself around. */
-async function loadBusyWindow(fromStr: string, toStr: string) {
-  const [{ rows: meetingRows }, { rows: eventRows }] = await Promise.all([
-    query(
-      `SELECT id, title, scheduled_at, duration_minutes FROM meetings
-       WHERE ${activeMeetingSql()} AND DATE(scheduled_at::timestamp) BETWEEN $1 AND $2`,
-      [fromStr, toStr],
-    ),
-    query(`SELECT id, title, day_index, start_hour, duration_hours, week_start FROM events WHERE week_start IS NOT NULL AND ${activeEventSql()}`),
-  ]);
-
-  const busy: Array<{ date: string; start_hour: number; duration_hours: number; title: string; kind: 'meeting' | 'block' }> = [];
-  for (const m of meetingRows as Record<string, unknown>[]) {
-    const dt = new Date(String(m.scheduled_at));
-    if (Number.isNaN(dt.getTime())) continue;
-    busy.push({
-      date: String(m.scheduled_at).slice(0, 10),
-      start_hour: dt.getHours() + dt.getMinutes() / 60,
-      duration_hours: Math.max(0.25, Number(m.duration_minutes ?? 60) / 60),
-      title: String(m.title ?? 'Meeting'),
-      kind: 'meeting',
-    });
-  }
-  for (const ev of eventRows as Record<string, unknown>[]) {
-    const date = eventDateServer(String(ev.week_start), Number(ev.day_index ?? 0));
-    if (date < fromStr || date > toStr) continue;
-    busy.push({
-      date,
-      start_hour: Number(ev.start_hour ?? 9),
-      duration_hours: Math.max(0.25, Number(ev.duration_hours ?? 1)),
-      title: String(ev.title ?? 'Block'),
-      kind: 'block',
-    });
-  }
-  const { rows: routinePrefs } = await query("SELECT timezone FROM user_schedule_prefs WHERE id='default'");
-  const routineToday = new Intl.DateTimeFormat('en-CA', { timeZone: String(routinePrefs[0]?.timezone || 'UTC') }).format(new Date());
-  for (const routine of await loadRoutineReservations(fromStr, toStr, routineToday)) {
-    if (!routine.preferred_time) continue;
-    const [hour, minute] = routine.preferred_time.split(':').map(Number);
-    busy.push({ date: routine.date, start_hour: hour + minute / 60, duration_hours: routine.minutes / 60, title: `Routine: ${routine.title}`, kind: 'block' });
-  }
-  return busy;
-}
-
 /** Unestimated-but-otherwise-schedulable tasks with a history-grounded guess
  *  each — the plan widget's one-tap estimate triage. */
 async function loadEstimateTriage(notSchedulable: Array<{ task_id: string; title: string; reasons: string[] }>) {

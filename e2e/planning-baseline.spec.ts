@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { EvaluationRecorder } from '../server/services/evaluationTrace';
 import { planningFixtures, fixtureId } from '../audits/planning/fixtures';
+import pg from 'pg';
+import { randomUUID } from 'node:crypto';
+import { assertPlanningTestDatabase, validatePlanningTestUrl } from '../audits/planning/databaseFixtures';
 
 for (const failed of [false, true]) test(`P00.2-F01/P00.3-F04 ${failed ? 'provider failure' : 'evidence answer'} remains usable on this viewport`, async ({ page, isMobile }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
@@ -43,6 +46,31 @@ for (const failed of [false, true]) test(`P00.2-F01/P00.3-F04 ${failed ? 'provid
   await page.screenshot({ path: `tmp/planning-baseline/${info.project.name}-${failed ? 'failure' : 'answer'}.png`, fullPage: true });
   await page.reload({ waitUntil: 'domcontentloaded' }); await openChat(); await expect(details).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('P02 real goal plan saves, preserves a local draft and recovers after reload',async({page,isMobile},info)=>{
+  const client=new pg.Client({connectionString:validatePlanningTestUrl(process.env.DATABASE_URL_TEST,process.env.PLANNING_TEST_DB)});await client.connect();await assertPlanningTestDatabase(client as any);
+  const id=randomUUID();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await client.query("INSERT INTO goals(id,title,created_at,updated_at) VALUES ($1,'P02 browser goal',NOW()::text,NOW()::text)",[id]);
+  try{
+    await page.goto(`/?view=goals&goal=${id}`,{waitUntil:'domcontentloaded'});
+    const toggle=page.getByRole('button',{name:'Plan',exact:true});await expect(toggle).toBeVisible();await toggle.scrollIntoViewIfNeeded();
+    if(isMobile)await toggle.tap();else{await toggle.focus();await page.keyboard.press('Enter');}
+    await page.getByRole('button',{name:'Start planning'}).click();
+    const outcome=page.getByRole('textbox',{name:'Plan outcome'});await expect(outcome).toBeVisible();await outcome.fill('Deliver a concise report');
+    await page.getByRole('button',{name:'Save plan',exact:true}).click();await expect(page.getByText(/Saved plan · revision 1/)).toBeVisible();
+    await outcome.fill('Unsaved revision for discussion');
+    await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:'Plan, unsaved draft',exact:true}).click();
+    await expect(outcome).toHaveValue('Unsaved revision for discussion');
+    expect((await client.query('SELECT content FROM planning_plan_revisions WHERE plan_id=(SELECT id FROM planning_plans WHERE goal_id=$1) AND version=1',[id])).rows[0].content.outcome).toBe('Deliver a concise report');
+    const save=page.getByRole('button',{name:'Save plan',exact:true});await save.scrollIntoViewIfNeeded();expect((await save.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    await page.screenshot({path:`tmp/planning-baseline/${info.project.name}-persistent-plan.png`,fullPage:true});
+    await page.getByRole('button',{name:'Discard local draft'}).click();await expect(outcome).toHaveValue('Deliver a concise report');
+    await page.getByRole('button',{name:'Archive plan',exact:true}).click();await expect(page.getByText(/Archived plan/)).toBeVisible();
+    await page.getByRole('button',{name:'Restore plan',exact:true}).click();await expect(page.getByText(/Draft plan/)).toBeVisible();
+    expect(errors).toEqual([]);
+  }finally{await client.query('DELETE FROM goals WHERE id=$1',[id]);await client.end();}
 });
 
 test('P01.1 malformed schedule can reload using keyboard or touch', async ({ page, isMobile }, info) => {

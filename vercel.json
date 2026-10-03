@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "npm run vercel:resource-check && npm run build && npm run vercel:entry-check",
+  "buildCommand": "npm run vercel:resource-check && tsx scripts/check-planning-deployment.ts && npm run build && npm run vercel:entry-check",
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {

@@ -9,7 +9,7 @@ npm run test:planning
 npm run test:planning-baseline
 ```
 
-Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (19 at the P01.1 checkpoint). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
+Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (42 at the P02 checkpoint: 19 prior cases and 23 persistent-plan cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
 
 For real integration checks, start an isolated local PostgreSQL cluster, then run:
 
@@ -27,7 +27,7 @@ node --require dotenv/config node_modules/@playwright/test/cli.js test --config 
 
 Both `DATABASE_URL_TEST` and `PLANNING_TEST_DB=1` are required. URL checks reject remote hosts and unrelated database names; a real database identity/loopback/marker query runs before schema initialization or fixture insertion. Production configuration is never a fallback. Run the browser and full test suites sequentially to avoid CPU contention during managed-server startup.
 
-The browser configuration starts the real Express app and Vite on dedicated test ports, refuses existing servers, and does not start background workers or seed example data. Browser replies/history are explicitly intercepted synthetic fixtures. Real chat/proposal/save behavior is tested separately over HTTP in `database.test.ts`.
+The browser configuration starts the real Express app and Vite on dedicated test ports, refuses existing servers, and does not start background workers or seed example data. Chat replies/history are explicitly intercepted synthetic fixtures. P02 adds a real goal-plan flow with isolated owned fixtures, saved revisions, draft reload, archive and restore on four viewports. Real chat/proposal behavior is tested over HTTP in `database.test.ts`; persistent-plan races, scopes and lifecycle are exercised in `persistence.test.ts`. The [P01–P02 checkpoint](../../docs/planning-checkpoints/P01-P02.md) records the expanded child steps and results.
 
 ## Fixture contract and ownership
 

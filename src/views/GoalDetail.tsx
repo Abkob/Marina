@@ -27,6 +27,7 @@ import { GoalPlanningPanel } from '../components/GoalPlanningPanel';
 import { TaskGraphView } from '../components/TaskGraphView';
 import { ActualTimeChip } from '../components/ActualTimeChip';
 import { useGoal, useGoalTasks, useGoalTaskDependencies, useGoalResources, useTaskResources, useInvalidate, useGoalMeetings, useGoalDeadlines, useGoalMilestones, useCreateWorkSession } from '../api/hooks';
+import { PlanPanel } from '../components/planning/PlanPanel';
 import { archiveGoal, restoreGoal, updateGoal } from '../db/queries/goals';
 import { toggleTask, createTask, deleteTask, updateTask, deactivateTask, touchTask, completeTask } from '../db/queries/tasks';
 import { createResource, deleteResource, detectResourceType } from '../db/queries/resources';
@@ -2910,6 +2911,7 @@ export function GoalDetail() {
       </header>
 
       <div className="mobile-goal-sections space-y-8">
+        {!goal.archived_at && <PlanPanel root={{ kind: 'goal', id: goal.id }} />}
         {/* ── Time Intelligence ── */}
         <MobileDisclosure title="Time & progress" storageKey="goal-time"><GoalTimePanel tasks={allTasks} /></MobileDisclosure>
 

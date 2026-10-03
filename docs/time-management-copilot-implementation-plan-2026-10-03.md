@@ -2,7 +2,7 @@
 
 Date: 3 October 2026. Planning baseline: `6f627ecbd37cce9dfe1e0e71f70dbfea5789e98a`. Source behavior is grounded in the current repository, the [implementation checkpoint](copilot-implementation-2026-10-03.md), and the [expanded research](time-management-copilot-research-2026-10-03.md#16-closer-alternatives-the-expanded-search-for-marinas-actual-objective).
 
-**Status: P00 and P01.1 implemented; 74 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures, baseline checks and diagnostic traces; [P01.1](planning-checkpoints/P01.1.md) records typed identities and runtime validation. The user has authorized continuation through P02. The remaining document specifies proposed frontend/backend work, test oracles, stress experiments, dependencies, rollout and recovery. Historical checks remain separately labeled; proposed tests and targets are not passing results.
+**Status: P00–P02 implemented; 69 sections remain open.** The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures and diagnostics; [P01.1](planning-checkpoints/P01.1.md) records typed identities. The [P01–P02 checkpoint](planning-checkpoints/P01-P02.md) expands each new leaf into reviewed child steps, with frontend/backend behavior, concurrency and recovery tests, migration evidence and limitations. Persistent manual plan memory is implemented; automatic chat use, workload inference and effort forecasting remain later work. The remaining document specifies proposed work; proposed tests are not passing results.
 
 **Execution style requested by the user:** implement and test small sections through successive prompts, inspect each section's results, then decide whether to continue, repair or expand. The default future implementation unit is one leaf ID, such as `P03.1`, not the whole document. A later user instruction can explicitly authorize a larger batch. Section 10 supplies copyable prompts, checkpoint records and the continuation protocol. This planning task does not start implementing the features.
 
@@ -182,7 +182,7 @@ Related contracts: P00.1. Proposed home: `shared/planningContracts.ts`, existing
 - **Stress/failure:** S1 fuzz nested payload depth, long Unicode titles and 10,000 references; reject excess input before expensive retrieval.
 - **Done:** `CHAT-01` becomes an ordinary passing regression; typed checks exist before preview and at Apply.
 
-#### P01.2 [ ] Define plan, scenario and provider outcome states
+#### P01.2 [x] Define plan, scenario and provider outcome states
 
 - **Backend:** Explicit transitions: draft/revising/current/stale/archived for plan state; evaluating/ready/partial/conflicted/failed/canceled/superseded for scenarios. Applied status belongs to the accepted proposal/result.
 - **Frontend:** Distinguish incomplete evidence, invalid schedule, unavailable provider and canceled request; expose the next useful action.
@@ -191,7 +191,7 @@ Related contracts: P00.1. Proposed home: `shared/planningContracts.ts`, existing
 - **Stress/failure:** S4 interleave 100 cancellation/retry/result events; exactly one authoritative terminal result survives per revision.
 - **Done:** No ambiguous “ready” status conflates extraction, understanding, scheduling and completed human work.
 
-#### P01.3 [ ] Define scope, version and error envelopes
+#### P01.3 [x] Define scope, version and error envelopes
 
 - **Backend:** Separate evidence scope, global scheduling context and proposed write set; snapshot token binds revisions and selected scope. Use structured retry/error metadata.
 - **Frontend:** Show scope chips and stale-state messages; changing scope cannot render a late answer as though it used the new selection.
@@ -202,9 +202,9 @@ Related contracts: P00.1. Proposed home: `shared/planningContracts.ts`, existing
 
 ### P02 — Persistent plans, revisions and safe migrations
 
-Related contracts: P01.1–P01.3; verified backup before production changes. Proposed home: planning repository and additive migrations.
+Related contracts: P01.1–P01.3. Implemented in `server/services/planning/`, shared contracts, the Plan panel and M-031. The [expanded child checklist](planning-checkpoints/P01-P02.md) records the verified backup, migration/restore rehearsal and scoped acceptance results.
 
-#### P02.1 [ ] Add plan storage without duplicating task facts
+#### P02.1 [x] Add plan storage without duplicating task facts
 
 - **Backend:** Create root/revision records with concrete FKs, uniqueness and schema versions. Reference current tasks/resources; do not snapshot full documents into each revision.
 - **Frontend:** A task/goal can show “Plan” before one exists; create lazily when the user starts planning. Ordinary task navigation remains fast.
@@ -213,7 +213,7 @@ Related contracts: P01.1–P01.3; verified backup before production changes. Pro
 - **Stress/failure:** S2/S4 seed 10,000 roots and race 20 creates per selected root; verify uniqueness, query plans and bounded response size.
 - **Done:** Additive migration and isolated restore rehearsal pass; production receipt exists before migration is enabled.
 
-#### P02.2 [ ] Implement revisions and conflict-safe editing
+#### P02.2 [x] Implement revisions and conflict-safe editing
 
 - **Backend:** Append revisions with compare-and-swap base version; merge only explicitly independent fields or return a conflict. User corrections supersede older generated drafts.
 - **Frontend:** Preserve unsaved text on conflict and show the newer revision; reload restores the last saved plan and pending local edits distinctly.
@@ -222,7 +222,7 @@ Related contracts: P01.1–P01.3; verified backup before production changes. Pro
 - **Stress/failure:** S4 run 100 concurrent edits and intermittent disconnects; revision order is unique, no lost acknowledged changes, retries do not duplicate history.
 - **Done:** Every saved plan revision has an origin and a recoverable predecessor.
 
-#### P02.3 [ ] Add archive, retention and derived-data invalidation
+#### P02.3 [x] Add archive, retention and derived-data invalidation
 
 - **Backend:** Archive roots without deleting source files; separate retention of draft artifacts from required audit history. Access revocation suppresses derived evidence immediately on new reads.
 - **Frontend:** Archived plans are clearly labeled and excluded from active suggestions; expose recover/forget actions discreetly with accurate consequences.
@@ -1279,7 +1279,7 @@ Update this leaf's checkpoint and recommend continue, repair or expand. Stop bef
 implementing another leaf so I can review the result.
 ```
 
-P00.1–P00.3 are complete as the first authorized batch. The next recommended prompt is P01.1. P01 establishes contracts, and P03 corrects time semantics early. Do not begin with a large frontend rewrite or a provider/model swap; those cannot establish the missing accounting and persistent state.
+P00–P02 are complete under the authorized batches. The next recommended prompt is P03.1, correcting time semantics across existing consumers. Persistent plan storage is now available, but conversational use and resource-informed forecasting still require their later leaves. Do not substitute a provider/model swap for the remaining accounting work.
 
 ### 10.5 Copyable review and continuation prompts
 

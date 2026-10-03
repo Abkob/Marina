@@ -5,6 +5,7 @@ import { dispatchResourceEvents, reconcileResourceDispatch, durableProcessingCon
 import { processPendingResources } from './resourceProcessing.js';
 import { reconcileDriveResources } from './googleDrive.js';
 import { pruneEvaluationTraces } from './evaluationTraceStore.js';
+import { prunePlanningArtifacts } from './planning/planRepository.js';
 
 export async function retryPendingJournalEntries(limit = 3): Promise<number> {
   const { rows } = await query<{ id: string }>(
@@ -29,6 +30,7 @@ export async function retryPendingJournalEntries(limit = 3): Promise<number> {
 }
 
 export async function runMaintenance() {
+  const expired_planning_artifacts = await prunePlanningArtifacts().catch(() => null);
   const recovered_uploads = await reconcileUploads();
   const drive_resources_checked = await reconcileDriveResources();
   await reconcileResourceDispatch();
@@ -39,5 +41,5 @@ export async function runMaintenance() {
   const { rollupCaptureWalls } = await import('../routes/journal.js');
   const capture_rollups = await rollupCaptureWalls();
   const expired_diagnostics_removed = await pruneEvaluationTraces().catch(() => null);
-  return { reclaimed, embeddings, retried_journals, capture_rollups, recovered_uploads, resource_jobs, drive_resources_checked, expired_diagnostics_removed };
+  return { reclaimed, embeddings, retried_journals, capture_rollups, recovered_uploads, resource_jobs, drive_resources_checked, expired_diagnostics_removed, expired_planning_artifacts };
 }

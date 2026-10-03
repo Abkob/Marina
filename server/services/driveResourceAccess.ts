@@ -1,11 +1,12 @@
+import type { PoolClient } from 'pg';
 // The stored original is authoritative even if its synchronization metadata is missing.
 export const DRIVE_FILE_ID_SQL = "CASE WHEN r.file_path LIKE 'gdrive://%' THEN substring(r.file_path from 10) ELSE NULL END";
 /** Check candidate originals before their text is sent to a reranker or chat model. */
-export async function filterRootedDriveRows<T extends { file_id?: string | null }>(rows: T[]): Promise<T[]> {
+export async function filterRootedDriveRows<T extends { file_id?: string | null }>(rows: T[], client?: Pick<PoolClient, 'query'>): Promise<T[]> {
   const ids = [...new Set(rows.flatMap(row => row.file_id ? [row.file_id] : []))];
   if (!ids.length) return rows;
   const { driveToken, driveRootGuard } = await import('./googleDrive.js');
-  const guard = await driveRootGuard(await driveToken());
+  const guard = client ? await driveRootGuard(await driveToken(client), client) : await driveRootGuard(await driveToken());
   const allowed = new Set<string>();
   // Bound provider concurrency; the guard shares parent reads for the batch.
   for (let offset = 0; offset < ids.length; offset += 4) {

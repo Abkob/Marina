@@ -12,7 +12,7 @@ The [detailed implementation game plan](time-management-copilot-implementation-p
 
 ## 1. The folder and context contract
 
-Follow-up implementation: **P00 is complete**, covering reproducible fixtures, explicit baseline/known-failure receipts and bounded response-phase diagnostics. The [P00 checkpoint](planning-checkpoints/P00.md) records its actual tests, trace retention/privacy, delivery and remaining limits. Persistent plans, resource-based effort forecasting and subsequent game-plan sections remain proposed.
+Follow-up implementation: **P00–P02 are complete**. The [P00 checkpoint](planning-checkpoints/P00.md) records fixtures and diagnostics; [P01.1](planning-checkpoints/P01.1.md) records typed identities; the [expanded P01–P02 checkpoint](planning-checkpoints/P01-P02.md) records scoped snapshots, persistent plan revisions, conflict-preserving editing, lifecycle/retention, migration and restore evidence. A task/goal now has manual Plan memory. Automatic chat use of that memory, resource-based effort forecasting and subsequent game-plan sections remain proposed. The new checkpoint separately inventories bounds and limitations.
 
 The stored Google Drive root ID is the boundary. Matching a folder named “Marina” is insufficient. Import, browsing, downloading, synchronization, candidate retrieval, exact page reads and visual inspection now verify ancestry back to that ID. Trashed folders, missing parents, shortcuts, cycles and ambiguous ancestry fail closed. Cached parent metadata lives for one operation only, so a later move outside the root is checked again. Temporary provider failure is reported rather than treated as proof that no resources exist.
 

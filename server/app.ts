@@ -46,6 +46,7 @@ import { getProviderSummary, isNvidiaChatModel } from './config/providers.js';
 import { scheduleObsidianVaultSync, shouldSyncObsidianVaultForRequest } from './services/obsidianVaultSync.js';
 import { requireApiAuth } from './utils/auth.js';
 import { isVercelRuntime, runtimeCapabilities } from './runtime.js';
+import { planningRouter } from './routes/planning.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -114,6 +115,7 @@ export function createApp(): express.Express {
   app.use('/api/task-note-files', filesRouter);
   app.use('/api/meetings', meetingsRouter);
   app.use('/api/ai', aiRouter);
+  app.use('/api/planning', planningRouter);
   app.use('/api/goal-deadlines', deadlinesRouter);
   app.use('/api/milestones', milestonesRouter);
   app.use('/api/schedule-prefs', schedulePrefsRouter);

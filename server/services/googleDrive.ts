@@ -10,13 +10,13 @@ import { DRIVE_SCOPES, DRIVE_FOLDER_MIME, DRIVE_CHUNK_BYTES, driveDocument, driv
 
 type Connection = { account_id: string; account_email: string; encrypted_refresh_token: string | null; folder_id: string | null; scopes: string; last_error: string | null };
 const tokenCache = new Map<string, { token: string; expires: number }>();
-export async function driveSchemaReady() {
-  const row = (await query("SELECT to_regclass('google_drive_connection') AS connection, to_regclass('resource_drive_files') AS files, to_regclass('google_drive_oauth_states') AS states, to_regclass('resource_drive_uploads') AS uploads")).rows[0];
+export async function driveSchemaReady(client?: Pick<pg.PoolClient, 'query'>) {
+  const row = (await (client ?? { query }).query("SELECT to_regclass('google_drive_connection') AS connection, to_regclass('resource_drive_files') AS files, to_regclass('google_drive_oauth_states') AS states, to_regclass('resource_drive_uploads') AS uploads")).rows[0];
   return Boolean(row?.connection && row.files && row.states && row.uploads);
 }
-export async function driveConnection(): Promise<Connection | undefined> {
-  if (!await driveSchemaReady()) return undefined;
-  return (await query<Connection>("SELECT account_id,account_email,encrypted_refresh_token,folder_id,scopes,last_error FROM google_drive_connection WHERE id='primary'")).rows[0];
+export async function driveConnection(client?: Pick<pg.PoolClient, 'query'>): Promise<Connection | undefined> {
+  if (!await driveSchemaReady(client)) return undefined;
+  return (await (client ?? { query }).query<Connection>("SELECT account_id,account_email,encrypted_refresh_token,folder_id,scopes,last_error FROM google_drive_connection WHERE id='primary'")).rows[0];
 }
 export async function driveStatus() {
   const config = googleConfiguration();
@@ -25,8 +25,8 @@ export async function driveStatus() {
     folder_url: connection?.folder_id ? `https://drive.google.com/drive/folders/${connection.folder_id}` : null,
     last_error: connection?.last_error ?? null, max_bytes: 50 * 1024 * 1024 };
 }
-export async function driveToken() {
-  const connection = await driveConnection();
+export async function driveToken(client?: Pick<pg.PoolClient, 'query'>) {
+  const connection = await driveConnection(client);
   if (!connection?.encrypted_refresh_token) throw driveError('Connect Google Drive in Resource Library first.', 409);
   const key = crypto.createHash('sha256').update(connection.encrypted_refresh_token).digest('hex');
   const cached = tokenCache.get(key);
@@ -37,7 +37,7 @@ export async function driveToken() {
     return token;
   } catch {
     const message = 'Google Drive access could not be refreshed. Reconnect the same Google account.';
-    await query("UPDATE google_drive_connection SET last_error=$1 WHERE id='primary'", [message]);
+    if (!client) await query("UPDATE google_drive_connection SET last_error=$1 WHERE id='primary'", [message]);
     throw driveError(message, 503);
   }
 }
@@ -102,8 +102,8 @@ async function ensureFolder(client: pg.PoolClient, token: string) {
   return id;
 }
 
-export async function driveRootGuard(token: string) {
-  const root = (await driveConnection())?.folder_id;
+export async function driveRootGuard(token: string, client?: Pick<pg.PoolClient, 'query'>) {
+  const root = (await driveConnection(client))?.folder_id;
   if (!root) throw driveError('The Marina Drive root is not set up. Upload a resource to create it first.', 409);
   return createDriveAncestryGuard(root, id => getDriveFile(token, id));
 }

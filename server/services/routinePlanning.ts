@@ -1,12 +1,13 @@
 import { isRoutinesSchemaMissing, listRoutineEntries, listRoutines } from './routines.js';
 import { addRoutineDays, routineReservations, routineWeekStart } from '../../src/utils/routines.js';
 import type { RoutineReservation } from '../../src/types/routines.js';
+import type { PoolClient } from 'pg';
 
 /** Read only: full boundary weeks keep weekly quotas stable across view changes. */
-export async function loadRoutineReservations(from: string, to: string, today: string): Promise<RoutineReservation[]> {
+export async function loadRoutineReservations(from: string, to: string, today: string, client?: Pick<PoolClient, 'query'>): Promise<RoutineReservation[]> {
   try {
     const [routines, entries] = await Promise.all([
-      listRoutines(), listRoutineEntries(routineWeekStart(from), addRoutineDays(routineWeekStart(to), 6)),
+      client ? listRoutines(client) : listRoutines(), client ? listRoutineEntries(routineWeekStart(from), addRoutineDays(routineWeekStart(to), 6), client) : listRoutineEntries(routineWeekStart(from), addRoutineDays(routineWeekStart(to), 6)),
     ]);
     return routineReservations(routines, entries, from, to, today);
   } catch (error) {

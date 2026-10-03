@@ -29,13 +29,13 @@ export function isRoutinesSchemaMissing(error: unknown): boolean {
     || (err.code === '42703' && /routine_id/.test(err.message ?? ''));
 }
 
-export async function listRoutines(): Promise<DBRoutine[]> {
-  const { rows } = await query(`SELECT * FROM routines WHERE ${activeGoalSql()} ORDER BY created_at, id`);
+export async function listRoutines(client?: Pick<PoolClient, 'query'>): Promise<DBRoutine[]> {
+  const { rows } = await (client ?? { query }).query(`SELECT * FROM routines WHERE ${activeGoalSql()} ORDER BY created_at, id`);
   return rows as unknown as DBRoutine[];
 }
 
-export async function listRoutineEntries(from: string, to: string): Promise<DBRoutineEntry[]> {
-  const { rows } = await query('SELECT * FROM routine_entries WHERE date >= $1 AND date <= $2 ORDER BY date, routine_id', [from, to]);
+export async function listRoutineEntries(from: string, to: string, client?: Pick<PoolClient, 'query'>): Promise<DBRoutineEntry[]> {
+  const { rows } = await (client ?? { query }).query('SELECT * FROM routine_entries WHERE date >= $1 AND date <= $2 ORDER BY date, routine_id', [from, to]);
   return rows as unknown as DBRoutineEntry[];
 }
 

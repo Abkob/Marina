@@ -1,4 +1,5 @@
 import { MobileDisclosure } from '../components/MobileDisclosure';
+import { PlanPanel } from '../components/planning/PlanPanel';
 import { useEffect, useRef, useState } from 'react';
 import {
   Calendar, CalendarClock, CalendarPlus, Check, CheckSquare, ChevronLeft, ChevronRight, Clock, Download,
@@ -1500,6 +1501,7 @@ export function TaskFocusView() {
           className="mt-4 max-w-md"
         />
       </header>
+      <PlanPanel root={{ kind: 'task', id: task.id }} />
 
       <div className="mb-4"><MobileDisclosure title="Calendar & time blocks" storageKey="task-calendar"><TaskCalendarPanel task={task} subtreeIds={subtreeIds} allTasks={allTasks} /></MobileDisclosure></div>
 
