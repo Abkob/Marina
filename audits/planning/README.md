@@ -9,7 +9,7 @@ npm run test:planning
 npm run test:planning-baseline
 ```
 
-Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (70 at P03.2: 19 prior cases, 23 persistent-plan cases, 14 accounting cases and 14 hierarchy cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
+Without `DATABASE_URL_TEST`, database/HTTP cases are **skipped**, and the receipt names them (78 at P03.2.7: 19 prior cases, 23 persistent-plan cases, 14 accounting cases, 14 hierarchy cases and eight answer-fixture parity cases). A successful synthetic-only invocation does not satisfy the database gate. Vitest, its child process exit status and the receipt's suite status must all agree. The separate negative control intentionally fails one assertion; the parent runner succeeds only if it observes that exact failure. An unexpected pass or startup failure cannot satisfy the control.
 
 For real integration checks, start an isolated local PostgreSQL cluster, then run:
 
@@ -43,7 +43,7 @@ Six UI stories cover absent, loading, partial evidence, ready plan, stale propos
 
 ## Baseline receipt
 
-`run.ts` writes `tmp/planning-baseline/receipt.json` with starting commit, dirty-tree status, runtime, test names, per-suite failures, skipped cases and expected failures. Raw Vitest JSON and logs stay alongside it. The recorded checkpoint supplies the reviewable, tracked summary. Old receipts are removed before invoking each suite so a failed startup cannot reuse an earlier success.
+`run.ts` writes `tmp/planning-baseline/runs/<run-id>/receipt.json` with starting commit, dirty-tree status, runtime, test names, per-suite failures, skipped cases and expected failures. Raw Vitest JSON and logs stay alongside it. Each invocation gets a fresh UUID directory; earlier receipts remain untouched, and a failed startup cannot reuse an earlier success. The recorded checkpoint supplies the reviewable, tracked summary. The receipt also records the independent answer-replay gate separately from the test counts.
 
 Three remaining expected failures are individually inventoried in `knownFailures.ts`. The original P00 count is historical:
 
@@ -89,10 +89,26 @@ P03.2 adds the [hierarchy checkpoint](../../docs/planning-checkpoints/P03.2.md),
 
 ## Reopened P03.2 acceptance
 
-The [expanded repair checklist](../../docs/planning-checkpoints/P03.2.md#8-reopened-chatbot-correctness-and-provider-recovery-checklist) is the authoritative next scope: 13 open implementation children, 28 proposed regression case families and seven closure gates. These counts are planned coverage, not executed tests. The task is not ready to advance to P03.3.
+The [expanded repair checklist](../../docs/planning-checkpoints/P03.2.md#8-reopened-chatbot-correctness-and-provider-recovery-checklist) is the authoritative next scope: P03.2.7 is delivered as the fixture/replay step, P03.2.8–P03.2.19 remain open, and 32 required regression case families and seven closure gates define the remaining acceptance work. These families are required coverage, not executed tests. The task is not ready to advance to P03.3.
 
 The original real answers confused a parent's residual with subtree completion, transferred an optional resource role to a task, invented parent-work meaning, contradicted their time allocations and made unsupported completion guarantees. Provider failures are recorded separately. The current code reviews proposals conditionally on actions; the expanded checklist requires coverage for factual planning replies with no actions too.
 
-Implementation must preserve these failures as negative fixtures, add independent expected facts and real tool-contract parity, and report transport, protocol, facts, scope, arithmetic, grounding, usefulness, side effects and persistence separately. Current `liveModels.ts` does not implement those new verdicts yet. Its existing `semantic_review: required` cannot be counted as a semantic pass. Unknown/unavailable evaluations, degraded facts-only responses and selected successful retries cannot inflate planning success.
+P03.2.7 preserves exact failed public replies, independent hand-authored facts and real tool-contract parity. The curated replay separates transport, protocol, facts, scope, arithmetic, grounding, usefulness, side effects and persistence. It binds annotations to the exact public reply hash; unseen replies remain semantically unavailable until reviewed. This static replay oracle is not a general prose validator or the still-open P03.2.10 runtime safeguard. Correct metadata cannot excuse wrong prose, and accurate facts-only advice can still fail usefulness. Passing the replay means the known examples are correctly classified; it never qualifies a planning release.
+
+```text
+node --import tsx audits/planning/runHierarchyAnswerReplay.ts
+node --import tsx audits/planning/runHierarchyAnswerReplay.ts --negative-control
+```
+
+The second command must exit nonzero because it deliberately accepts an original bad answer. Both commands write exclusive receipts under `tmp/planning-answer-evaluations/<run-id>/`. Missing, malformed, stale or unavailable review cannot satisfy the replay gate.
+
+For bounded current-provider checks, load private credentials into the process and opt in explicitly:
+
+```powershell
+$env:RUN_LIVE_PLANNING_MODELS = '1'
+node --require dotenv/config --import tsx audits/planning/liveModels.ts nvidia/nemotron-3-super-120b-a12b
+```
+
+`liveModels.ts` uses production parameter schemas and synthetic read-only adapters, runs a greeting and two planning scenarios serially, and saves every attempt to a unique `tmp/planning-answer-evaluations/<run-id>/live-attempt.json`. Receipts capture input/code/model configuration identity, raw and packed synthetic observations, public replies, safe traces and failure status. They exclude credentials and private reasoning. Review the actual public answers against the independent facts, preserve failed attempts, and distinguish local credentials from the deployed path. A completed request or `semantic_review: required` is not a semantic pass. The current two Super planning replies are preserved failures in the checkpoint; October 3 provider outcomes are historical observations.
 
 Use local mock providers for concurrent/large stress checks. Real live checks remain opt-in, serial and bounded, using synthetic tasks and no application mutations. The user's authorization for real chatbot testing remains valid; it does not require another permission round for each test. Deployment credential checks and real production verification must be labeled distinctly from calls using local saved credentials.

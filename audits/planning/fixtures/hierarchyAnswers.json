@@ -1,0 +1,1012 @@
+{
+  "version": 1,
+  "expected_values": "hand_authored_independent_of_production_aggregation",
+  "observations_provenance": "reconstructed_synthetic_inputs_not_historical_tool_captures",
+  "sources": [
+    {
+      "file": "p032-live-conversation.json",
+      "sha256": "202464d0e529abf26728323b78be85fed9ba7934d3651bf379b06ad8393a9869"
+    },
+    {
+      "file": "p032-live-conversation-recheck.json",
+      "sha256": "6924cc45daf25073d1bef8939f3a25a9d10718751c844ff36c0c72b436643269"
+    },
+    {
+      "file": "p032-live-models.json",
+      "sha256": "de0be87589a8dab4824bdd7568d17f2652f3cbaf5bf650f853e13448b6d58f93"
+    },
+    {
+      "file": "p032-super-inclusive-e03400d2.json",
+      "sha256": "6bdac2d4cfe2513c9fc0147a8a7b44bd66727686266c0187a00ae2f7543a012c"
+    },
+    {
+      "file": "p032-super-shortfall-44f8a99f.json",
+      "sha256": "b8fb2efdc355976a0f98371159a821019f27baca13395ba61bf5976a81dd60b3"
+    }
+  ],
+  "cases": [
+    {
+      "id": "C01-inclusive",
+      "families": [
+        "C01"
+      ],
+      "failure_ids": [
+        "E14"
+      ],
+      "prompt": "How much work remains on Report and its subtasks?",
+      "budget_minutes": null,
+      "tasks": [
+        {
+          "id": "f0320000-0000-4000-8000-000000000001",
+          "title": "Report",
+          "description": "",
+          "parent_task_id": null,
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 120,
+          "completed": false,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000002",
+          "title": "Background reading",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "inclusive",
+          "estimated_minutes": 60,
+          "completed": true,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000003",
+          "title": "Draft report",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "inclusive",
+          "estimated_minutes": 60,
+          "completed": false,
+          "requirement": "unspecified"
+        }
+      ],
+      "resources": [],
+      "expected": {
+        "demand_minutes": 60,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "own_minutes": 0,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "own_minutes": 0,
+            "subtree_minutes": 0,
+            "known_subtotal": 0,
+            "unknown_count": 0,
+            "completed": true
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "own_minutes": 60,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          }
+        ],
+        "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+      },
+      "samples": [
+        {
+          "id": "inclusive-positive-minutes",
+          "origin": "authored_positive",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "Report has 60 minutes of estimated work left across its subtree. Its own residual is 0; the completed included child still occupies its original allocation.",
+          "expected_verdict": "pass",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "940854b18049a24ae63ba22263970598b5c7998797cb7d8c1ddea72e7b683c8c",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "60 minutes of estimated work left across its subtree",
+                "metric": "subtree",
+                "minutes": 60,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              },
+              {
+                "kind": "quantity",
+                "quote": "own residual is 0",
+                "metric": "own",
+                "minutes": 0,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              }
+            ],
+            "usefulness": "pass",
+            "usefulness_reason": "Answers the stated question using independent known facts, uncertainty and conditional choices without prescribing a fixed workflow."
+          }
+        },
+        {
+          "id": "inclusive-positive-hours",
+          "origin": "authored_positive",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "About one hour remains in the Report branch, entirely in Draft report. Parent-only remaining effort is zero. These are estimates, not a completion guarantee.",
+          "expected_verdict": "pass",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "7eda7a44d48f1008e96cd9e83a595d7ea59c6347dc8f1fab855e10f2028a3578",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "one hour remains in the Report branch",
+                "metric": "subtree",
+                "minutes": 60,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              },
+              {
+                "kind": "quantity",
+                "quote": "Parent-only remaining effort is zero",
+                "metric": "own",
+                "minutes": 0,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              }
+            ],
+            "usefulness": "pass",
+            "usefulness_reason": "Answers the stated question using independent known facts, uncertainty and conditional choices without prescribing a fixed workflow."
+          }
+        },
+        {
+          "id": "inclusive-double-count-negative",
+          "origin": "authored_negative",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "Report still has 120 minutes left because completing the first child gives its 60 minutes back to the parent.",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "efb05e4e236425901989ca76f5462dcc8ef6badffae50b3ef3c3074170e801a8",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "120 minutes left",
+                "metric": "subtree",
+                "minutes": 120,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        },
+        {
+          "id": "E14-super-inclusive-metadata-only",
+          "origin": "historical_public_reply",
+          "source_receipt": "p032-super-inclusive-e03400d2.json",
+          "model": "nvidia/nemotron-3-super-120b-a12b",
+          "recorded_at": "2026-10-05T22:32:20.947Z",
+          "historical_configuration_fingerprint": "3872c83633821611a2d58bfab5cec4465a6c7569b338daf32a73cecb144a196b",
+          "reply": "The remaining work for **Report** and its subtasks totals **180 minutes** (Report: 120 min + Draft report: 60 min).",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "dda89758c7ad639774047c46c8ecbdea7f42d4263c5f9015dc9341058d9dfcaa",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "**180 minutes**",
+                "metric": "subtree",
+                "minutes": 180,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        }
+      ]
+    },
+    {
+      "id": "C02-additive",
+      "families": [
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C17"
+      ],
+      "failure_ids": [
+        "E01",
+        "E02",
+        "E03",
+        "E04",
+        "E05",
+        "E10",
+        "E14"
+      ],
+      "prompt": "Help me decide how to finish Report. I have only 90 minutes before the deadline. Check my task context, discuss distinct options and their tradeoffs, and leave the choice with me. Do not apply changes.",
+      "budget_minutes": 90,
+      "tasks": [
+        {
+          "id": "f0320000-0000-4000-8000-000000000001",
+          "title": "Report",
+          "description": "",
+          "parent_task_id": null,
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 30,
+          "completed": false,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000002",
+          "title": "Background reading",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 60,
+          "completed": false,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000003",
+          "title": "Draft report",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 60,
+          "completed": false,
+          "requirement": "unspecified"
+        }
+      ],
+      "resources": [
+        {
+          "id": "f0320000-0000-4000-8000-000000000004",
+          "task_id": "f0320000-0000-4000-8000-000000000002",
+          "title": "Background reading",
+          "role": "optional",
+          "contents_read": false
+        }
+      ],
+      "expected": {
+        "demand_minutes": 150,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "own_minutes": 30,
+            "subtree_minutes": 150,
+            "known_subtotal": 150,
+            "unknown_count": 0,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "own_minutes": 60,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "own_minutes": 60,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          }
+        ],
+        "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+      },
+      "samples": [
+        {
+          "id": "E03-E04-original-shortfall",
+          "origin": "historical_public_reply",
+          "source_receipt": "p032-live-conversation.json",
+          "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+          "recorded_at": "2026-10-03T18:29:15.425Z",
+          "historical_configuration_fingerprint": null,
+          "reply": "## Options for finishing your Report in 90 minutes\n\n**Current context**: You have 90 minutes before the deadline. The *Report* task consists of:\n- Parent task (core report structure): **30 min** estimated, **30 min** remaining\n- Subtask *Background reading* (optional resource): **60 min** estimated, **60 min** remaining\n- Subtask *Draft report*: **60 min** estimated, **60 min** remaining\n\n### Option A: Parent Report + Draft Report (skip Background reading)\n- **Time use**: 30 + 60 = 90 min\n- **What you finish**: The report’s core structure and a draft\n- **Tradeoffs**: You meet the “finish Report” goal, but the optional background reading is deferred. If the reading was mainly for citations or context, you can revisit it later without missing the deadline.\n\n### Option B: Parent Report + Background Reading (skip Draft)\n- **Time use**: 30 + 60 = 90 min\n- **What you finish**: Thorough research/notes, but the report itself remains undrafted\n- **Tradeoffs**: You’ll have strong background material, but the deliverable “Report” won’t be complete by the deadline. You could draft later, but that risks missing the stated finish time.\n\n### Option C: Draft Report only (use 60 min, leave 30 min for partial parent work)\n- **Time use**: 60 min on draft; remaining 30 min could start the parent core but not finish it\n- **What you finish**: A draft report, but the parent task’s core structure is only partially done\n- **Tradeoffs**: Good if the draft is the primary artifact needed by the deadline. The parent Report’s structural tasks remain for later.\n\n### Option D: Split time across all three (30 min each)\n- **Time use**: 30 + 30 + 30 = 90 min (partial progress on each)\n- **What you finish**: Incremental progress on all fronts, but none fully completed\n- **Tradeoffs**: Shows movement on every component, which may be acceptable if partial completion is sufficient for your purposes. However, you won’t have a finished report or complete reading.\n\n### Recommendation\nGiven that *Background reading* is marked **optional** and the primary goal is to *finish Report*, **Option A** (Parent Report + Draft Report) most directly achieves that goal while deferring the optional component. If the draft’s quality depends heavily on that reading, you could quickly skim the reading in the remaining time or note key points to revisit later.\n\n**Your choice**: Let me know which option (A–D) you’d like to pursue, or if you’d like to modify the approach further. I will not apply any changes unless you explicitly ask me to create or update tasks.\n\n***Actions below are placeholders; no changes are applied.***",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "3b15243cd80e96093510e2a146305cbee8055e85c5bc3e4b6f07a11a7d5b70d9",
+            "checks": [
+              {
+                "kind": "meaning",
+                "quote": "Parent task (core report structure)",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "basis": "title_only",
+                "conditional": false
+              },
+              {
+                "kind": "scope_cut",
+                "quote": "Given that *Background reading* is marked **optional**",
+                "task_id": "f0320000-0000-4000-8000-000000000002",
+                "basis": "resource_role",
+                "conditional": false
+              },
+              {
+                "kind": "completion",
+                "quote": "You meet the “finish Report” goal",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "scope": "subtree",
+                "basis": "estimate",
+                "guarantee": false
+              },
+              {
+                "kind": "coverage",
+                "quote": "remaining 30 min could start the parent core but not finish it",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "scope": "own",
+                "minutes": 30,
+                "coverage": "partial_estimate"
+              },
+              {
+                "kind": "option",
+                "quote": "you could quickly skim the reading in the remaining time",
+                "allocations": [
+                  {
+                    "task_id": "f0320000-0000-4000-8000-000000000001",
+                    "minutes": 30
+                  },
+                  {
+                    "task_id": "f0320000-0000-4000-8000-000000000003",
+                    "minutes": 60
+                  }
+                ],
+                "extra_work": true,
+                "completes_subtree": true
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        },
+        {
+          "id": "E01-E02-recheck-shortfall",
+          "origin": "historical_public_reply",
+          "source_receipt": "p032-live-conversation-recheck.json",
+          "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+          "recorded_at": "2026-10-03T18:37:58.862Z",
+          "historical_configuration_fingerprint": null,
+          "reply": "## Options for finishing the Report in 90 minutes\n\n**Current context** (from your task list):\n- **Report (parent task)**: estimated 30 min total remaining work.\n- **Background reading**: estimated 60 min (optional).\n- **Draft report**: estimated 60 min.\n- **Available time**: 90 min before deadline.\n\n### Option 1 – Focus only on the Report\n- **What you do**: Use the 90 min to complete the Report’s 30 min of remaining work, then stop.\n- **Pros**: Guarantees the report is finished well before the deadline; leaves ample buffer for unexpected issues.\n- **Cons**: You won’t incorporate the optional background reading, so the report may lack some depth or citations.\n- **Tradeoff**: Speed vs. thoroughness.\n\n### Option 2 – Quick skim of background reading + draft the Report\n- **What you do**: Spend ~15 min quickly scanning the “Background reading” material, then use the remaining ~75 min to draft the Report (which has 60 min estimated work).\n- **Pros**: You gain some external sources/ideas without sacrificing the core report.\n- **Cons**: The reading is skimmed; you might miss key details, and the draft may still need later refinement.\n- **Tradeoff**: Slightly more content vs. risk of superficial reading.\n\n### Option 3 – Prioritise the most critical sections of the Report\n- **What you do**: Identify the highest‑impact sections (e.g., conclusions, key findings) and allocate ~45 min to finish those, then stop.\n- **Pros**: Ensures the most important parts are done; you can always add later if time permits.\n- **Cons**: The report will be incomplete; you may need to submit a partial version or request an extension.\n- **Tradeoff**: Partial delivery vs. risk of missing the deadline entirely.\n\n### Option 4 – Request an extension or ask for help\n- **What you do**: Notify the stakeholder that you need more time (or assistances) and possibly redistribute the background‑reading task.\n- **Pros**: Avoids rushed work; preserves quality.\n- **Cons**: Depends on stakeholder flexibility; may not be possible.\n- **Tradeoff**: Professional communication vs. keeping the original deadline.\n\n### Recommendation (your choice)\nGiven you have 90 min and the Report itself only needs ~30 min, the safest path is **Option 1** – finish the Report now and use the remaining time to optionally do a brief skim of the background reading if you wish. This guarantees the deadline is met while still giving you a chance to add a quick insight if time allows.\n\n**Next steps (you decide):**\n1. Proceed with completing the Report’s remaining 30 min of work.\n2. If you finish early, spend up to 15 min skimming the “Background reading”.\n3. Stop and submit when the 90‑minute window closes.\n\n*No changes are applied automatically; you can act on whichever option feels right.*",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "77a8e7c6c8fb1ac5cc892254c390ac2f42b99e8e7dbf180fbd4994e548dddd1e",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "estimated 30 min total remaining work.",
+                "metric": "subtree",
+                "minutes": 30,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              },
+              {
+                "kind": "completion",
+                "quote": "Guarantees the report is finished well before the deadline",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "scope": "subtree",
+                "basis": "estimate",
+                "guarantee": true
+              },
+              {
+                "kind": "scope_cut",
+                "quote": "**Background reading**: estimated 60 min (optional).",
+                "task_id": "f0320000-0000-4000-8000-000000000002",
+                "basis": "resource_role",
+                "conditional": false
+              },
+              {
+                "kind": "completion",
+                "quote": "This guarantees the deadline is met",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "scope": "subtree",
+                "basis": "estimate",
+                "guarantee": true
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        },
+        {
+          "id": "additive-positive-options",
+          "origin": "authored_positive",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "The listed work totals 150 minutes: 30 of parent-only work, 60 of reading and 60 of drafting. With 90 available you are 60 short. One conditional option allocates 30 to parent-only work and 60 to drafting; that uses all 90 and leaves the 60-minute reading task deferred. It covers those central estimates, not proof of completion. Another approach could spread progress or negotiate the deliverable. Whether reduced scope is acceptable depends on its requirements; the optional reference does not decide that. What outcome must be delivered?",
+          "expected_verdict": "pass",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "f33fe1d872f433317a82583ccecef6d4f0d84bc1f91b3249773e4fabbb09fee9",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "totals 150 minutes",
+                "metric": "demand",
+                "minutes": 150,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "30 of parent-only work",
+                "metric": "own",
+                "minutes": 30,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              },
+              {
+                "kind": "quantity",
+                "quote": "90 available",
+                "metric": "budget",
+                "minutes": 90,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "60 short",
+                "metric": "shortfall",
+                "minutes": 60,
+                "task_id": null
+              },
+              {
+                "kind": "option",
+                "quote": "allocates 30 to parent-only work and 60 to drafting; that uses all 90",
+                "allocations": [
+                  {
+                    "task_id": "f0320000-0000-4000-8000-000000000001",
+                    "minutes": 30
+                  },
+                  {
+                    "task_id": "f0320000-0000-4000-8000-000000000003",
+                    "minutes": 60
+                  }
+                ],
+                "unused_minutes": 0,
+                "extra_work": false,
+                "completes_subtree": false
+              },
+              {
+                "kind": "scope_cut",
+                "quote": "Whether reduced scope is acceptable depends on its requirements",
+                "task_id": "f0320000-0000-4000-8000-000000000002",
+                "basis": "assumption",
+                "conditional": true
+              }
+            ],
+            "usefulness": "pass",
+            "usefulness_reason": "Answers the stated question using independent known facts, uncertainty and conditional choices without prescribing a fixed workflow."
+          }
+        },
+        {
+          "id": "additive-positive-flexible",
+          "origin": "authored_positive",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "Your remaining estimate is two and a half hours for the full Report branch, including half an hour of separate parent work. Ninety minutes leaves a one-hour shortage. We can explore which listed work to prioritize, ask about acceptable scope, or seek more time. Reading stays in the total until you choose a supported change. No calendar feasibility or finish guarantee follows from this budget.",
+          "expected_verdict": "pass",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "6b543be4d638510032b0497fc4600a30e2e19c6402fc0c7bef8c56c74ac910b3",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "two and a half hours for the full Report branch",
+                "metric": "subtree",
+                "minutes": 150,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              },
+              {
+                "kind": "quantity",
+                "quote": "half an hour of separate parent work",
+                "metric": "own",
+                "minutes": 30,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              },
+              {
+                "kind": "quantity",
+                "quote": "one-hour shortage",
+                "metric": "shortfall",
+                "minutes": 60,
+                "task_id": null
+              }
+            ],
+            "usefulness": "pass",
+            "usefulness_reason": "Answers the stated question using independent known facts, uncertainty and conditional choices without prescribing a fixed workflow."
+          }
+        },
+        {
+          "id": "correct-metadata-wrong-prose",
+          "origin": "authored_negative",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "The total estimate is 150 minutes. Spend just 30 minutes to finish the entire Report; the deadline is guaranteed.",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "5aea0a852373752ccf70981702d2305f3129fa5c9c73a110856cb4503e7c3810",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "total estimate is 150 minutes",
+                "metric": "demand",
+                "minutes": 150,
+                "task_id": null
+              },
+              {
+                "kind": "completion",
+                "quote": "finish the entire Report; the deadline is guaranteed",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "scope": "subtree",
+                "basis": "estimate",
+                "guarantee": true
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        },
+        {
+          "id": "facts-only-unhelpful",
+          "origin": "authored_negative",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "Demand is 150 minutes, the budget is 90 minutes and the shortage is 60 minutes.",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "d1765ef95dcfbc543c75fc4462906e24e144bd28616fd9460c75d4c6d0bdea21",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "Demand is 150 minutes",
+                "metric": "demand",
+                "minutes": 150,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "budget is 90 minutes",
+                "metric": "budget",
+                "minutes": 90,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "shortage is 60 minutes",
+                "metric": "shortfall",
+                "minutes": 60,
+                "task_id": null
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "Correct arithmetic alone does not answer this request to explore choices and tradeoffs."
+          }
+        },
+        {
+          "id": "E14-super-shortfall-estimates-as-progress",
+          "origin": "historical_public_reply",
+          "source_receipt": "p032-super-shortfall-44f8a99f.json",
+          "model": "nvidia/nemotron-3-super-120b-a12b",
+          "recorded_at": "2026-10-05T22:32:50.543Z",
+          "historical_configuration_fingerprint": "3872c83633821611a2d58bfab5cec4465a6c7569b338daf32a73cecb144a196b",
+          "reply": "Based on your current task list, you have three related tasks under **Report**:\n\n- **Report** (parent): 30 min of work remaining (e.g., reviewing, integrating, final polishing).\n- **Background reading**: 60 min remaining.\n- **Draft report**: 60 min remaining.\n\nYou have **90 minutes** before the deadline. Below are distinct ways to allocate that time, along with the trade‑offs each option entails. Choose the one that best matches what you need to have a usable report by the deadline.\n\n---\n\n**Option 1: Read then start drafting (60 min reading + 30 min drafting)**\n- *What you’ll do*: Finish all background reading, then spend half an hour on the draft (e.g., outlining or writing the first section).\n- *Progress*: Reading complete; draft 50 % done (30 / 60 min). Parent work untouched.\n- *Trade‑offs*: You’ll have solid source material but the draft will be incomplete; you’ll need to rely on the reading to flesh out the rest later, which may be impossible after the deadline.\n\n**Option 2: Draft then polish the report (60 min drafting + 30 min parent work)**\n- *What you’ll do*: Work on the draft for a full hour (getting most of it down), then spend the remaining half hour on the parent‑level tasks (reviewing, integrating citations, formatting).\n- *Progress*: Draft 100 % done; parent work complete; reading untouched.\n- *Trade‑offs*: You’ll have a complete draft and a polished report, but you won’t have done the background reading. If the report relies heavily on specific sources, you may miss key points or need to insert placeholders.\n\n**Option 3: Read then polish (60 min reading + 30 min parent work)**\n- *What you’ll do*: Finish the reading, then use the remaining time for parent‑level work (e.g., reviewing what you’ve read, creating a brief outline, or formatting notes).\n- *Progress*: Reading complete; parent work 30 / 30 min done; draft untouched.\n- *Trade‑offs*: You’ll be well‑informed and have a polished outline/notes, but you won’t have any actual prose written. You’d need to write the draft after the deadline, which may not be feasible.\n\n**Option 4: Focus only on the draft (90 min drafting)**\n- *What you’ll do*: Spend the whole block on the draft, aiming to get as much written as possible.\n- *Progress*: Draft 150 % of its estimate (i.e., you’d finish the draft and have 30 min overflow that could go into parent work or reading).\n- *Trade‑offs*: You’ll likely finish the draft and have extra time to begin parent work, but you’ll have zero background reading. If the report requires specific citations or data, you’ll need to insert them later.\n\n**Option 5: Split evenly across all three (30 min each)**\n- *What you’ll do*: 30 min reading, 30 min drafting, 30 min parent work.\n- *Progress*: Reading 50 % done; draft 50 % done; parent work complete.\n- *Trade‑offs*: You make modest progress on every front, but nothing is finished. You’ll have a half‑read source base, a half‑written draft, and a polished report that still lacks substantial content.\n\n---\n\n**How to choose**\n- If having **complete source material** is critical (e.g., you need to cite specific studies), lean toward Options 1 or 3.\n- If you need a **finished, readable document** (even if it’s missing some deep references), Options 2 or 4 are safer.\n- If you’re unsure what the report will be graded on, consider a **hybrid**: do 45 min drafting + 30 min reading + 15 min parent work (adjust as you see fit).\n\nRemember, you can always adjust the split as you go; the goal is to maximize usable output within the 90 minutes. Let me know which option resonates, or if you’d like to tweak the proportions, and I can help you sketch a quick time‑boxed plan.\n",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "7be4e5fc8ac9701fd0d42b9108ef051acb8a048f70cdfe3a5655e3aaccee19b5",
+            "checks": [
+              {
+                "kind": "meaning",
+                "quote": "parent‑level tasks (reviewing, integrating citations, formatting)",
+                "task_id": "f0320000-0000-4000-8000-000000000001",
+                "basis": "title_only",
+                "conditional": false
+              },
+              {
+                "kind": "completion",
+                "quote": "Draft 100 % done; parent work complete",
+                "task_id": "f0320000-0000-4000-8000-000000000003",
+                "scope": "own",
+                "basis": "estimate",
+                "guarantee": false
+              },
+              {
+                "kind": "option",
+                "quote": "Spend the whole block on the draft",
+                "allocations": [
+                  {
+                    "task_id": "f0320000-0000-4000-8000-000000000003",
+                    "minutes": 90
+                  }
+                ],
+                "unused_minutes": 30,
+                "extra_work": true,
+                "completes_subtree": false
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        }
+      ]
+    },
+    {
+      "id": "C08-unknown-included",
+      "families": [
+        "C08"
+      ],
+      "failure_ids": [],
+      "prompt": "How much remains on the whole Report? Can I finish with one hour?",
+      "budget_minutes": 60,
+      "tasks": [
+        {
+          "id": "f0320000-0000-4000-8000-000000000001",
+          "title": "Report",
+          "description": "",
+          "parent_task_id": null,
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 120,
+          "completed": false,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000002",
+          "title": "Background reading",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "inclusive",
+          "estimated_minutes": null,
+          "completed": false,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000003",
+          "title": "Draft report",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "inclusive",
+          "estimated_minutes": 60,
+          "completed": false,
+          "requirement": "unspecified"
+        }
+      ],
+      "resources": [],
+      "expected": {
+        "demand_minutes": null,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "own_minutes": null,
+            "subtree_minutes": null,
+            "known_subtotal": 60,
+            "unknown_count": 2,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "own_minutes": null,
+            "subtree_minutes": null,
+            "known_subtotal": 0,
+            "unknown_count": 1,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "own_minutes": 60,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          }
+        ],
+        "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+      },
+      "samples": [
+        {
+          "id": "unknown-positive",
+          "origin": "authored_positive",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "There is a known subtotal of 60 minutes, but the included reading estimate and separate parent remainder are unknown. The whole subtree total is unknown, so one hour is not proof the whole Report fits.",
+          "expected_verdict": "pass",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "934428f48687c83eb5474c56453f2a2a0f0da2cd62574708f601ff1f77869a89",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "whole subtree total is unknown",
+                "metric": "subtree",
+                "minutes": null,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              }
+            ],
+            "usefulness": "pass",
+            "usefulness_reason": "Answers the stated question using independent known facts, uncertainty and conditional choices without prescribing a fixed workflow."
+          }
+        },
+        {
+          "id": "unknown-false-zero-negative",
+          "origin": "authored_negative",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "Only 60 minutes remain in the full Report branch; the unestimated reading can be counted as zero.",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "fc66a589a765e358d2fb543299af6079600def34b3b37c3f0ef9dc29a77189df",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "Only 60 minutes remain in the full Report branch",
+                "metric": "subtree",
+                "minutes": 60,
+                "task_id": "f0320000-0000-4000-8000-000000000001"
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        }
+      ]
+    },
+    {
+      "id": "C11-budget-correction",
+      "families": [
+        "C11"
+      ],
+      "failure_ids": [],
+      "prompt": "I meant 45 minutes, and the reading must remain in the scope.",
+      "budget_minutes": 45,
+      "tasks": [
+        {
+          "id": "f0320000-0000-4000-8000-000000000001",
+          "title": "Report",
+          "description": "",
+          "parent_task_id": null,
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 30,
+          "completed": false,
+          "requirement": "unspecified"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000002",
+          "title": "Background reading",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 60,
+          "completed": false,
+          "requirement": "required"
+        },
+        {
+          "id": "f0320000-0000-4000-8000-000000000003",
+          "title": "Draft report",
+          "description": "",
+          "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+          "time_rollup_mode": "additive",
+          "estimated_minutes": 60,
+          "completed": false,
+          "requirement": "unspecified"
+        }
+      ],
+      "resources": [
+        {
+          "id": "f0320000-0000-4000-8000-000000000004",
+          "task_id": "f0320000-0000-4000-8000-000000000002",
+          "title": "Background reading",
+          "role": "optional",
+          "contents_read": false
+        }
+      ],
+      "expected": {
+        "demand_minutes": 150,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "own_minutes": 30,
+            "subtree_minutes": 150,
+            "known_subtotal": 150,
+            "unknown_count": 0,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "own_minutes": 60,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "own_minutes": 60,
+            "subtree_minutes": 60,
+            "known_subtotal": 60,
+            "unknown_count": 0,
+            "completed": false
+          }
+        ],
+        "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+      },
+      "samples": [
+        {
+          "id": "correction-positive",
+          "origin": "authored_positive",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "Keeping all listed work gives 150 minutes of estimated demand. Your revised budget is 45 minutes, leaving 105 minutes short. Reading remains required. We can explore progress within those 45 minutes or a supported change in delivery expectations, while keeping the saved estimates intact.",
+          "expected_verdict": "pass",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "b3a3468786afa9ed401cb4ba6bb15f9e70732f9a592a0b46e8e29fb1bde00635",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "150 minutes of estimated demand",
+                "metric": "demand",
+                "minutes": 150,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "revised budget is 45 minutes",
+                "metric": "budget",
+                "minutes": 45,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "105 minutes short",
+                "metric": "shortfall",
+                "minutes": 105,
+                "task_id": null
+              }
+            ],
+            "usefulness": "pass",
+            "usefulness_reason": "Answers the stated question using independent known facts, uncertainty and conditional choices without prescribing a fixed workflow."
+          }
+        },
+        {
+          "id": "correction-stale-negative",
+          "origin": "authored_negative",
+          "source_receipt": null,
+          "model": null,
+          "recorded_at": null,
+          "historical_configuration_fingerprint": null,
+          "reply": "You still have 90 minutes and only a 60-minute shortage. Since its reference is optional, drop the reading.",
+          "expected_verdict": "fail",
+          "review": {
+            "source": "curated_replay_annotations",
+            "reply_sha256": "b3de92c8ec52817c2eca1270a1e6dd7ac3b9aeb9c46629bbf3f45484d45b6956",
+            "checks": [
+              {
+                "kind": "quantity",
+                "quote": "90 minutes",
+                "metric": "budget",
+                "minutes": 90,
+                "task_id": null
+              },
+              {
+                "kind": "quantity",
+                "quote": "60-minute shortage",
+                "metric": "shortfall",
+                "minutes": 60,
+                "task_id": null
+              },
+              {
+                "kind": "scope_cut",
+                "quote": "drop the reading",
+                "task_id": "f0320000-0000-4000-8000-000000000002",
+                "basis": "resource_role",
+                "conditional": false
+              }
+            ],
+            "usefulness": "fail",
+            "usefulness_reason": "The recorded advice misstates scope, arithmetic or grounding and cannot be accepted as useful planning advice."
+          }
+        }
+      ]
+    }
+  ],
+  "recovery_checks": [
+    {
+      "id": "E06",
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "source_receipt": "p032-live-conversation.json",
+      "observed_at": "2026-10-03T18:27:32.701Z",
+      "historical_status": 504,
+      "disposition": "historical_failure_current_recovery_open",
+      "required_check": "Recheck the complete task-discovery conversation, latency and terminal state; a successful greeting cannot qualify planning."
+    },
+    {
+      "id": "E07",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "source_receipt": "p032-live-models.json",
+      "observed_at": "2026-10-03T18:22:03.549Z",
+      "historical_status": 410,
+      "disposition": "historical_failure_current_recovery_open",
+      "required_check": "Recheck exact model/configuration and credential path; classify current availability separately from these October 3 results."
+    },
+    {
+      "id": "E08",
+      "model": "moonshotai/kimi-k3",
+      "source_receipt": "p032-live-models.json",
+      "observed_at": "2026-10-03T18:22:04.001Z",
+      "historical_status": 504,
+      "disposition": "historical_failure_current_recovery_open",
+      "required_check": "Recheck greeting and tool conversation with bounded timeout handling; do not invent a rate-limit or chunk-size diagnosis."
+    },
+    {
+      "id": "E09",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "source_receipt": "p032-live-conversation.json",
+      "observed_at": "2026-10-03T18:29:42.348Z",
+      "historical_status": 502,
+      "disposition": "historical_failure_current_recovery_open",
+      "required_check": "Exercise interrupted/empty provider streams and visible failure/retry; current availability requires a new receipt."
+    }
+  ],
+  "transcript_states": [
+    {
+      "state": "accepted",
+      "accepted_recommendation": true,
+      "saved": true,
+      "recovery": "none",
+      "explanation": "Only a verified accepted revision may appear as saved advice."
+    },
+    {
+      "state": "unverified",
+      "accepted_recommendation": false,
+      "saved": true,
+      "recovery": "retry",
+      "explanation": "Facts-only degraded explanation is distinct from accepted useful planning advice."
+    },
+    {
+      "state": "provider_unavailable",
+      "accepted_recommendation": false,
+      "saved": true,
+      "recovery": "retry",
+      "explanation": "Preserve the user message and selected model; show the actual terminal failure category."
+    },
+    {
+      "state": "canceled",
+      "accepted_recommendation": false,
+      "saved": true,
+      "recovery": "resume",
+      "explanation": "The old attempt cannot replace a newer answer after cancellation."
+    },
+    {
+      "state": "unsaved",
+      "accepted_recommendation": true,
+      "saved": false,
+      "recovery": "save_retry",
+      "explanation": "A valid locally accepted answer remains recoverable; failed persistence does not turn it into saved history."
+    }
+  ]
+}

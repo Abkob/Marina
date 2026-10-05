@@ -2,9 +2,14 @@ import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { knownPlanningBaselineFailures, summarizeVitest } from './knownFailures.js';
+import { hierarchyAnswerReplay, captureAnswerIdentity } from './hierarchyAnswerReplay.js';
 
-const output = path.resolve('tmp/planning-baseline');
+const runId = randomUUID();
+const inputIdentity = captureAnswerIdentity();
+const startingTreeDirty = Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim());
+const output = path.resolve('tmp/planning-baseline/runs', runId);
 await mkdir(output, { recursive: true });
 await rm(path.join(output, 'receipt.json'), { force: true });
 const suites = [
@@ -33,6 +38,7 @@ async function execute(name: string, args: string[], extraEnv: Record<string, st
   return { code, raw: JSON.parse(await readFile(file, 'utf8')) };
 }
 const results: Record<string, ReturnType<typeof summarizeVitest>> = {};
+const answerReplay = hierarchyAnswerReplay();
 for (const suite of suites) {
   console.log(`Running ${suite.name} baseline...`);
   const { code, raw } = await execute(suite.name, suite.args);
@@ -41,15 +47,16 @@ for (const suite of suites) {
 const canary = await execute('negative-control', ['--config', 'vitest.planning.config.ts'], { PLANNING_NEGATIVE_CONTROL: '1' });
 const negativeControlPassed = canary.code !== 0 && canary.raw.numFailedTests === 1
   && canary.raw.testResults.some((file: any) => file.assertionResults.some((test: any) => test.fullName.includes('P00.2-S01') && test.status === 'failed'));
-const receipt = { version: 1, created_at: new Date().toISOString(),
-  commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-  working_tree_dirty: Boolean(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim()),
+const receipt = { version: 2, run_id: runId, created_at: new Date().toISOString(),
+  commit: inputIdentity.code_commit, ...inputIdentity,
+  working_tree_dirty: startingTreeDirty,
   node: process.version, database_configured: Boolean(process.env.DATABASE_URL_TEST), live_models: false,
   negative_control_passed: negativeControlPassed, known_failures: knownPlanningBaselineFailures, suites: results,
-  success: negativeControlPassed && Object.values(results).every(result => result.success),
+  hierarchy_answer_replay: answerReplay.gate,
+  success: negativeControlPassed && answerReplay.gate.pass && Object.values(results).every(result => result.success),
 };
 await writeFile(path.join(output, 'receipt.json'), JSON.stringify(receipt, null, 2));
-console.log(JSON.stringify({ ...receipt, suites: Object.fromEntries(Object.entries(results).map(([key, value]) => [key, {
+console.log(JSON.stringify({ ...receipt, receipt_directory: output, suites: Object.fromEntries(Object.entries(results).map(([key, value]) => [key, {
   success: value.success, ordinary_passes: value.ordinary_passes, expected_failures: value.expected_failures.length, failed: value.failed.length, failed_suites: value.failed_suites, skipped: value.skipped.length,
 }])) }, null, 2));
 if (!receipt.success) process.exitCode = 1;

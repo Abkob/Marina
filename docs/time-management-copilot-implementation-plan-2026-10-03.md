@@ -253,7 +253,7 @@ Related contracts: P01.1, P00.2. Proposed home: `workAccounting`; adapt every ex
 - **Stress/failure:** S1/S3/S4/S6/S7 exercise 10,000-task hierarchies, bounded context, duplicate evidence, races, interrupted streams, 100 mocked concurrent requests, retry storms and exhausted budgets. Preserve existing hierarchy bounds; use mock providers for load, not public endpoints. Failed/missing evaluation cannot produce a passing result.
 - **Done:** All applicable children P03.2.7–P03.2.19 and the [closure gates](planning-checkpoints/P03.2.md#86-closure-gates-and-next-prompt) pass; the failure ledger has no unresolved release blockers. Deployed accounting alone does not complete this leaf. A permanently unavailable endpoint must have verified recovery or explicit unavailable handling and an actually usable evaluated chat path; it must never be counted as a successful model test.
 
-The [P03.2 checkpoint](planning-checkpoints/P03.2.md) preserves delivered P03.2.1–P03.2.6 and adds 13 open repair children, a 28-case regression matrix, file-level implementation targets, test oracles and closure criteria. These children refine this leaf and do not add top-level leaves to the 78-section graph. P03.2 pulls forward only the contracts needed from P09/P10/P18/P19/P20/P24/P25; this does not complete those packages or create a circular dependency. Repair P03.2 before advancing to P03.3 under the current user instruction.
+The [P03.2 checkpoint](planning-checkpoints/P03.2.md) preserves delivered P03.2.1–P03.2.6 and contains 13 repair children (P03.2.7 delivered; 12 still open), an expanded 32-family regression matrix, file-level implementation targets, test oracles and closure criteria. These children refine this leaf and do not add top-level leaves to the 78-section graph. P03.2 pulls forward only the contracts needed from P09/P10/P18/P19/P20/P24/P25; this does not complete those packages or create a circular dependency. Repair P03.2 before advancing to P03.3 under the current user instruction.
 
 #### P03.3 [ ] Separate attention, waiting, capacity and completion
 
@@ -1281,7 +1281,7 @@ Update this leaf's checkpoint and recommend continue, repair or expand. Stop bef
 implementing another leaf so I can review the result.
 ```
 
-P00–P02 and P03.1 are complete. **Decision: expand and repair P03.2.** Its arithmetic and UI are deployed, but completion was reopened after real chatbot failures. Start with P03.2.7's preserved failure fixtures, then follow the repair dependencies in the P03.2 checkpoint; do not advance to P03.3 while its answer-correctness gates remain open. Persistent plan storage exists, but later resource forecasting is still proposed. Neither a provider/model swap nor correct backend arithmetic alone satisfies the expanded chatbot acceptance contract.
+P00–P02 and P03.1 are complete. **Decision: expand and repair P03.2.** Its arithmetic and UI are deployed, but completion was reopened after real chatbot failures. P03.2.7's independent failure fixtures/replay are delivered, including new current-model failures. Continue with P03.2.8's common work evidence, then follow the repair dependencies in the P03.2 checkpoint; do not advance to P03.3 while its answer-correctness gates remain open. Persistent plan storage exists, but later resource forecasting is still proposed. Neither a provider/model swap nor correct backend arithmetic alone satisfies the expanded chatbot acceptance contract.
 
 ### 10.5 Copyable review and continuation prompts
 
