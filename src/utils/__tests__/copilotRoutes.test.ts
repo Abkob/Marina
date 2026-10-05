@@ -25,6 +25,32 @@ beforeEach(() => {
 });
 
 describe('shared conversation endpoints', () => {
+  it('builds both standalone activities at their exact times and reads current overlaps without writing events', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-05T00:00:00Z'));
+    vi.mocked(query).mockImplementation(async sql => ({ rows: sql.includes('FROM events WHERE week_start IS NOT NULL')
+      ? [{ id: 'existing', title: 'Leetcode Practice', week_start: '2026-10-05', day_index: 0, start_hour: 5, duration_hours: 2.5 }] : [], rowCount: 0 }) as never);
+    let preview: Record<string, any>;
+    vi.mocked(runCopilotConversation).mockImplementationOnce(async options => {
+      const tool = options.tools.preview_repeating_blocks;
+      const args = tool.parameters.parse({ series: [
+        { title: '5 am prayer', start_date: '2026-10-05', end_date: '2026-10-07', start_hour: 5, end_hour: 5.25, days_of_week: [1, 3] },
+        { title: 'Breakfast', start_date: '2026-10-05', end_date: '2026-10-07', start_hour: 6, end_hour: 7, days_of_week: [1] },
+      ] }) as Record<string, unknown>;
+      preview = (await tool.execute(args)).data as Record<string, any>;
+      return { ...result, plan: preview };
+    });
+    try {
+      await request('/chat', { messages: [{ role: 'user', content: 'Add prayer and breakfast at overlapping times.' }] });
+      expect(preview!.blocks).toEqual([
+        { title: '5 am prayer', date: '2026-10-05', start_hour: 5, duration_hours: 0.25 },
+        { title: 'Breakfast', date: '2026-10-05', start_hour: 6, duration_hours: 1 },
+        { title: '5 am prayer', date: '2026-10-07', start_hour: 5, duration_hours: 0.25 },
+      ]);
+      expect(preview!.overlap_count).toBe(2);
+      expect(preview!.busy).toHaveLength(1);
+      expect(vi.mocked(query).mock.calls.every(([sql]) => /^(SELECT|WITH)\b/.test(sql.trimStart()))).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
   it('reports timed-out session calls and does not advertise a disabled fallback', async () => {
     vi.mocked(query).mockImplementation(async (sql: string) => ({ rows: sql.includes('SELECT id, model FROM chat_sessions') ? [{ id: 'session-id', model: 'moonshotai/kimi-k3' }] : [], rowCount: 1 }) as never);
     vi.mocked(runCopilotConversation).mockImplementationOnce(async options => {

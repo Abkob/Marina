@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { conversationHistory, runCopilotConversation, type ConversationTool } from '../../../server/services/copilotConversation.js';
 import type { chat } from '../../../server/ollama.js';
+import { createCopilotTools } from '../../../server/services/copilotTools.js';
+import { calendarBlockSeries } from '../../../server/services/calendarBlockPreview.js';
+import { expandSeries } from '../../../server/services/planLayout.js';
 
 const clock = { today: '2026-09-24', time: '14:30', timezone: 'Asia/Beirut' };
 const final = (extra = {}) => ({ reply: 'Here is my actual explanation.', actions: [], display: [], ...extra });
@@ -17,6 +20,36 @@ function setup(outputs: unknown[], tool?: Partial<ConversationTool>) {
 }
 
 describe('model-led conversation', () => {
+  it.each(['batch', 'separate', 'cached alias', 'equivalent call', 'discard prayer'])('retains calendar activities from %s calls in one card without applying them', async mode => {
+    const prayer = { title: '5 am prayer', start_date: '2026-10-05', end_date: '2026-10-07', start_hour: 5, end_hour: 5.25, days_of_week: [1, 3] };
+    const breakfast = { title: 'Breakfast', start_date: '2026-10-05', end_date: '2026-10-07', start_hour: 6, end_hour: 7, days_of_week: [1] };
+    const preview = vi.fn(async args => {
+      const series = calendarBlockSeries(args);
+      return { kind: 'series', from: '2026-10-05', to: '2026-10-07', work_start: 5, work_end: 8,
+        blocks: series.flatMap(expandSeries), busy: [{ title: 'Leetcode Practice', date: '2026-10-05', start_hour: 5, duration_hours: 2.5, kind: 'block' }],
+        days: [], unplaced: [], scheduler: { status: 'series', gap_minutes: 0, unestimated_count: 0, overflow_count: 0 }, status: 'pending', adjustments: {} };
+    });
+    const unavailable = vi.fn(async () => { throw new Error('Unrequested read'); });
+    const tools = createCopilotTools({ workspace: unavailable, previewSchedule: unavailable, previewRoutine: preview, scheduleDay: unavailable, overdueTasks: unavailable });
+    const calls = mode === 'batch' ? [{ id: 'activities', name: 'preview_repeating_blocks', arguments: { series: [prayer, breakfast] } }]
+      : [{ id: 'prayer', name: 'preview_repeating_blocks', arguments: prayer }, { id: 'breakfast', name: 'preview_repeating_blocks', arguments: breakfast },
+        ...(mode === 'cached alias' ? [{ id: 'alias', name: 'preview_repeating_blocks', arguments: prayer }] : []),
+        ...(mode === 'equivalent call' ? [{ id: 'equivalent', name: 'preview_repeating_blocks', arguments: { series: [prayer, breakfast] } }] : [])];
+    const complete = vi.fn<typeof chat>().mockResolvedValueOnce(JSON.stringify({ tool_calls: calls }))
+      .mockResolvedValueOnce(JSON.stringify(final({ reply: 'Previewed at the requested overlapping times. Apply the card to save.', ...(mode === 'discard prayer' ? { discard: ['prayer'] } : {}) })));
+    const result = await runCopilotConversation({ turns: [
+      { role: 'user', content: 'Add Leetcode practice Monday and Wednesday 5 to 7:30 this week.' },
+      { role: 'assistant', content: 'The Leetcode preview was applied.' },
+      { role: 'user', content: 'add a simultaneous task called 5 am prayer from 5 am to 5:15 am and also breakfast from 6am to 7 am on M only' },
+    ], clock: { today: '2026-10-05', time: '04:00', timezone: 'Asia/Beirut' }, tools, complete });
+    const plan = (result as unknown as { plan: { blocks: unknown[]; busy: unknown[]; status: string } }).plan;
+    expect(plan.blocks).toHaveLength(mode === 'discard prayer' ? 1 : 3);
+    expect(plan.blocks).toContainEqual({ title: 'Breakfast', date: '2026-10-05', start_hour: 6, duration_hours: 1 });
+    expect(plan.busy).toHaveLength(1);
+    expect(plan.status).toBe('pending'); expect(result.actions).toEqual([]);
+    expect(unavailable).not.toHaveBeenCalled();
+    expect(preview).toHaveBeenCalledTimes(mode === 'batch' ? 1 : mode === 'equivalent call' ? 3 : 2);
+  });
   it('reopens a premature title clarification to verify a semantic candidate page within a bounded budget', async () => {
     const complete = vi.fn<typeof chat>()
       .mockResolvedValueOnce(JSON.stringify({ tool_calls: [{ id: 'discover', name: 'find_resources', arguments: { query: 'geometric symmetries' } }] }))

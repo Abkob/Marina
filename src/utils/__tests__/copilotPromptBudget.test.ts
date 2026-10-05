@@ -18,7 +18,7 @@ describe('initial Copilot context', () => {
     // Regression budget: previous system prompt was 26,772 characters.
     expect(sent[0].content.length).toBeLessThan(7000);
     const encodedTools = JSON.parse(sent[0].content.split('Read-only tools: ')[1].split('\nProposal parameter schemas: ')[0]);
-    expect(Object.keys(encodedTools).sort()).toEqual(['find_resources','find_tasks','load_capabilities','workspace_context']);
+    expect(Object.keys(encodedTools).sort()).toEqual(['find_resources','find_tasks','load_capabilities','preview_repeating_blocks','workspace_context']);
     for (const name of ['find_resources','find_tasks','workspace_context']) expect(encodedTools[name].parameters).toBe(compactSchema(tools[name].parameters));
     expect(sent[0].content).toContain('routines (habits/check-ins)');
     const encodedActions = JSON.parse(sent[0].content.split('Proposal parameter schemas: ')[1].split('\nLocal clock: ')[0]);

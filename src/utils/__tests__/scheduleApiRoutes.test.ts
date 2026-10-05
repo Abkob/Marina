@@ -34,6 +34,22 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('calendar API contracts mounted independently of chatbot routing', () => {
+  it('applies standalone overlapping blocks in one transaction without changing existing work', async () => {
+    const execute = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [], rowCount: 1 }));
+    vi.mocked(transaction).mockImplementation(async fn => fn({ query: execute } as never));
+    const blocks = [
+      { title: '5 am prayer', date: '2026-10-05', start_hour: 5, duration_hours: 0.25 },
+      { title: 'Breakfast', date: '2026-10-05', start_hour: 6, duration_hours: 1 },
+    ];
+    const response = await request('post', '/schedule/plan/apply', { body: { blocks } });
+    expect(response.json).toHaveBeenCalledWith({ ok: true, created: 2 });
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledTimes(2);
+    for (const [index, call] of execute.mock.calls.entries()) {
+      expect(call[0]).toContain('INSERT INTO events');
+      expect(call[1]).toEqual(expect.arrayContaining([blocks[index].title, blocks[index].start_hour, blocks[index].duration_hours]));
+    }
+  });
   it('keeps every calendar/proposal control endpoint registered', () => {
     const registered = routes(aiRouter).flatMap(route => Object.keys(route.methods).map(method => `${method} ${route.path}`));
     expect(registered).toEqual(expect.arrayContaining([

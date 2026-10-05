@@ -16,6 +16,23 @@ const plan: ChatPlan = {
   unplaced: [], scheduler: { status: 'feasible', gap_minutes: 0, unestimated_count: 0, overflow_count: 0 }, status: 'pending',
 };
 describe('P00.2 existing calendar preview baseline', () => {
+  it('keeps short overlapping standalone activities visible and applies both exact times', async () => {
+    const blocks = [
+      { title: '5 am prayer', date: '2026-10-12', start_hour: 5, duration_hours: 0.25 },
+      { title: 'Breakfast', date: '2026-10-12', start_hour: 6, duration_hours: 1 },
+    ];
+    const preview = { ...plan, kind: 'series', from: '2026-10-12', to: '2026-10-12', work_start: 5, work_end: 8, blocks,
+      busy: [{ title: 'Leetcode Practice', date: '2026-10-12', start_hour: 5, duration_hours: 2.5, kind: 'block' }], days: [] };
+    mocks.post.mockResolvedValue({ ok: true, created: 2 }); mocks.patch.mockResolvedValue({ ok: true });
+    render(<PlanCalendarWidget plan={preview} sessionId="synthetic-session" messageId="synthetic-message" />);
+    expect(screen.getByText('5 am prayer')).toBeVisible();
+    expect(screen.getByText('Breakfast')).toBeVisible();
+    expect(screen.getByText('Leetcode Practice')).toBeVisible();
+    expect(mocks.post).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Apply all 2' }));
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/ai/schedule/plan/apply', { blocks });
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/api/ai/sessions/synthetic-session/messages/synthetic-message/plan', { status: 'applied' }));
+  });
   it('P00.2-F02 shows the proposed work without automatically applying it', () => {
     render(<PlanCalendarWidget plan={plan} sessionId="synthetic-session" messageId="synthetic-message" />);
     expect(screen.getByText('Synthetic report review')).toBeVisible();

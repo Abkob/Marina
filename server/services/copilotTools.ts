@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../db.js';
 import { activeTaskSql, activeEventSql, activeMeetingSql } from '../utils/archiveVisibility.js';
 import { ActionParamsSchemas } from './actionValidation.js';
+import { calendarBlockPreviewSchema } from './calendarBlockPreview.js';
 import { searchResearchEvidence } from './researchRag.js';
 import { searchDocuments } from './documentRag.js';
 import { findResources, readDocument, inspectDocumentPage } from './documentReading.js';
@@ -190,11 +191,8 @@ export function createCopilotTools(dependencies: {
       execute: async args => { const data = await dependencies.previewSchedule(args); return { data, artifact: { kind: 'plan', data, autoDisplay: true } }; },
     },
     preview_repeating_blocks: {
-      description: 'Preview finite repeating calendar EVENTS, with no habit targets, check-ins or adherence. This is separate from native routines: use create_routine proposals for tracked habits. Supply start/end dates, hours, and weekdays (1=Monday through 7=Sunday). No writes until the user applies the card.',
-      parameters: ActionParamsSchemas.create_block_series.refine((args: Record<string, unknown>) => (
-        String(args.end_date) >= String(args.start_date) && Number(args.end_hour) > Number(args.start_hour)
-        && Date.parse(String(args.end_date)) - Date.parse(String(args.start_date)) <= 119 * 86_400_000
-      ), { message: 'Use an ordered date range of at most 120 days and an end_hour after start_hour.' }),
+      description: 'Preview NEW named calendar blocks, including a single date (equal start/end dates) or finite repeats. No existing task is required; task_id is optional. For several activities in one card use {series:[...]} with a separate title, date window, hours and optional weekdays for each activity (1=Monday,7=Sunday). Preserve explicitly requested simultaneous/overlapping times and explain returned overlaps. Use dates from the current user request and conversation; clarify an unresolved date/window. For tracked habits use create_routine instead. No writes until the user applies the card.',
+      parameters: calendarBlockPreviewSchema,
       execute: async args => { const data = await dependencies.previewRoutine(args); return { data, artifact: { kind: 'plan', data, autoDisplay: true } }; },
     },
   };

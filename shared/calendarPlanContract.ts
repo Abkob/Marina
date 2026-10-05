@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { assertBoundedPayload, planningId, planningMinutesSchema } from './planningContracts';
+import { assertBoundedPayload, planningId, planningMinutesSchema } from './planningContracts.js';
 
 const date = z.iso.date();
 const hour = z.number().finite().min(0).max(24);

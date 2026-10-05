@@ -40,7 +40,8 @@ import {
 import { buildRetrievalContext } from '../services/retrieval.js';
 import { computeSchedule, type SchedulerResult } from '../services/scheduler.js';
 import { loadRoutineReservations, routineCapacity } from '../services/routinePlanning.js';
-import { layoutPlan, addDaysStr, dateToWeekPosServer, eventDateServer, fmtTimeStr, resolvePlanWindow, expandSeries, type PlanWindowParams, type SeriesParams } from '../services/planLayout.js';
+import { layoutPlan, addDaysStr, dateToWeekPosServer, eventDateServer, fmtTimeStr, resolvePlanWindow, type PlanWindowParams } from '../services/planLayout.js';
+import { calendarBlockSeries, calendarBlockOccurrences, calendarBlockOverlaps, type CalendarBlockPreviewParams } from '../services/calendarBlockPreview.js';
 import { suggestEstimate } from '../services/estimateSuggest.js';
 import { buildPlanningBuckets, type PlanningTaskInput } from '../services/planningBuckets.js';
 import { assertSafeAIContext } from '../utils/contextSafety.js';
@@ -1453,7 +1454,7 @@ async function answerConversation(
       resourceScope: options.resourceScope,
       workspace: async (search, sections) => rememberContext(compactContextForModel(await loadContext(search), sections ?? (search ? ['tasks', 'details'] : undefined))),
       previewSchedule: args => buildPlanPayload(args as PlanWindowParams),
-      previewRoutine: args => buildSeriesPayload(args as unknown as SeriesParams),
+      previewRoutine: args => buildSeriesPayload(args as unknown as CalendarBlockPreviewParams),
       scheduleDay: async date => rememberContext(buildScheduleDayView(await loadContext(), date)),
       overdueTasks: async () => rememberContext({ tasks: (await loadContext()).overdue_tasks }),
     }),
@@ -1962,27 +1963,30 @@ async function buildPlanPayload(windowParams: PlanWindowParams) {
   };
 }
 
-async function buildSeriesPayload(p: SeriesParams) {
+async function buildSeriesPayload(p: CalendarBlockPreviewParams) {
+  const series = calendarBlockSeries(p);
   const todayStr = (await readCopilotClock()).today;
-  if (p.start_date < todayStr) throw new Error('Cannot preview a new routine in the past. Ask for a future start date.');
-  if (p.task_id) {
-    const { rows } = await query(`SELECT id FROM tasks WHERE id=$1 AND ${activeTaskSql()}`, [p.task_id]);
+  if (series.some(item => item.start_date < todayStr)) throw new Error('Cannot preview new calendar blocks in the past. Ask for a current or future start date.');
+  for (const taskId of new Set(series.flatMap(item => item.task_id ? [item.task_id] : []))) {
+    const { rows } = await query(`SELECT id FROM tasks WHERE id=$1 AND ${activeTaskSql()}`, [taskId]);
     if (!rows.length) throw new Error('The requested task is unavailable. Read the current task details; no substitute was selected.');
   }
-  const start = p.start_date > todayStr ? p.start_date : todayStr;
-  const end = p.end_date >= start ? p.end_date : start;
-  const blocks = expandSeries({ ...p, start_date: start, end_date: end });
-  const to = blocks.length ? blocks[blocks.length - 1].date : end;
+  const start = series.map(item => item.start_date).sort()[0];
+  const to = series.map(item => item.end_date).sort().at(-1)!;
+  const busy = await loadBusyWindow(start, to);
+  const { blocks, already_scheduled } = calendarBlockOccurrences(series, busy);
   return {
     kind: 'series' as const,
     from: start,
     to,
-    work_start: Math.floor(p.start_hour),
-    work_end: Math.ceil(Math.max(p.end_hour, p.start_hour + 0.5)),
+    work_start: Math.floor(Math.min(...series.map(item => item.start_hour))),
+    work_end: Math.ceil(Math.max(...series.map(item => item.end_hour))),
     needs_estimate: [] as Array<{ task_id: string; title: string; suggested_minutes: number; basis: string }>,
     days: [] as Array<{ date: string; available_minutes: number }>,
-    busy: await loadBusyWindow(start, to),
+    busy,
     blocks,
+    already_scheduled,
+    ...calendarBlockOverlaps(blocks, busy),
     unplaced: [] as Array<{ task_id: string; title: string; minutes: number }>,
     scheduler: { status: 'series', gap_minutes: 0, unestimated_count: 0, overflow_count: 0 },
     status: 'pending' as const,

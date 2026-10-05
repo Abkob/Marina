@@ -7,6 +7,7 @@ import { ContextObservations, packContext } from './copilotContextWire.js';
 import { documentCitations, documentEvidenceWarning, type DocumentCitation } from './documentCitations.js';
 import { KIMI_MODEL } from '../config/nvidiaModels.js';
 import { conversationCapabilities } from './copilotCapabilities.js';
+import { combineCalendarSeriesPreviews } from './calendarBlockPreview.js';
 import type { ResourceScope } from '../../shared/resourceScope.js';
 import { classifyTraceFailure, phaseForTool, type EvaluationRecorder } from './evaluationTrace.js';
 import { assertBoundedPayload, PLANNING_LIMITS, referenceKey } from '../../shared/planningContracts.js';
@@ -259,13 +260,22 @@ export async function runCopilotConversation(options: {
     });
     const displayed: Record<string, unknown> = {};
     const discarded = new Set(envelope.discard ?? []);
+    const selectedArtifacts = new Map<string, ToolArtifact>();
     for (const [id, artifact] of artifacts) {
-      if (artifact.autoDisplay && !discarded.has(id)) displayed[artifact.kind] = artifact.data;
+      if (artifact.autoDisplay && !discarded.has(id)) selectedArtifacts.set(id, artifact);
     }
     if (!needsClarification) for (const id of envelope.display ?? []) {
       const artifact = artifacts.get(id);
-      if (artifact && !discarded.has(id)) displayed[artifact.kind] = artifact.data;
+      if (artifact && !discarded.has(id)) selectedArtifacts.set(id, artifact);
     }
+    // A model can use either the batch contract or separate calls. Preserve
+    // every selected calendar activity without duplicating cached call aliases.
+    const seriesPreviews = new Set<unknown>();
+    for (const artifact of selectedArtifacts.values()) {
+      displayed[artifact.kind] = artifact.data;
+      if (artifact.kind === 'plan' && (artifact.data as { kind?: string } | null)?.kind === 'series') seriesPreviews.add(artifact.data);
+    }
+    if (seriesPreviews.size > 1 && (displayed.plan as { kind?: string } | undefined)?.kind === 'series') displayed.plan = combineCalendarSeriesPreviews([...seriesPreviews]);
     const validActions = actions.filter(action => !action.rejected_reason);
     if (actions.length) options.evaluation?.record({ phase: 'proposal', status: validActions.length === actions.length ? 'completed' : 'partial', count: validActions.length,
       ...(validActions.length < actions.length ? { failure: 'invalid_proposal' as const } : {}) });
