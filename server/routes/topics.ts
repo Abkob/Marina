@@ -2,7 +2,7 @@ import { activeEntitySql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import { query, transaction } from '../db.js';
-import { EMBED_MODEL } from '../config/providers.js';
+import { EMBED_MODEL,EMBED_DIMENSION,EMBED_TABLE,EMBED_COLUMN } from '../config/providers.js';
 
 const router = Router();
 
@@ -458,22 +458,22 @@ async function generateCandidatesForTopic(topicId: string, topicName: string, ru
     const memberKeys = members.map(m => `${m.entity_type}:${m.entity_id}`);
     const { rows: simRows } = await query(
       `WITH member_vecs AS (
-         SELECT entity_type, entity_id, embedding_3072
-         FROM embeddings
-         WHERE is_stale = false AND embedding_3072 IS NOT NULL
+         SELECT entity_type, entity_id, ${EMBED_COLUMN}
+         FROM ${EMBED_TABLE}
+         WHERE is_stale = false AND ${EMBED_COLUMN} IS NOT NULL AND embedding_model=$3 AND embedding_dimension=$4
            AND (entity_type || ':' || entity_id) = ANY($1)
        )
        SELECT e.entity_type, e.entity_id,
-              MAX(1 - (e.embedding_3072 <=> mv.embedding_3072)) AS max_cosine,
-              (ARRAY_AGG(mv.entity_type || ':' || mv.entity_id ORDER BY (e.embedding_3072 <=> mv.embedding_3072) ASC))[1] AS nearest_member
-       FROM embeddings e
+              MAX(1 - (e.${EMBED_COLUMN} <=> mv.${EMBED_COLUMN})) AS max_cosine,
+              (ARRAY_AGG(mv.entity_type || ':' || mv.entity_id ORDER BY (e.${EMBED_COLUMN} <=> mv.${EMBED_COLUMN}) ASC))[1] AS nearest_member
+       FROM ${EMBED_TABLE} e
        CROSS JOIN member_vecs mv
-       WHERE e.is_stale = false AND e.embedding_3072 IS NOT NULL AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
+       WHERE e.is_stale = false AND e.${EMBED_COLUMN} IS NOT NULL AND e.embedding_model=$3 AND e.embedding_dimension=$4 AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
          AND e.entity_type IN ('goal','task','milestone','resource','meeting','journal_entry','note')
          AND (e.entity_type || ':' || e.entity_id) <> ALL($1)
        GROUP BY e.entity_type, e.entity_id
-       HAVING MAX(1 - (e.embedding_3072 <=> mv.embedding_3072)) >= $2`,
-      [memberKeys, MIN_COSINE],
+       HAVING MAX(1 - (e.${EMBED_COLUMN} <=> mv.${EMBED_COLUMN})) >= $2`,
+      [memberKeys, MIN_COSINE,EMBED_MODEL,EMBED_DIMENSION],
     );
     for (const r of simRows as { entity_type: string; entity_id: string; max_cosine: number; nearest_member: string }[]) {
       const key = `${r.entity_type}:${r.entity_id}`;

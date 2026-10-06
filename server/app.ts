@@ -42,6 +42,7 @@ import { resourceWorkflowsRouter } from './routes/resourceWorkflows.js';
 import { googleWorkspaceOauthRouter, googleWorkspaceRouter } from './routes/google-workspace.js';
 import { googleDriveRouter } from './routes/google-drive.js';
 import { EMBED_DIMENSION, EMBED_MODEL } from './embeddingProvider.js';
+import {EMBED_TABLE} from './config/providers.js';
 import { getProviderSummary, isNvidiaChatModel } from './config/providers.js';
 import { scheduleObsidianVaultSync, shouldSyncObsidianVaultForRequest } from './services/obsidianVaultSync.js';
 import { requireApiAuth } from './utils/auth.js';
@@ -254,7 +255,7 @@ export function createApp(): express.Express {
             WHERE status = 'processing'
               AND lease_expires_at IS NOT NULL
               AND lease_expires_at::TIMESTAMPTZ < NOW()`),
-          q<{ count: string }>(`SELECT COUNT(*)::int AS count FROM embeddings WHERE is_stale = true`),
+          q<{ count: string }>(`SELECT COUNT(*)::int AS count FROM ${EMBED_TABLE} WHERE is_stale = true`),
         ]);
         workerDiagnostics = {
           oldest_pending_seconds: oldestRows[0]?.age_seconds ?? null,
@@ -346,7 +347,7 @@ export function createApp(): express.Express {
 
     // embeddings for entity_ids no longer present in any canonical table
     const { rows: orphanEmbeddings } = await query<{ count: string }>(`
-      SELECT COUNT(*)::int as count FROM embeddings emb
+      SELECT COUNT(*)::int as count FROM ${EMBED_TABLE} emb
       WHERE NOT EXISTS (
         SELECT 1 FROM goals        WHERE id = emb.entity_id AND emb.entity_type = 'goal'
         UNION ALL
@@ -359,6 +360,8 @@ export function createApp(): express.Express {
         SELECT 1 FROM meetings     WHERE id = emb.entity_id AND emb.entity_type = 'meeting'
         UNION ALL
         SELECT 1 FROM journal_entries WHERE id = emb.entity_id AND emb.entity_type = 'journal_entry'
+        UNION ALL
+        SELECT 1 FROM notes WHERE id = emb.entity_id AND emb.entity_type = 'note'
         UNION ALL
         SELECT 1 FROM resource_chunks WHERE id = emb.entity_id AND emb.entity_type = 'resource_chunk'
       )

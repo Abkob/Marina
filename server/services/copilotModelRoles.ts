@@ -23,7 +23,7 @@ export function resolveEvidenceModels(input?: Partial<EvidenceModels>): Evidence
 }
 export function modelRoleCatalog() {
   return { defaults: defaultEvidenceModels, options: evidenceRoleOptions,
-    embeddings: { model: EMBED_MODEL, label: 'Gemini Embedding 2', change_requires_reindex: true,
+    embeddings: { model: EMBED_MODEL, label: EMBED_MODEL === NEMOTRON_EMBED_MODEL ? 'Nemotron 3 Embed 1B' : 'Gemini Embedding 2', change_requires_reindex: true,
       trials: [{model: NEMOTRON_EMBED_MODEL, label: 'Nemotron 3 Embed 1B', dimension: NEMOTRON_EMBED_DIMENSION,
         configured: Boolean(process.env.NVIDIA_EMBED_API_KEY || process.env.NVIDIA_API_KEY), requires_reindex: true as const}] } };
 }

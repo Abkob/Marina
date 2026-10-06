@@ -1,5 +1,7 @@
+import {nemotronEmbeddings} from './services/nemotronEmbeddings.js';
+import {embedNemotronDocument} from './services/nemotronDocumentEmbedding.js';
 import { GoogleGenAI } from '@google/genai';
-import { EMBED_MODEL, EMBED_DIMENSION } from './config/providers.js';
+import { EMBED_MODEL, EMBED_DIMENSION, EMBED_PROVIDER } from './config/providers.js';
 
 export { EMBED_MODEL, EMBED_DIMENSION };
 
@@ -34,6 +36,7 @@ function documentTitle(text: string): string {
 }
 
 export async function embedDocument(text: string): Promise<number[]> {
+  if (EMBED_PROVIDER === 'nvidia') return embedNemotronDocument(text);
   const response = await getClient().models.embedContent({
     model: EMBED_MODEL,
     contents: `title: ${documentTitle(text)} | text: ${text}`,
@@ -43,6 +46,7 @@ export async function embedDocument(text: string): Promise<number[]> {
 }
 
 export async function embedQuery(text: string): Promise<number[]> {
+  if (EMBED_PROVIDER === 'nvidia') return (await nemotronEmbeddings([text], 'query'))[0];
   const response = await getClient().models.embedContent({
     model: EMBED_MODEL,
     contents: `task: search result | query: ${text}`,

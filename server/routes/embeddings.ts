@@ -1,3 +1,4 @@
+import {EMBED_TABLE, EMBED_COLUMN} from '../config/providers.js';
 import { Router } from 'express';
 import crypto from 'crypto';
 import { query, transaction } from '../db.js';
@@ -10,19 +11,21 @@ import {
 } from '../embeddingProvider.js';
 import { queueEmbeddingUpsert } from '../services/embeddingLifecycle.js';
 import { rateLimit } from '../utils/rateLimit.js';
-import { ALLOW_CLOUD_RAW_TEXT, PROVIDER_MODE } from '../config/providers.js';
-import { activeResourceSql } from '../utils/archiveVisibility.js';
+import { ALLOW_CLOUD_RAW_TEXT } from '../config/providers.js';
+import { activeResourceSql, activeEntitySql } from '../utils/archiveVisibility.js';
 
 const router = Router();
 
 // ─── Build embedding text for each entity type ────────────────────────────────
 
-async function buildEmbeddingText(entityType: string, entityId: string): Promise<string | null> {
+export async function buildEmbeddingText(entityType: string, entityId: string, client?: pg.PoolClient): Promise<string | null> {
+  const read = client ? (sql: string, values: unknown[]) => client.query(sql + ' FOR SHARE', values) : query;
   if (entityType === 'goal') {
-    const { rows } = await query('SELECT * FROM goals WHERE id=$1', [entityId]);
+    // Lock the parent against concurrent milestone inserts (FK key-share locks).
+    const { rows } = client ? await client.query('SELECT * FROM goals WHERE id=$1 FOR UPDATE',[entityId]) : await read('SELECT * FROM goals WHERE id=$1', [entityId]);
     if (!rows.length) return null;
     const g = rows[0] as Record<string, unknown>;
-    const { rows: milestones } = await query('SELECT title FROM goal_milestones WHERE goal_id=$1', [entityId]);
+    const { rows: milestones } = await read('SELECT title FROM goal_milestones WHERE goal_id=$1', [entityId]);
     return [
       `Entity: Goal`,
       `Title: ${g.title}`,
@@ -35,11 +38,11 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
   }
 
   if (entityType === 'task') {
-    const { rows } = await query('SELECT * FROM tasks WHERE id=$1', [entityId]);
+    const { rows } = await read('SELECT * FROM tasks WHERE id=$1', [entityId]);
     if (!rows.length) return null;
     const t = rows[0] as Record<string, unknown>;
-    const { rows: goalRows } = t.goal_id ? await query('SELECT title FROM goals WHERE id=$1', [t.goal_id]) : { rows: [] };
-    const { rows: milestoneRows } = t.milestone_id ? await query('SELECT title FROM goal_milestones WHERE id=$1', [t.milestone_id]) : { rows: [] };
+    const { rows: goalRows } = t.goal_id ? await read('SELECT title FROM goals WHERE id=$1', [t.goal_id]) : { rows: [] };
+    const { rows: milestoneRows } = t.milestone_id ? await read('SELECT title FROM goal_milestones WHERE id=$1', [t.milestone_id]) : { rows: [] };
     return [
       `Entity: Task`,
       `Title: ${t.title}`,
@@ -53,7 +56,7 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
   }
 
   if (entityType === 'resource') {
-    const { rows } = await query('SELECT * FROM resources WHERE id=$1', [entityId]);
+    const { rows } = await read('SELECT * FROM resources WHERE id=$1', [entityId]);
     if (!rows.length) return null;
     const r = rows[0] as Record<string, unknown>;
     return [
@@ -69,12 +72,12 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
   }
 
   if (entityType === 'journal_entry') {
-    const { rows } = await query('SELECT * FROM journal_entries WHERE id=$1', [entityId]);
+    const { rows } = await read('SELECT * FROM journal_entries WHERE id=$1', [entityId]);
     if (!rows.length) return null;
     const j = rows[0] as Record<string, unknown>;
     // Raw journal text must NOT be sent to cloud providers unless explicitly opted in.
-    // In hybrid/cloud mode (Gemini embeddings), only use the AI-generated summary.
-    const includeRawText = PROVIDER_MODE === 'local' || ALLOW_CLOUD_RAW_TEXT;
+    // Only use the AI-generated summary unless raw text is explicitly enabled.
+    const includeRawText = ALLOW_CLOUD_RAW_TEXT;
     return [
       `Entity: Journal Entry`,
       `Date: ${j.entry_date}`,
@@ -86,7 +89,7 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
   }
 
   if (entityType === 'note') {
-    const { rows } = await query('SELECT * FROM notes WHERE id=$1', [entityId]);
+    const { rows } = await read('SELECT * FROM notes WHERE id=$1', [entityId]);
     if (!rows.length) return null;
     const n = rows[0] as Record<string, unknown>;
     return [
@@ -99,11 +102,11 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
 
   if (entityType === 'resource_chunk') {
     // entityId here IS the chunk_id (see embeddingWorker for how this is resolved)
-    const { rows } = await query(
+    const { rows } = await read(
       `SELECT rc.id, rc.resource_id, rc.chunk_index, rc.content, rc.heading, rc.page_start, rc.page_end,
               r.title as resource_title
        FROM resource_chunks rc
-       LEFT JOIN resources r ON r.id = rc.resource_id
+       JOIN resources r ON r.id = rc.resource_id
        WHERE rc.id = $1`,
       [entityId],
     );
@@ -120,7 +123,7 @@ async function buildEmbeddingText(entityType: string, entityId: string): Promise
   }
 
   if (entityType === 'meeting') {
-    const { rows } = await query('SELECT * FROM meetings WHERE id=$1', [entityId]);
+    const { rows } = await read('SELECT * FROM meetings WHERE id=$1', [entityId]);
     if (!rows.length) return null;
     const m = rows[0] as Record<string, unknown>;
     return [
@@ -151,8 +154,8 @@ export async function embedEntity(
   // Check if unchanged
   const { rows: existing } = await query(
     `SELECT id, content_hash, embedding_model, embedding_dimension,
-            embedding_3072 IS NOT NULL AS has_embedding
-     FROM embeddings
+            ${EMBED_COLUMN} IS NOT NULL AS has_embedding
+     FROM ${EMBED_TABLE}
      WHERE entity_type=$1 AND entity_id=$2 AND embedding_scope=$3`,
     [entityType, entityId, scope],
   );
@@ -166,7 +169,9 @@ export async function embedEntity(
     ) {
       await transaction(async client => {
         await beforeWrite?.(client);
-        await client.query('UPDATE embeddings SET is_stale=false WHERE id=$1', [current.id]);
+        const currentText = await buildEmbeddingText(entityType, entityId, client);
+        if (!currentText || crypto.createHash('sha256').update(currentText).digest('hex') !== contentHash) throw new Error('embedding_source_changed: retry with current source');
+        await client.query(`UPDATE ${EMBED_TABLE} SET is_stale=false WHERE id=$1`, [current.id]);
       });
       return;
     }
@@ -180,25 +185,28 @@ export async function embedEntity(
   }
   const vectorStr = `[${vector.join(',')}]`;
   const now = new Date().toISOString();
-  const id = existing.length ? (existing[0] as Record<string, unknown>).id as string : crypto.randomUUID();
+  const id = existing.length ? (existing[0] as Record<string, unknown>).id as string
+    : EMBED_TABLE === 'nemotron_embeddings' ? crypto.createHash('sha256').update(JSON.stringify([EMBED_MODEL,entityType,entityId,scope])).digest('hex') : crypto.randomUUID();
 
   // Upsert by primary key. Three cases:
-  //   new entity     → new UUID, clean insert
+  //   new entity     → deterministic profile ID (or legacy UUID), clean insert
   //   content same   → caught by early-return above, never reaches here
   //   content changed→ reused UUID, PK conflict → DO UPDATE replaces the row in place
   // Using (entity_type,entity_id,embedding_scope,content_hash) as conflict target would
   // miss the PK conflict when hash changes, causing a constraint violation error.
   await transaction(async client => {
     await beforeWrite?.(client);
+    const currentText = await buildEmbeddingText(entityType, entityId, client);
+    if (!currentText || crypto.createHash('sha256').update(currentText).digest('hex') !== contentHash) throw new Error('embedding_source_changed: retry with current source');
     await client.query(
-    `INSERT INTO embeddings (
-       id,entity_type,entity_id,embedding_scope,embedding_text,embedding_3072,
+    `INSERT INTO ${EMBED_TABLE} (
+       id,entity_type,entity_id,embedding_scope,embedding_text,${EMBED_COLUMN},
        embedding_model,embedding_dimension,content_hash,is_stale,created_at,updated_at
      )
      VALUES ($1,$2,$3,$4,$5,$6::halfvec,$7,$8,$9,false,$10,$11)
      ON CONFLICT (id) DO UPDATE
      SET embedding_text=EXCLUDED.embedding_text,
-         embedding_3072=EXCLUDED.embedding_3072,
+         ${EMBED_COLUMN}=EXCLUDED.${EMBED_COLUMN},
          embedding_model=EXCLUDED.embedding_model,
          embedding_dimension=EXCLUDED.embedding_dimension,
          content_hash=EXCLUDED.content_hash,
@@ -239,17 +247,17 @@ router.post('/search', async (req, res) => {
     let sql = `
       SELECT id, entity_type, entity_id, embedding_scope,
              LEFT(embedding_text, 200) as text_snippet,
-             1 - (embedding_3072 <=> $1::halfvec) as similarity
-      FROM embeddings
-      WHERE is_stale = false
-        AND embedding_3072 IS NOT NULL
+             1 - (${EMBED_COLUMN} <=> $1::halfvec) as similarity
+      FROM ${EMBED_TABLE}
+      WHERE is_stale = false AND ${activeEntitySql('entity_type','entity_id')}
+        AND ${EMBED_COLUMN} IS NOT NULL
         AND embedding_model = $2
         AND embedding_dimension = $3
         AND (entity_type <> 'resource_chunk' OR EXISTS (
           SELECT 1 FROM resource_chunks c JOIN resources r ON r.id=c.resource_id
           LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id
           LEFT JOIN resource_drive_files d ON d.resource_id=r.id AND r.file_path LIKE 'gdrive://%'
-          WHERE c.id=embeddings.entity_id AND ${activeResourceSql('r.id')}
+          WHERE c.id=${EMBED_TABLE}.entity_id AND ${activeResourceSql('r.id')}
             AND (j.resource_id IS NULL OR j.status='ready')
             AND (d.resource_id IS NULL OR (d.available AND j.status='ready' AND r.file_validation='valid'))
         ))
@@ -261,7 +269,7 @@ router.post('/search', async (req, res) => {
       sql += ` AND entity_type = ANY($${params.length})`;
     }
 
-    sql += ` ORDER BY embedding_3072 <=> $1::halfvec LIMIT $${params.length + 1}`;
+    sql += ` ORDER BY ${EMBED_COLUMN} <=> $1::halfvec LIMIT $${params.length + 1}`;
     params.push(limit);
 
     const { rows } = await query(sql, params);
@@ -333,11 +341,11 @@ router.post('/backfill', rateLimit(3, 60_000, 'embeddings-backfill'), async (_re
     const table = tables[etype];
     const { rows } = await query(
       `SELECT t.id FROM ${table} t
-       LEFT JOIN embeddings e
+       LEFT JOIN ${EMBED_TABLE} e
          ON e.entity_type=$1
         AND e.entity_id=t.id
         AND e.is_stale=false
-        AND e.embedding_3072 IS NOT NULL
+        AND e.${EMBED_COLUMN} IS NOT NULL
         AND e.embedding_model=$2
         AND e.embedding_dimension=$3
        WHERE e.id IS NULL`,
@@ -360,9 +368,9 @@ router.get('/status/:entityType/:entityId', async (req, res) => {
   const [{ rows: embRows }, { rows: jobRows }] = await Promise.all([
     query(
       `SELECT embedding_scope, embedding_model, embedding_dimension, is_stale, updated_at,
-              (embedding_3072 IS NOT NULL) AS has_vector,
+              (${EMBED_COLUMN} IS NOT NULL) AS has_vector,
               LEFT(embedding_text, 400) AS embedded_text_preview
-       FROM embeddings WHERE entity_type=$1 AND entity_id=$2`,
+       FROM ${EMBED_TABLE} WHERE entity_type=$1 AND entity_id=$2`,
       [entityType, entityId],
     ),
     query(
@@ -386,8 +394,8 @@ router.get('/stats', async (_req, res) => {
   ] = await Promise.all([
     query(
       `SELECT entity_type, embedding_model, embedding_dimension, COUNT(*) as count
-       FROM embeddings
-       WHERE is_stale=false AND embedding_3072 IS NOT NULL
+       FROM ${EMBED_TABLE}
+       WHERE is_stale=false AND ${EMBED_COLUMN} IS NOT NULL
        GROUP BY entity_type, embedding_model, embedding_dimension
        ORDER BY count DESC`,
     ),
@@ -404,7 +412,7 @@ router.get('/stats', async (_req, res) => {
     ),
     // Stale embedding count
     query(
-      `SELECT COUNT(*) as count FROM embeddings WHERE is_stale=true`,
+      `SELECT COUNT(*) as count FROM ${EMBED_TABLE} WHERE is_stale=true`,
     ),
   ]);
 

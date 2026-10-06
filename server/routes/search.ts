@@ -2,6 +2,7 @@ import { activeEntitySql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
 import { query } from '../db.js';
 import { embedQuery, EMBED_DIMENSION, EMBED_MODEL } from '../embeddingProvider.js';
+import {EMBED_TABLE,EMBED_COLUMN} from '../config/providers.js';
 
 const router = Router();
 
@@ -143,14 +144,14 @@ router.get('/', async (req, res) => {
     const vectorStr = `[${vec.join(',')}]`;
 
     const sql = `
-      SELECT e.entity_type, e.entity_id, 1 - (e.embedding_3072 <=> $1::halfvec) as score
-      FROM embeddings e
+      SELECT e.entity_type, e.entity_id, 1 - (e.${EMBED_COLUMN} <=> $1::halfvec) as score
+      FROM ${EMBED_TABLE} e
       WHERE e.is_stale = false AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
-        AND e.embedding_3072 IS NOT NULL
+        AND e.${EMBED_COLUMN} IS NOT NULL
         AND e.embedding_model = $2
         AND e.embedding_dimension = $3
         AND e.entity_type = ANY($4)
-      ORDER BY e.embedding_3072 <=> $1::halfvec
+      ORDER BY e.${EMBED_COLUMN} <=> $1::halfvec
       LIMIT $5
     `;
     const { rows } = await query(sql, [vectorStr, EMBED_MODEL, EMBED_DIMENSION, types, rawLimit]);

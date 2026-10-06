@@ -1,3 +1,4 @@
+import {EMBED_TABLE, EMBED_COLUMN} from '../config/providers.js';
 import { accountWork, loadWorkAccounting, workColumns } from './workAccounting.js';
 import { activeTaskSql, activeEntitySql } from '../utils/archiveVisibility.js';
 import { query } from '../db.js';
@@ -218,12 +219,12 @@ async function vectorRetrieval(
     const vectorStr = `[${vec.join(',')}]`;
 
     let sql = `
-      SELECT e.entity_type, e.entity_id, 1 - (e.embedding_3072 <=> $1::halfvec) as similarity,
+      SELECT e.entity_type, e.entity_id, 1 - (e.${EMBED_COLUMN} <=> $1::halfvec) as similarity,
              es.summary_text as planning_summary
-      FROM embeddings e
+      FROM ${EMBED_TABLE} e
       LEFT JOIN entity_summaries es ON es.entity_type=e.entity_type AND es.entity_id=e.entity_id AND es.summary_type='planning'
       WHERE e.is_stale = false AND ${activeEntitySql('e.entity_type', 'e.entity_id')}
-        AND e.embedding_3072 IS NOT NULL
+        AND e.${EMBED_COLUMN} IS NOT NULL
         AND e.embedding_model = $2
         AND e.embedding_dimension = $3
     `;
@@ -234,7 +235,7 @@ async function vectorRetrieval(
       sql += ` AND e.entity_type = ANY($${params.length})`;
     }
 
-    sql += ` ORDER BY e.embedding_3072 <=> $1::halfvec LIMIT $${params.length + 1}`;
+    sql += ` ORDER BY e.${EMBED_COLUMN} <=> $1::halfvec LIMIT $${params.length + 1}`;
     params.push(limit);
 
     const { rows } = await query(sql, params);

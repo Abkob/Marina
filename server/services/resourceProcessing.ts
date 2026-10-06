@@ -1,3 +1,4 @@
+import {EMBED_TABLE, EMBED_COLUMN} from '../config/providers.js';
 import crypto from 'node:crypto';
 import type pg from 'pg';
 import { query, transaction } from '../db.js';
@@ -118,15 +119,15 @@ export async function processResourceJob(id: string, version?: number): Promise<
     } else {
       const { rows: chunks } = await query<{ id: string }>(
         `SELECT c.id FROM resource_chunks c WHERE c.resource_id=$1 AND NOT EXISTS
-          (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id
-           AND e.embedding_3072 IS NOT NULL AND e.is_stale=false AND e.embedding_model=$2 AND e.embedding_dimension=$3)
+          (SELECT 1 FROM ${EMBED_TABLE} e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id
+           AND e.${EMBED_COLUMN} IS NOT NULL AND e.is_stale=false AND e.embedding_model=$2 AND e.embedding_dimension=$3)
          ORDER BY c.chunk_index LIMIT 3`, [job.resource_id, EMBED_MODEL, EMBED_DIMENSION],
       );
       for (const chunk of chunks) await embedEntity('resource_chunk', chunk.id, 'full_text', client => assertLease(client, job));
       const { rows: remaining } = await query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM resource_chunks c WHERE c.resource_id=$1 AND NOT EXISTS
-          (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id
-           AND e.embedding_3072 IS NOT NULL AND e.is_stale=false AND e.embedding_model=$2 AND e.embedding_dimension=$3)`, [job.resource_id, EMBED_MODEL, EMBED_DIMENSION],
+          (SELECT 1 FROM ${EMBED_TABLE} e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id
+           AND e.${EMBED_COLUMN} IS NOT NULL AND e.is_stale=false AND e.embedding_model=$2 AND e.embedding_dimension=$3)`, [job.resource_id, EMBED_MODEL, EMBED_DIMENSION],
       );
       await settle(job, Number(remaining[0].count) ? 'queued' : 'ready');
     }
@@ -227,7 +228,7 @@ export async function getResourceProcessing(resourceId: string) {
        (SELECT COUNT(*)::int FROM resource_document_pages p WHERE p.resource_id=r.id AND p.generation=j.version AND p.status='failed') AS visual_pages_failed,
        (SELECT COUNT(*)::int FROM resource_chunks WHERE resource_id=r.id) AS chunks,
        (SELECT COUNT(*)::int FROM resource_chunks c WHERE c.resource_id=r.id AND EXISTS
-         (SELECT 1 FROM embeddings e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id AND NOT e.is_stale AND e.embedding_3072 IS NOT NULL AND e.embedding_model=$2 AND e.embedding_dimension=$3)) AS embedded
+         (SELECT 1 FROM ${EMBED_TABLE} e WHERE e.entity_type='resource_chunk' AND e.entity_id=c.id AND NOT e.is_stale AND e.${EMBED_COLUMN} IS NOT NULL AND e.embedding_model=$2 AND e.embedding_dimension=$3)) AS embedded
      FROM resources r LEFT JOIN resource_processing_jobs j ON j.resource_id=r.id WHERE r.id=$1`, [resourceId, EMBED_MODEL, EMBED_DIMENSION],
   );
   if (!rows.length) throw uploadError('Resource not found', 404);

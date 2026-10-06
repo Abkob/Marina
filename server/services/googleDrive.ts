@@ -26,6 +26,7 @@ export async function driveStatus() {
     last_error: connection?.last_error ?? null, max_bytes: 50 * 1024 * 1024 };
 }
 export async function driveToken(client?: Pick<pg.PoolClient, 'query'>) {
+  if (!googleConfiguration().configured) throw driveError('Google Drive configuration is unavailable in this process.',503);
   const connection = await driveConnection(client);
   if (!connection?.encrypted_refresh_token) throw driveError('Connect Google Drive in Resource Library first.', 409);
   const key = crypto.createHash('sha256').update(connection.encrypted_refresh_token).digest('hex');
@@ -33,6 +34,9 @@ export async function driveToken(client?: Pick<pg.PoolClient, 'query'>) {
   if (cached && cached.expires > Date.now()) return cached.token;
   try {
     const token = await refreshGoogleAccessToken(connection.encrypted_refresh_token);
+    // A successful refresh repairs only an obsolete refresh warning, using the same connection.
+    await (client ?? {query}).query("UPDATE google_drive_connection SET last_error=NULL WHERE id='primary' AND encrypted_refresh_token=$1 AND last_error=$2",
+      [connection.encrypted_refresh_token,'Google Drive access could not be refreshed. Reconnect the same Google account.']);
     tokenCache.clear(); tokenCache.set(key, { token, expires: Date.now() + 45 * 60_000 });
     return token;
   } catch {

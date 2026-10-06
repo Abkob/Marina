@@ -1,3 +1,4 @@
+import {EMBED_TABLE} from '../config/providers.js';
 import { pool, query } from '../db.js';
 import { embedEntity } from '../routes/embeddings.js';
 import { log, newCid } from '../utils/logger.js';
@@ -82,12 +83,12 @@ export async function processEmbeddingJobs(batchSize = 10): Promise<{ processed:
         if (job.entity_type === 'resource_chunk' && job.chunk_id) {
           // Delete only the specific chunk embedding, not all embeddings for the resource
           await query(
-            'DELETE FROM embeddings WHERE entity_type=$1 AND entity_id=$2',
+            `DELETE FROM ${EMBED_TABLE} WHERE entity_type=$1 AND entity_id=$2`,
             [job.entity_type, job.chunk_id],
           );
         } else {
           await query(
-            'DELETE FROM embeddings WHERE entity_type=$1 AND entity_id=$2',
+            `DELETE FROM ${EMBED_TABLE} WHERE entity_type=$1 AND entity_id=$2`,
             [job.entity_type, job.entity_id],
           );
         }

@@ -6,7 +6,7 @@ export class EmbeddingTrialError extends Error {
 const ENDPOINT = 'https://integrate.api.nvidia.com/v1/embeddings';
 const MAX_RESPONSE_BYTES = 512 * 1024;
 
-/** Separate vectors for bounded trials. Never writes to the Gemini library index. */
+/** Bounded hosted query/passage adapter. Callers keep model-specific indexes isolated. */
 export async function nemotronEmbeddings(
   texts: string[], inputType: 'query' | 'passage', options: {signal?: AbortSignal; deadlineMs?: number} = {},
 ): Promise<number[][]> {

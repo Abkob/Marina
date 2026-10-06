@@ -14,7 +14,7 @@ for(const savedModel of ['gemini-3.8-flash',NEMOTRON_ULTRA_MODEL]){
    else if(path==='/api/health/ready')body={models:{primary:{model:NEMOTRON_SUPER_MODEL,status:'cloud'},available:NEMOTRON_CHAT_MODELS.map(model=>({model,provider:'nvidia',status:'cloud'}))}};
    else if(path===`/api/ai/sessions/${session}/messages`)body=[{id:'old-reply',role:'assistant',content:'Historical conversation is preserved.',created_at:'2026-10-05T10:00:00Z',metadata:{model:savedModel,actions:[]}}];
    else if(path===`/api/ai/sessions/${session}/chat`&&request.method()==='POST'){sent.push(request.postDataJSON());body={reply:'Synthetic continuation received.',actions:[]};}
-   else if(path==='/api/ai/model-roles'){const catalog=modelRoleCatalog();body={...catalog,embeddings:{...catalog.embeddings,trials:catalog.embeddings.trials.map(row=>({...row,configured:true}))}};}
+   else if(path==='/api/ai/model-roles'){const catalog=modelRoleCatalog();body={...catalog,embeddings:{...catalog.embeddings,model:NEMOTRON_EMBED_MODEL,label:'Nemotron 3 Embed 1B',trials:catalog.embeddings.trials.map(row=>({...row,configured:true}))}};}
    else if(path==='/api/ai/embedding-models/trial'&&request.method()==='POST'){
     expect(request.postDataJSON()).toEqual({model:NEMOTRON_EMBED_MODEL});trials++;
     if(trials===2){await route.fulfill({status:503,json:{error:'Synthetic provider unavailable'}});return;}
@@ -38,6 +38,7 @@ for(const savedModel of ['gemini-3.8-flash',NEMOTRON_ULTRA_MODEL]){
   await expect.poll(async()=> (await picker.boundingBox())?.height??0).toBeGreaterThanOrEqual(44);
   if(isMobile){await picker.tap();await picker.selectOption(expected);}else{await picker.focus();await expect(picker).toBeFocused();}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await expect(page.getByText(/Search index: Nemotron 3 Embed 1B/)).toBeVisible();
   const summary=page.getByText('Try a search model',{exact:true});await summary.scrollIntoViewIfNeeded();
   if(isMobile)await summary.tap();else{await summary.focus();await page.keyboard.press('Enter');}
   const trialPicker=page.getByRole('combobox',{name:'Sample search model'});await expect(trialPicker).toBeVisible();

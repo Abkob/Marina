@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import {EMBED_TABLE,EMBED_COLUMN,EMBED_MODEL,EMBED_DIMENSION} from '../config/providers.js';
 import { activeResourceSql, activeTaskSql, activeGoalSql, activeEntitySql } from '../utils/archiveVisibility.js';
 import multer from 'multer';
 import path from 'path';
@@ -213,10 +214,10 @@ router.get('/:id/chunks', async (req, res) => {
             LENGTH(rc.content) AS content_chars, LEFT(rc.content, 240) AS content_preview,
             (e.id IS NOT NULL) AS has_embedding, COALESCE(e.is_stale, false) AS embedding_stale
      FROM resource_chunks rc
-     LEFT JOIN embeddings e ON e.entity_type='resource_chunk' AND e.entity_id=rc.id AND e.embedding_3072 IS NOT NULL
+     LEFT JOIN ${EMBED_TABLE} e ON e.entity_type='resource_chunk' AND e.entity_id=rc.id AND e.${EMBED_COLUMN} IS NOT NULL AND e.embedding_model=$2 AND e.embedding_dimension=$3
      WHERE rc.resource_id=$1
      ORDER BY rc.chunk_index ASC`,
-    [req.params.id],
+    [req.params.id,EMBED_MODEL,EMBED_DIMENSION],
   );
   res.json(rows);
 });

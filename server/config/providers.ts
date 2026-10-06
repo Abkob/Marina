@@ -4,9 +4,10 @@
  * mode must import from here — never read process.env directly for these values.
  *
  * Chat is restricted to NVIDIA Nemotron. The legacy mode setting describes
- * resource processing preferences; Gemini embeddings remain a separate role.
+ * resource processing preferences; document embeddings remain a separate role.
  */
 
+import {embeddingProfile} from './embeddingProfile.js';
 import { nvidiaKeyForModel } from './nvidiaModels.js';
 import {NEMOTRON_CHAT_MODELS,NEMOTRON_ULTRA_MODEL,NEMOTRON_LIGHTNING_MODEL,configuredNemotronModel,isNemotronChatModel} from './nemotronChat.js';
 export type ProviderMode = 'local' | 'hybrid' | 'cloud';
@@ -41,7 +42,7 @@ export const NVIDIA_LIGHTNING_MODEL = NEMOTRON_LIGHTNING_MODEL;
 export const NVIDIA_PARSE_MODEL = 'nvidia/nemotron-parse-2.0';
 export const NVIDIA_FALLBACK_MODEL = isNemotronChatModel(process.env.MARINA_NVIDIA_FALLBACK_MODEL??'')
   ? process.env.MARINA_NVIDIA_FALLBACK_MODEL! : '';
-// Separate evidence specialists; never mix their outputs into the Gemini vector column.
+// Separate evidence specialists; each embedding model keeps an isolated vector column.
 export const NVIDIA_RERANK_MODEL = process.env.MARINA_NVIDIA_RERANK_MODEL
   ?? 'nvidia/llama-nemotron-rerank-vl-1b-v2';
 export const NVIDIA_RERANK_URL = process.env.MARINA_NVIDIA_RERANK_URL
@@ -86,11 +87,16 @@ export const PLANNING_REVIEW_MODE=process.env.MARINA_PLANNING_REVIEW_MODE==='spl
 
 // ─── Embedding provider ────────────────────────────────────────────────────────
 
-export const EMBED_MODEL = process.env.MARINA_EMBEDDING_MODEL ?? 'gemini-embedding-2';
-export const EMBED_DIMENSION = 3072;
+const embedding = embeddingProfile();
+export const EMBED_MODEL = embedding.model;
+export const EMBED_DIMENSION = embedding.dimension;
+export const EMBED_TABLE = embedding.table;
+export const EMBED_COLUMN = embedding.column;
+export const EMBED_GENERATION = embedding.generation;
+export const EMBED_PROVIDER = embedding.provider;
 
 // When true, raw journal/note/document text may be sent to the embedding provider.
-// In hybrid/cloud mode this is Gemini. Default: only summaries are sent to cloud.
+// This applies to both embedding providers. Default: only journal summaries go to cloud.
 export const ALLOW_CLOUD_RAW_TEXT = process.env.ALLOW_CLOUD_RAW_TEXT === 'true';
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
@@ -111,14 +117,12 @@ export function getProviderSummary() {
       planning_review:{mode:PLANNING_REVIEW_MODE,grounding_model:PLANNING_GROUNDING_MODEL,quality:'not_qualified'},
     },
     embeddings: {
-      // There is no local embedding implementation — embeddings always go to
-      // Gemini. Reporting 'local' here would be dishonest; the corpus is
-      // 3072-dim Gemini vectors and mixing providers would fragment it.
-      provider: 'gemini',
+      // Each provider uses its own isolated table and vector dimensions.
+      provider: EMBED_PROVIDER,
       model: EMBED_MODEL,
       dimension: EMBED_DIMENSION,
       requires_api_key: true,
-      api_key_present: Boolean(process.env.GEMINI_API_KEY),
+      api_key_present: EMBED_PROVIDER === 'nvidia' ? Boolean(process.env.NVIDIA_EMBED_API_KEY || process.env.NVIDIA_API_KEY) : Boolean(process.env.GEMINI_API_KEY),
       sends_raw_text_to_cloud: ALLOW_CLOUD_RAW_TEXT,
     },
     evidence: {
