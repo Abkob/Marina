@@ -8,6 +8,7 @@ import { aiProposalsRouter } from './ai-proposals.js';
 import { activeProposals } from '../services/activeProposals.js';
 import { activeTaskSql, activeGoalSql, activeMilestoneSql, activeMeetingSql, activeEventSql, activeEntitySql, activeResourceSql } from '../utils/archiveVisibility.js';
 import { Router } from 'express';
+import {embeddingTrialsRouter} from './embedding-trials.js';
 import { resourceScopeSchema, type ResourceScope } from '../../shared/resourceScope.js';
 import { historyInScope } from '../services/scopedConversation.js';
 import { runCopilotConversation, type ConversationTurn } from '../services/copilotConversation.js';
@@ -1478,6 +1479,7 @@ async function answerConversation(
 
 // Both chat entry points use the same model-led conversation and read-only tools.
 router.get('/model-roles', (_req, res) => res.json(modelRoleCatalog()));
+router.use('/embedding-models', embeddingTrialsRouter);
 router.post('/chat', rateLimit(60, 60_000, 'ai-chat'), async (req, res) => {
   try { assertBoundedPayload(req.body); } catch { return res.status(400).json({ error: 'Chat input exceeds size or structure limits.' }); }
   const schema = z.object({

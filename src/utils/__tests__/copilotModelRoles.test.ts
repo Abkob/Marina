@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { defaultEvidenceModels, evidenceModelsSchema, modelRoleCatalog, resolveEvidenceModels } from '../../../server/services/copilotModelRoles.js';
 import { isSelectableChatModel, NVIDIA_LIGHTNING_MODEL, NVIDIA_ULTRA_MODEL } from '../../../server/config/providers.js';
 
@@ -15,6 +15,15 @@ describe('per-role model selection', () => {
   it('rejects arbitrary embedding swaps against the existing vector index', () => {
     expect(evidenceModelsSchema.safeParse({ embeddings: 'nvidia/nemotron-3-embed-1b' }).success).toBe(false);
     expect(modelRoleCatalog().embeddings.change_requires_reindex).toBe(true);
+  });
+  it('advertises isolated samples without making embeddings a chat or active-index option', () => {
+    vi.stubEnv('NVIDIA_EMBED_API_KEY', 'test-connection');
+    try {
+      const catalog = modelRoleCatalog();
+      expect(catalog.embeddings.model).toBe('gemini-embedding-2');
+      expect(catalog.embeddings.trials).toEqual([{model:'nvidia/nemotron-3-embed-1b', label:'Nemotron 3 Embed 1B', dimension:2048, configured:true, requires_reindex:true}]);
+      expect(isSelectableChatModel(catalog.embeddings.trials[0].model)).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
   });
   it('allows all advertised defaults, alternatives and disabled states', () => {
     const catalog = modelRoleCatalog();

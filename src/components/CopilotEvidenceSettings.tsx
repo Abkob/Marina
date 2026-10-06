@@ -1,8 +1,11 @@
+import type {EmbeddingTrialOption} from '../../shared/embeddingTrial';
+import {EmbeddingModelTrials} from './EmbeddingModelTrials';
+
 export type EvidenceModels = { reranker: string; vision: string; ocr: string; structure: string };
 export type EvidenceModelCatalog = {
   defaults: EvidenceModels;
   options: Record<keyof EvidenceModels, Array<{ model: string; label: string }>>;
-  embeddings: { model: string; label: string; change_requires_reindex: boolean };
+  embeddings: { model: string; label: string; change_requires_reindex: boolean; trials?: EmbeddingTrialOption[] };
 };
 const labels = { ocr: 'Read scanned text', vision: 'Understand images & charts', structure: 'Extract page structure', reranker: 'Rank search passages' };
 
@@ -23,6 +26,7 @@ export function CopilotEvidenceSettings({ catalog, value, disabled, onChange }: 
     </div>)}
     <p className="text-xs leading-relaxed text-slate-500">Applies to your next message and is recorded with the reply. Selected pages and passages are sent to NVIDIA. Pages are inspected on request, not automatically across the library. If vision is busy, enabled OCR can return text with an explicit fallback notice.</p>
     <p className="text-xs leading-relaxed text-slate-500">Search index: {catalog.embeddings.label}. Changing the embedding model requires rebuilding the library index.</p>
+    {catalog.embeddings.trials && <EmbeddingModelTrials options={catalog.embeddings.trials} disabled={disabled} />}
     <p className="text-xs leading-relaxed text-slate-500">Kimi and Muse can read text and layout as well as images. Their transcriptions have no OCR confidence scores or bounding boxes. Chat models can change without rebuilding the search index.</p>
     <button type="button" disabled={disabled} onClick={() => onChange({ ...catalog.defaults })} className="min-h-11 rounded-lg px-2 text-xs text-slate-500 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400">Restore recommended document models</button>
   </div>;

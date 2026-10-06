@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EMBED_MODEL, NVIDIA_OCR_MODEL, NVIDIA_OCR_MODELS, NVIDIA_RERANK_MODEL, NVIDIA_VISION_MODEL, NVIDIA_PARSE_MODEL } from '../config/providers.js';
 import { ADDITIONAL_DOCUMENT_MODELS } from '../config/nvidiaModels.js';
+import {NEMOTRON_EMBED_MODEL, NEMOTRON_EMBED_DIMENSION} from '../../shared/embeddingTrial.js';
 
 export const evidenceRoleOptions = {
   reranker: [{ model: NVIDIA_RERANK_MODEL, label: 'Nemotron Rerank VL 1B v2' }, { model: 'off', label: 'Off — hybrid search only' }],
@@ -22,5 +23,7 @@ export function resolveEvidenceModels(input?: Partial<EvidenceModels>): Evidence
 }
 export function modelRoleCatalog() {
   return { defaults: defaultEvidenceModels, options: evidenceRoleOptions,
-    embeddings: { model: EMBED_MODEL, label: 'Gemini Embedding 2', change_requires_reindex: true } };
+    embeddings: { model: EMBED_MODEL, label: 'Gemini Embedding 2', change_requires_reindex: true,
+      trials: [{model: NEMOTRON_EMBED_MODEL, label: 'Nemotron 3 Embed 1B', dimension: NEMOTRON_EMBED_DIMENSION,
+        configured: Boolean(process.env.NVIDIA_EMBED_API_KEY || process.env.NVIDIA_API_KEY), requires_reindex: true as const}] } };
 }
