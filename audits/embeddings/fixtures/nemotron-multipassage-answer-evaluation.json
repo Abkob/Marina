@@ -1,0 +1,156 @@
+{
+  "at": "2026-10-06T21:40:44.662Z",
+  "model": "nvidia/nemotron-3-embed-1b",
+  "dimension": 2048,
+  "synthetic": true,
+  "productionMutations": 0,
+  "passages": [
+    {
+      "title": "Monday breakfast",
+      "text": "Breakfast is scheduled on Monday only, from 6:00 AM until 7:00 AM."
+    },
+    {
+      "title": "Morning prayer",
+      "text": "The 5 AM prayer on Monday lasts fifteen minutes, from 5:00 AM to 5:15 AM."
+    },
+    {
+      "title": "Algorithm exercises",
+      "text": "Leetcode practice takes place Monday and Wednesday from 5:00 AM to 7:30 AM. Prayer and breakfast overlap this practice."
+    },
+    {
+      "title": "Geometry lecture",
+      "text": "An isometry preserves distances. Rotations and reflections are examples of isometries."
+    },
+    {
+      "title": "التسجيل الجامعي",
+      "text": "يجب تسليم استمارة تحويل الساعات المعتمدة إلى مكتب التسجيل قبل يوم الخميس. لا تُرسل الاستمارة إلى المكتبة."
+    },
+    {
+      "title": "Vector freshness",
+      "text": "Editing a source marks its search vector stale. Stale passages are excluded until the current source has been embedded again."
+    },
+    {
+      "title": "Database synchronization",
+      "text": "A row lock holds the current source unchanged while its content hash and resulting embedding are committed in the same transaction."
+    },
+    {
+      "title": "Orientation manual",
+      "text": "General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. General introduction to equipment inventory and ordinary maintenance. \nThe compass verification procedure uses the reference marker SILVER ORCHID to identify the magnetic north orientation."
+    }
+  ],
+  "cases": [
+    {
+      "query": "When do I eat on the first weekday?",
+      "expected": 0,
+      "vector_top": 0,
+      "vector_expected_rank": 1,
+      "hybrid_top": 0,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 649
+    },
+    {
+      "query": "Which morning religious activity lasts a quarter of an hour?",
+      "expected": 1,
+      "vector_top": 1,
+      "vector_expected_rank": 1,
+      "hybrid_top": 1,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 540
+    },
+    {
+      "query": "Which coding exercise repeats twice a week?",
+      "expected": 2,
+      "vector_top": 2,
+      "vector_expected_rank": 1,
+      "hybrid_top": 2,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 531
+    },
+    {
+      "query": "What transformations leave metric distances unchanged?",
+      "expected": 3,
+      "vector_top": 3,
+      "vector_expected_rank": 1,
+      "hybrid_top": 3,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 538
+    },
+    {
+      "query": "أين ومتى أقدم طلب تحويل الساعات؟",
+      "expected": 4,
+      "vector_top": 4,
+      "vector_expected_rank": 1,
+      "hybrid_top": 4,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 509
+    },
+    {
+      "query": "Why is modified material missing from semantic search until reprocessing?",
+      "expected": 5,
+      "vector_top": 5,
+      "vector_expected_rank": 1,
+      "hybrid_top": 5,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 514
+    },
+    {
+      "query": "How is an in-flight source edit prevented during the vector commit?",
+      "expected": 6,
+      "vector_top": 5,
+      "vector_expected_rank": 2,
+      "hybrid_top": 5,
+      "hybrid_expected_rank": 2,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "elapsed_ms": 571
+    },
+    {
+      "answer_query": "How is an in-flight source edit prevented during the vector commit?",
+      "outcome": "delivered",
+      "answer": "A row lock holds the source unchanged while its content hash and embedding are committed in the same transaction, preventing in-flight edits during vector commit. Database synchronization",
+      "provisional_checks_pass": true,
+      "elapsed_ms": 742
+    },
+    {
+      "query": "Which reference marker is used when checking the compass?",
+      "expected": 7,
+      "vector_top": 7,
+      "vector_expected_rank": 1,
+      "hybrid_top": 7,
+      "hybrid_expected_rank": 1,
+      "vector_degraded": false,
+      "reranking": "applied",
+      "citation_correct": true,
+      "long_answer_present": true,
+      "elapsed_ms": 715
+    },
+    {
+      "answer_query": "Which reference marker is used when checking the compass?",
+      "outcome": "delivered",
+      "answer": "SILVER ORCHID\nCitation: Orientation manual",
+      "provisional_checks_pass": true,
+      "elapsed_ms": 442
+    }
+  ],
+  "long_document_windows": 3,
+  "elapsed_ms": 7449
+}
