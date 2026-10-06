@@ -9,12 +9,12 @@ describe('local chat fallback configuration', () => {
     })).toBe('');
   });
 
-  it('keeps the local default outside Vercel', () => {
-    expect(resolveLocalFallbackModel({})).toBe('qwen3:8b');
+  it('keeps local fallback disabled outside Vercel too', () => {
+    expect(resolveLocalFallbackModel({})).toBe('');
   });
 
-  it('allows local development to disable or replace the fallback', () => {
+  it('ignores stale settings for retired local chat models', () => {
     expect(resolveLocalFallbackModel({ MARINA_LOCAL_FALLBACK_MODEL: '' })).toBe('');
-    expect(resolveLocalFallbackModel({ MARINA_LOCAL_FALLBACK_MODEL: 'llama3.2:latest' })).toBe('llama3.2:latest');
+    expect(resolveLocalFallbackModel({ MARINA_LOCAL_FALLBACK_MODEL: 'llama3.2:latest' })).toBe('');
   });
 });

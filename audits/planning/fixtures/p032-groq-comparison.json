@@ -1,0 +1,2090 @@
+{
+  "version": 1,
+  "kind": "independently_reviewed_synthetic_provider_comparison",
+  "code_commit": "ba91989595c6296b0be04b9af0b26746fcc5af5a",
+  "primary_cohort": "62f02197-41a6-412b-8f37-d44718b73440",
+  "primary_source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+  "fixture_version": 12,
+  "release_qualified": false,
+  "grading": "manual_review_of_exact_public_reply_against_independent_synthetic_inputs",
+  "rows": [
+    {
+      "run_id": "851f5e86-9a88-4cb5-a261-0b1b8f8f2b49",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "greeting",
+      "created_at": "2026-10-06T09:17:45.236Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "037995a6e01c72839db9cdf29be84f80762cf7a4a942839f52b9044ba2c7d876",
+      "elapsed_ms": 2168,
+      "provider_call_count": 1,
+      "delivered": true,
+      "provider_http_status": 200,
+      "error_code": null,
+      "public_reply": "Hi! How can I help you with your time management today?",
+      "public_reply_sha256": "54771bfa63fdd384a69a4034dc57b5bb81568b172b4f77cb3e5c5a9f8290ca33",
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "not_applicable",
+        "usefulness": "pass",
+        "reason": "Complete greeting with no unsolicited tool use.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": null,
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "be26865a-ba12-448e-9aff-ea795c1c34e2",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "greeting",
+      "created_at": "2026-10-06T09:17:47.065Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "037995a6e01c72839db9cdf29be84f80762cf7a4a942839f52b9044ba2c7d876",
+      "elapsed_ms": 1712,
+      "provider_call_count": 1,
+      "delivered": true,
+      "provider_http_status": null,
+      "error_code": null,
+      "public_reply": "Hi! How can I help you today?",
+      "public_reply_sha256": "271973d4979a0bdfa021f64bf7cc98f77eeffd101b3d1fbcaaf178c4b061b62f",
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "not_applicable",
+        "usefulness": "pass",
+        "reason": "Complete greeting with no unsolicited tool use.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": null,
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "68da9373-fd87-46d6-b5f3-14c36adab562",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "C01-inclusive",
+      "created_at": "2026-10-06T09:17:58.352Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "5f6c89c8a31cc5c9cf097e633b05149f90119f01685159a3ebcda062579883e2",
+      "elapsed_ms": 11187,
+      "provider_call_count": 3,
+      "delivered": true,
+      "provider_http_status": null,
+      "error_code": null,
+      "public_reply": "The Report task and its subtasks have 60 minutes of work remaining.",
+      "public_reply_sha256": "6dbf0ab36928cf5adc09893d4e87c10fdff7c98a69fc2653442f0bfb45667e8d",
+      "automated_accepted": true,
+      "manual_review": {
+        "correctness": "pass",
+        "usefulness": "pass",
+        "reason": "Correct inclusive 60-minute total; direct answer to the factual question.",
+        "findings": []
+      },
+      "curated_review": {
+        "source": "curated_replay_annotations",
+        "reply_sha256": "6dbf0ab36928cf5adc09893d4e87c10fdff7c98a69fc2653442f0bfb45667e8d",
+        "checks": [
+          {
+            "kind": "quantity",
+            "quote": "60 minutes",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "metric": "subtree",
+            "minutes": 60
+          }
+        ],
+        "usefulness": "pass",
+        "usefulness_reason": "Correct inclusive 60-minute total; direct answer to the factual question."
+      },
+      "oracle_fixture": {
+        "id": "C01-inclusive",
+        "families": [
+          "C01"
+        ],
+        "failure_ids": [],
+        "prompt": "How much work remains on Report and its subtasks?",
+        "budget_minutes": null,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 120,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": 60,
+            "completed": true,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [],
+        "expected": {
+          "demand_minutes": 60,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 0,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 0,
+              "subtree_minutes": 0,
+              "known_subtotal": 0,
+              "unknown_count": 0,
+              "completed": true
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "06df59ae-fc05-4ab2-8e58-7e8414809933",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "C01-inclusive",
+      "created_at": "2026-10-06T09:18:01.718Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "5f6c89c8a31cc5c9cf097e633b05149f90119f01685159a3ebcda062579883e2",
+      "elapsed_ms": 3267,
+      "provider_call_count": 1,
+      "delivered": false,
+      "provider_http_status": 200,
+      "error_code": "INCOMPLETE_RESPONSE",
+      "public_reply": null,
+      "public_reply_sha256": null,
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "unavailable",
+        "usefulness": "unavailable",
+        "reason": "No delivered answer; provider/protocol outcome is recorded separately.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C01-inclusive",
+        "families": [
+          "C01"
+        ],
+        "failure_ids": [],
+        "prompt": "How much work remains on Report and its subtasks?",
+        "budget_minutes": null,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 120,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": 60,
+            "completed": true,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [],
+        "expected": {
+          "demand_minutes": 60,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 0,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 0,
+              "subtree_minutes": 0,
+              "known_subtotal": 0,
+              "unknown_count": 0,
+              "completed": true
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "248e3ae0-c184-42fe-8a3d-e5ed6060d469",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "C02-additive",
+      "created_at": "2026-10-06T09:18:02.535Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "9a70418e5542cf0cc2a96b35a81daf4412f49662dbbae4b0e706d9f03c6763e6",
+      "elapsed_ms": 710,
+      "provider_call_count": 1,
+      "delivered": false,
+      "provider_http_status": 200,
+      "error_code": "INCOMPLETE_RESPONSE",
+      "public_reply": null,
+      "public_reply_sha256": null,
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "unavailable",
+        "usefulness": "unavailable",
+        "reason": "No delivered answer; provider/protocol outcome is recorded separately.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C02-additive",
+        "families": [
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C17"
+        ],
+        "failure_ids": [],
+        "prompt": "Help me decide how to finish Report. I have only 90 minutes before the deadline. Check my task context, discuss distinct options and their tradeoffs, and leave the choice with me. Do not apply changes.",
+        "budget_minutes": 90,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "c364ee66-4353-4269-9c63-79094e6345f1",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "C02-additive",
+      "created_at": "2026-10-06T09:19:05.830Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "9a70418e5542cf0cc2a96b35a81daf4412f49662dbbae4b0e706d9f03c6763e6",
+      "elapsed_ms": 63192,
+      "provider_call_count": 6,
+      "delivered": true,
+      "provider_http_status": null,
+      "error_code": null,
+      "public_reply": "I couldn’t verify this planning advice, so I’m withholding the recommendation.\n\nCurrent recorded facts:\n- Report: 150 min estimated work remaining; 30 min separate task work.\n- Draft report: 60 min estimated work remaining; 60 min separate task work.\n- Background reading: 60 min estimated work remaining; 60 min separate task work.\n\nThese figures describe estimated remaining work, not proof of completion or calendar feasibility.",
+      "public_reply_sha256": "1eb00b802c7347310a4ba237a90071bbb97c81d7cddb888cc7e7b19cd3d849ea",
+      "automated_accepted": false,
+      "manual_review": {
+        "correctness": "pass",
+        "usefulness": "fail",
+        "reason": "Correct facts and visible withholding, but no 90-minute comparison or useful next clarification.",
+        "findings": []
+      },
+      "curated_review": {
+        "source": "curated_replay_annotations",
+        "reply_sha256": "1eb00b802c7347310a4ba237a90071bbb97c81d7cddb888cc7e7b19cd3d849ea",
+        "checks": [
+          {
+            "kind": "quantity",
+            "quote": "Report: 150 min",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "metric": "subtree",
+            "minutes": 150
+          },
+          {
+            "kind": "quantity",
+            "quote": "30 min separate task work",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "metric": "own",
+            "minutes": 30
+          },
+          {
+            "kind": "quantity",
+            "quote": "Draft report: 60 min",
+            "task_id": "f0320000-0000-4000-8000-000000000003",
+            "metric": "own",
+            "minutes": 60
+          },
+          {
+            "kind": "quantity",
+            "quote": "Background reading: 60 min",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "metric": "own",
+            "minutes": 60
+          }
+        ],
+        "usefulness": "fail",
+        "usefulness_reason": "Correct facts and visible withholding, but no 90-minute comparison or useful next clarification."
+      },
+      "oracle_fixture": {
+        "id": "C02-additive",
+        "families": [
+          "C02",
+          "C03",
+          "C04",
+          "C05",
+          "C06",
+          "C17"
+        ],
+        "failure_ids": [],
+        "prompt": "Help me decide how to finish Report. I have only 90 minutes before the deadline. Check my task context, discuss distinct options and their tradeoffs, and leave the choice with me. Do not apply changes.",
+        "budget_minutes": 90,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "a5c88a56-0089-49d8-8d01-fc1a2dcdb085",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "C08-unknown-included",
+      "created_at": "2026-10-06T09:19:26.635Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "948513a855a1df107dde042be3c5e3d877ae37d8d2ed0f83ff24359b0b2cb1bd",
+      "elapsed_ms": 20702,
+      "provider_call_count": 4,
+      "delivered": true,
+      "provider_http_status": null,
+      "error_code": null,
+      "public_reply": "The whole **Report** task currently has **60 minutes** of known remaining work (based on the subtotal of its descendants). There are also **2 unestimated subtasks** whose remaining work is unknown, so the true total could be higher.\n\nIf you devote exactly **one hour (60 minutes)** you would cover the known work, but you might still need additional time for the unestimated portions. To be safe, plan for a bit more than an hour unless you can confirm those subtasks require no extra time.",
+      "public_reply_sha256": "972857acd024eb5c11b609c929b65dd5c45fed9e9bf0e3cda9d6a6e8cfe1aea5",
+      "automated_accepted": true,
+      "manual_review": {
+        "correctness": "fail",
+        "usefulness": "fail",
+        "reason": "Calls both unknown own-work items subtasks: the unknown items are the parent Report own work and one child Background reading. Advises an unspecified extra amount without establishing the unknown effort.",
+        "findings": [
+          {
+            "quote": "2 unestimated subtasks",
+            "dimension": "facts",
+            "reason": "Only Background reading is an unestimated child; the other unknown is parent own work."
+          },
+          {
+            "quote": "plan for a bit more than an hour",
+            "dimension": "usefulness",
+            "reason": "There is no bound for the unknown work or a useful request to establish it."
+          }
+        ]
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C08-unknown-included",
+        "families": [
+          "C08"
+        ],
+        "failure_ids": [],
+        "prompt": "How much remains on the whole Report? Can I finish with one hour?",
+        "budget_minutes": 60,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 120,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": null,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [],
+        "expected": {
+          "demand_minutes": null,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": null,
+              "subtree_minutes": null,
+              "known_subtotal": 60,
+              "unknown_count": 2,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": null,
+              "subtree_minutes": null,
+              "known_subtotal": 0,
+              "unknown_count": 1,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "0f537294-d293-4cf6-9611-c3e4376b82af",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "C08-unknown-included",
+      "created_at": "2026-10-06T09:19:40.578Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "948513a855a1df107dde042be3c5e3d877ae37d8d2ed0f83ff24359b0b2cb1bd",
+      "elapsed_ms": 13835,
+      "provider_call_count": 4,
+      "delivered": true,
+      "provider_http_status": 429,
+      "error_code": null,
+      "public_reply": "I couldn’t verify this planning advice, so I’m withholding the recommendation.\n\nCurrent recorded facts:\n- Report: 60 min known; total unknown; separate task work unknown.\n- Background reading: 0 min known; total unknown; separate task work unknown.\n- Draft report: 60 min estimated work remaining; 60 min separate task work.\n\nThese figures describe estimated remaining work, not proof of completion or calendar feasibility.",
+      "public_reply_sha256": "9b439cea511bbb35014aaacfd68432e28eba52dc82049ae51b8556f46e168628",
+      "automated_accepted": false,
+      "manual_review": {
+        "correctness": "pass",
+        "usefulness": "fail",
+        "reason": "Correct unknown/known facts and visible withholding, but does not answer the one-hour question or request the missing effort estimates.",
+        "findings": []
+      },
+      "curated_review": {
+        "source": "curated_replay_annotations",
+        "reply_sha256": "9b439cea511bbb35014aaacfd68432e28eba52dc82049ae51b8556f46e168628",
+        "checks": [
+          {
+            "kind": "quantity",
+            "quote": "total unknown",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "metric": "subtree",
+            "minutes": null
+          },
+          {
+            "kind": "quantity",
+            "quote": "separate task work unknown",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "metric": "own",
+            "minutes": null
+          },
+          {
+            "kind": "quantity",
+            "quote": "Draft report: 60 min",
+            "task_id": "f0320000-0000-4000-8000-000000000003",
+            "metric": "own",
+            "minutes": 60
+          }
+        ],
+        "usefulness": "fail",
+        "usefulness_reason": "Correct unknown/known facts and visible withholding, but does not answer the one-hour question or request the missing effort estimates."
+      },
+      "oracle_fixture": {
+        "id": "C08-unknown-included",
+        "families": [
+          "C08"
+        ],
+        "failure_ids": [],
+        "prompt": "How much remains on the whole Report? Can I finish with one hour?",
+        "budget_minutes": 60,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 120,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": null,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "inclusive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [],
+        "expected": {
+          "demand_minutes": null,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": null,
+              "subtree_minutes": null,
+              "known_subtotal": 60,
+              "unknown_count": 2,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": null,
+              "subtree_minutes": null,
+              "known_subtotal": 0,
+              "unknown_count": 1,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "4b255bc9-c502-4abf-a829-cc848cc8900f",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "C05-required-reading",
+      "created_at": "2026-10-06T09:20:46.092Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "35759475807c1cd27153f247a8048e916ada04f3ec5a64cbb783551f778d81ec",
+      "elapsed_ms": 63412,
+      "provider_call_count": 5,
+      "delivered": false,
+      "provider_http_status": 429,
+      "error_code": "HTTP_429",
+      "public_reply": null,
+      "public_reply_sha256": null,
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "unavailable",
+        "usefulness": "unavailable",
+        "reason": "No delivered answer; provider/protocol outcome is recorded separately.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C05-required-reading",
+        "families": [
+          "C05",
+          "C03",
+          "C06"
+        ],
+        "failure_ids": [],
+        "prompt": "I have 90 minutes for Report. Background reading is mandatory, even though its linked resource is optional. No extension is available. Help me choose a useful next approach without pretending all the work fits.",
+        "budget_minutes": 90,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "Background reading is required before the report can be submitted.",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "required"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "0430b9c1-d768-4ae3-8bb1-d91ed09e6a3e",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "C05-required-reading",
+      "created_at": "2026-10-06T09:21:36.115Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "35759475807c1cd27153f247a8048e916ada04f3ec5a64cbb783551f778d81ec",
+      "elapsed_ms": 48940,
+      "provider_call_count": 7,
+      "delivered": true,
+      "provider_http_status": null,
+      "error_code": null,
+      "public_reply": "You have 90 minutes available and the total remaining work for the Report hierarchy is 150 minutes (Background reading 60 min + Report own work 30 min + Draft report 60 min). Because background reading is mandatory, you must allocate the full 60 minutes to it. That leaves 30 minutes for the Report’s own work (e.g., outlining the report or starting a rough draft). The Draft report task will remain deferred with about 60 minutes of known work still remaining.\n\n**Suggested next approach:**\n1. **Background reading** – spend the next 60 minutes completing the required reading.\n2. **Report own work** – use the remaining 30 minutes to create a brief outline or write the first section of the report. Treat this as a partial effort; you will need additional time later to finish the draft.\n\nThis plan respects the 90‑minute limit, covers the mandatory work, and makes clear which work is deferred (Draft report, ≈ 60 min). It does not guarantee completion of the entire report within the available time.",
+      "public_reply_sha256": "aaf0f511df5f0b5302b6a35886ab5e5fcc5c59449e206c978afaa622d7877018",
+      "automated_accepted": true,
+      "manual_review": {
+        "correctness": "fail",
+        "usefulness": "fail",
+        "reason": "Correct total and minute allocation, but invents outlining/first-section writing as parent own work despite empty task descriptions and a separately estimated Draft report task.",
+        "findings": []
+      },
+      "curated_review": {
+        "source": "curated_replay_annotations",
+        "reply_sha256": "aaf0f511df5f0b5302b6a35886ab5e5fcc5c59449e206c978afaa622d7877018",
+        "checks": [
+          {
+            "kind": "quantity",
+            "quote": "total remaining work for the Report hierarchy is 150",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "metric": "subtree",
+            "minutes": 150
+          },
+          {
+            "kind": "meaning",
+            "quote": "use the remaining 30 minutes to create a brief outline or write the first section of the report",
+            "task_id": "f0320000-0000-4000-8000-000000000001",
+            "basis": "title_only",
+            "conditional": false
+          }
+        ],
+        "usefulness": "fail",
+        "usefulness_reason": "Correct total and minute allocation, but invents outlining/first-section writing as parent own work despite empty task descriptions and a separately estimated Draft report task."
+      },
+      "oracle_fixture": {
+        "id": "C05-required-reading",
+        "families": [
+          "C05",
+          "C03",
+          "C06"
+        ],
+        "failure_ids": [],
+        "prompt": "I have 90 minutes for Report. Background reading is mandatory, even though its linked resource is optional. No extension is available. Help me choose a useful next approach without pretending all the work fits.",
+        "budget_minutes": 90,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "Background reading is required before the report can be submitted.",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "required"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "e280f536-62c5-4394-94af-a1fbafde082f",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "C11-budget-correction",
+      "created_at": "2026-10-06T09:22:13.416Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "0b9e6f9e6f7e1827ef3c063357d260f83e8e726d16e5b50a2eb448c2dee56e2a",
+      "elapsed_ms": 37228,
+      "provider_call_count": 4,
+      "delivered": false,
+      "provider_http_status": null,
+      "error_code": "APPLICATION_OR_PROTOCOL_ERROR",
+      "public_reply": null,
+      "public_reply_sha256": null,
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "unavailable",
+        "usefulness": "unavailable",
+        "reason": "No delivered answer; provider/protocol outcome is recorded separately.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C11-budget-correction",
+        "families": [
+          "C11"
+        ],
+        "failure_ids": [],
+        "prompt": "I meant 45 minutes, and the reading must remain in the scope.",
+        "budget_minutes": 45,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "required"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "539d5b51-4e8c-4003-a9f0-7b826e068c3c",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "C11-budget-correction",
+      "created_at": "2026-10-06T09:23:26.735Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "0b9e6f9e6f7e1827ef3c063357d260f83e8e726d16e5b50a2eb448c2dee56e2a",
+      "elapsed_ms": 71703,
+      "provider_call_count": 6,
+      "delivered": false,
+      "provider_http_status": 400,
+      "error_code": "HTTP_400",
+      "public_reply": null,
+      "public_reply_sha256": null,
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "unavailable",
+        "usefulness": "unavailable",
+        "reason": "No delivered answer; provider/protocol outcome is recorded separately.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C11-budget-correction",
+        "families": [
+          "C11"
+        ],
+        "failure_ids": [],
+        "prompt": "I meant 45 minutes, and the reading must remain in the scope.",
+        "budget_minutes": 45,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "required"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "ef6fb163-b935-40a2-9aca-b72285554da5",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "scenario": "C14-unread-resource",
+      "created_at": "2026-10-06T09:23:59.508Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "d3dffa6cebd9451d0d24b13b971cd440104c42d18eee4ea0c8bc191dde504f16",
+      "elapsed_ms": 4648,
+      "provider_call_count": 1,
+      "delivered": false,
+      "provider_http_status": 200,
+      "error_code": "INCOMPLETE_RESPONSE",
+      "public_reply": null,
+      "public_reply_sha256": null,
+      "automated_accepted": null,
+      "manual_review": {
+        "correctness": "unavailable",
+        "usefulness": "unavailable",
+        "reason": "No delivered answer; provider/protocol outcome is recorded separately.",
+        "findings": []
+      },
+      "curated_review": null,
+      "oracle_fixture": {
+        "id": "C14-unread-resource",
+        "families": [
+          "C14",
+          "C05",
+          "C06"
+        ],
+        "failure_ids": [],
+        "prompt": "I selected the optional Background reading reference for Report and have 90 minutes. Which required chapters or work can I cut? Its contents and assignment requirements have not been read. Do not invent requirements or silently skip a task.",
+        "budget_minutes": 90,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    },
+    {
+      "run_id": "6c66ca70-db9b-46a4-bef8-f5b18ea0cde3",
+      "cohort_id": "62f02197-41a6-412b-8f37-d44718b73440",
+      "provider": "nemotron",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "scenario": "C14-unread-resource",
+      "created_at": "2026-10-06T09:25:02.652Z",
+      "source_fingerprint": "8853a3b5ec44e750b58ae3e6a05735b93e883bdd93a25eaa590e63d1bf49dc34",
+      "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+      "prompt_fingerprint": "d3dffa6cebd9451d0d24b13b971cd440104c42d18eee4ea0c8bc191dde504f16",
+      "elapsed_ms": 40822,
+      "provider_call_count": 5,
+      "delivered": true,
+      "provider_http_status": null,
+      "error_code": null,
+      "public_reply": "You have 90 minutes available. The **Background reading** task is marked as optional (its resource role is “optional” and its requirement is “not_established_by_resource_role”), while the **Report** (30 min) and **Draft report** (60 min) tasks are required (they have no optional flag and are part of the Report hierarchy).\n\nTo fit within 90 minutes, you can cut the optional Background reading entirely (60 min). This leaves:\n- Report: 30 min\n- Draft report: 60 min\nTotal = 90 min, matching your available time.\n\nIf you prefer to keep some background reading, you would need to reduce time from the required tasks, but those are not marked optional and cutting them would risk missing assignment requirements. Therefore, the safest cut is the optional Background reading.",
+      "public_reply_sha256": "682da54aa1a06b7010ca9c5b064f16399e51e9653f1e6f78f28a099242617252",
+      "automated_accepted": true,
+      "manual_review": {
+        "correctness": "fail",
+        "usefulness": "fail",
+        "reason": "Optional resource is transferred to optional task; absent optional flags are transferred to required work, then used to justify cutting reading.",
+        "findings": []
+      },
+      "curated_review": {
+        "source": "curated_replay_annotations",
+        "reply_sha256": "682da54aa1a06b7010ca9c5b064f16399e51e9653f1e6f78f28a099242617252",
+        "checks": [
+          {
+            "kind": "quantity",
+            "quote": "You have 90 minutes",
+            "task_id": null,
+            "metric": "budget",
+            "minutes": 90
+          },
+          {
+            "kind": "scope_cut",
+            "quote": "you can cut the optional Background reading entirely",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "basis": "resource_role",
+            "conditional": false
+          }
+        ],
+        "usefulness": "fail",
+        "usefulness_reason": "Optional resource is transferred to optional task; absent optional flags are transferred to required work, then used to justify cutting reading."
+      },
+      "oracle_fixture": {
+        "id": "C14-unread-resource",
+        "families": [
+          "C14",
+          "C05",
+          "C06"
+        ],
+        "failure_ids": [],
+        "prompt": "I selected the optional Background reading reference for Report and have 90 minutes. Which required chapters or work can I cut? Its contents and assignment requirements have not been read. Do not invent requirements or silently skip a task.",
+        "budget_minutes": 90,
+        "tasks": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000001",
+            "title": "Report",
+            "description": "",
+            "parent_task_id": null,
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 30,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          },
+          {
+            "id": "f0320000-0000-4000-8000-000000000003",
+            "title": "Draft report",
+            "description": "",
+            "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+            "time_rollup_mode": "additive",
+            "estimated_minutes": 60,
+            "completed": false,
+            "requirement": "unspecified"
+          }
+        ],
+        "resources": [
+          {
+            "id": "f0320000-0000-4000-8000-000000000004",
+            "task_id": "f0320000-0000-4000-8000-000000000002",
+            "title": "Background reading",
+            "role": "optional",
+            "contents_read": false
+          }
+        ],
+        "expected": {
+          "demand_minutes": 150,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "own_minutes": 30,
+              "subtree_minutes": 150,
+              "known_subtotal": 150,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "own_minutes": 60,
+              "subtree_minutes": 60,
+              "known_subtotal": 60,
+              "unknown_count": 0,
+              "completed": false
+            }
+          ],
+          "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+        }
+      },
+      "application_writes": 0,
+      "production_data_sent": false
+    }
+  ],
+  "compact_experiment": {
+    "cohort_id": "78749dc7-9846-4ccd-beec-e2c25e4cd6fa",
+    "profile": "compact_evidence_strict_json_2500",
+    "source_fingerprint": "158ecc13d93eb11a8e9ba6ac0e0bd87f1e8d9c5547c9c3de608ed3d4ae37c292",
+    "fixture_sha256": "c9eafa6f9b8ff1a05caa20d617930f83cda6a7463d98894860e837b941e2fe93",
+    "inputs": "Independent compact synthetic arithmetic facts; no tools, reviewers or private oracle requirement labels sent.",
+    "release_qualified": false,
+    "rows": [
+      {
+        "run_id": "7a0aa1c4-f37e-4530-b4f1-48d68b00e33f",
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "scenario": "C02-additive",
+        "created_at": null,
+        "source_fingerprint": "158ecc13d93eb11a8e9ba6ac0e0bd87f1e8d9c5547c9c3de608ed3d4ae37c292",
+        "elapsed_ms": 75090,
+        "provider_call_count": 1,
+        "delivered": true,
+        "public_reply": "Current situation: 90 min available vs 150 min needed; shortfall 60 min. Report needs 30 min of own work (final touches) plus two sub‑tasks (60 min each). Options:\n\n1️⃣ **Draft‑first, skip reading** – Allocate 30 min to finalizing Report and 60 min to Draft report. Omit Background reading. Trade‑off: report may lack depth or citations; risk of missing key context but you meet deadline.\n\n2️⃣ **Read‑first, minimal draft** – Spend 60 min on Background reading, 30 min on Draft report (or quick outline), leaving Report’s 30 min for polishing later. Trade‑off: you gain better understanding and can reference sources, but the draft will be very skeletal and may need major expansion after deadline.\n\n3️⃣ **Split both sub‑tasks** – Divide the 60 min sub‑task budget: 30 min skim Background reading, 30 min draft core sections. Use the remaining 30 min for Report’s final touches. Trade‑off: you get some context and a rough draft, but both will be incomplete and will require follow‑up work after the deadline.\n\nWhat remains deferred in each case:\n- Option 1: all background research (≈60 min) and any detailed analysis.\n- Option 2: most of the report content (≈30 min of drafting) and polishing.\n- Option 3: deeper reading (≈30 min) and fleshing out the draft (≈30 min) plus any polishing beyond the 30 min allocated.\n\nChoose the option that best matches your priority (depth vs completeness) or let me know if you want a different allocation.",
+        "public_reply_sha256": "873d65f1eab47d8336b8f8bdd845f8d684cc26e963b43211260306cfa1a1800e",
+        "curated_review": {
+          "source": "curated_replay_annotations",
+          "reply_sha256": "873d65f1eab47d8336b8f8bdd845f8d684cc26e963b43211260306cfa1a1800e",
+          "checks": [
+            {
+              "kind": "meaning",
+              "quote": "own work (final touches)",
+              "task_id": "f0320000-0000-4000-8000-000000000001",
+              "basis": "title_only",
+              "conditional": false
+            },
+            {
+              "kind": "completion",
+              "quote": "but you meet deadline",
+              "task_id": "f0320000-0000-4000-8000-000000000001",
+              "scope": "subtree",
+              "basis": "estimate",
+              "guarantee": true
+            }
+          ],
+          "usefulness": "fail",
+          "usefulness_reason": "Invents parent task meaning and promises deadline/completion outcomes from estimated allocations."
+        },
+        "manual_review": {
+          "correctness": "fail",
+          "usefulness": "fail",
+          "reason": "Invents parent task meaning and promises deadline/completion outcomes from estimated allocations."
+        },
+        "oracle_fixture": {
+          "id": "C02-additive",
+          "families": [
+            "C02",
+            "C03",
+            "C04",
+            "C05",
+            "C06",
+            "C17"
+          ],
+          "failure_ids": [],
+          "prompt": "Help me decide how to finish Report. I have only 90 minutes before the deadline. Check my task context, discuss distinct options and their tradeoffs, and leave the choice with me. Do not apply changes.",
+          "budget_minutes": 90,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "title": "Report",
+              "description": "",
+              "parent_task_id": null,
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 30,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "title": "Draft report",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            }
+          ],
+          "resources": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000004",
+              "task_id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "role": "optional",
+              "contents_read": false
+            }
+          ],
+          "expected": {
+            "demand_minutes": 150,
+            "tasks": [
+              {
+                "id": "f0320000-0000-4000-8000-000000000001",
+                "own_minutes": 30,
+                "subtree_minutes": 150,
+                "known_subtotal": 150,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000002",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000003",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              }
+            ],
+            "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+          }
+        },
+        "application_writes": 0,
+        "production_data_sent": false,
+        "provider_attempts": [
+          {
+            "provider": "groq",
+            "model": "openai/gpt-oss-120b",
+            "elapsed_ms": 74911,
+            "prompt_chars": 1836,
+            "max_completion_tokens": 2500,
+            "reasoning_effort": "medium",
+            "status": 200,
+            "outcome": "completed",
+            "rate_headers": {
+              "x-ratelimit-limit-requests": "1000",
+              "x-ratelimit-limit-tokens": "8000",
+              "x-ratelimit-remaining-requests": "999",
+              "x-ratelimit-remaining-tokens": "7121",
+              "x-ratelimit-reset-requests": "1m26.4s",
+              "x-ratelimit-reset-tokens": "6.592s"
+            },
+            "finish_reason": "stop",
+            "input_tokens": 614,
+            "output_tokens": 1076,
+            "reasoning_tokens": 684,
+            "native_tool_count": 0,
+            "public_content_chars": 1468,
+            "public_response_excerpt": "{\"reply\":\"Current situation: 90 min available vs 150 min needed; shortfall 60 min. Report needs 30 min of own work (final touches) plus two sub‑tasks (60 min each). Options:\\n\\n1️⃣ **Draft‑first, skip reading** – Allocate 30 min to finalizing Report and 60 min to Draft report. Omit Background reading. Trade‑off: report may lack depth or citations; risk of missing key context but you meet deadline.\\n\\n2️⃣ **Read‑first, minimal draft** – Spend 60 min on Background reading, 30 min on Draft report (or quick outline), leaving Report’s 30 min for polishing later. Trade‑off: you gain better understanding and can reference sources, but the draft will be very skeletal and may need major expansion after deadline.\\n\\n3️⃣ **Split both sub‑tasks** – Divide the 60 min sub‑task budget: 30 min skim Background reading, 30 min draft core sections. Use the remaining 30 min for Report’s final touches. Trade‑off: you get some context and a rough draft, but both will be incomplete and will require follow‑up work after the deadline.\\n\\nWhat remains deferred in each case:\\n- Option 1: all background research (≈60 min) and any detailed analysis.\\n- Option 2: most of the report content (≈30 min of drafting) and polishing.\\n- Option 3: deeper reading (≈30 min) and fleshing out the draft (≈30 min) plus any polishing beyond the 30 min allocated.\\n\\nChoose the option that best matches your priority (depth vs completeness) or let me know if you want a different allocation.\"}"
+          }
+        ],
+        "provider_traces": []
+      },
+      {
+        "run_id": "4b5f9951-a735-463b-aaff-f9ef1655436e",
+        "provider": "nemotron",
+        "model": "nvidia/nemotron-3-super-120b-a12b",
+        "scenario": "C02-additive",
+        "created_at": null,
+        "source_fingerprint": "158ecc13d93eb11a8e9ba6ac0e0bd87f1e8d9c5547c9c3de608ed3d4ae37c292",
+        "elapsed_ms": 25736,
+        "provider_call_count": 1,
+        "delivered": true,
+        "public_reply": "You have 90 minutes available but the Report’s full remaining work (own + subtree) is 150 minutes, leaving a 60‑minute shortfall. Below are three concrete ways to allocate the time, each with its trade‑offs and what would be left undone. Choose the option that best fits your goals, or let me know if you’d like to adjust any of the splits.\n\n**Option A – Prioritize drafting the report**\n- Spend 60 min on **Draft report** (own remaining 60).\n- Spend the remaining 30 min on the Report’s own work (e.g., final formatting/editing).\n- **Result:** You’ll have a complete draft ready for review, plus the Report’s own finishing touches done. The **Background reading** (60 min) would be completely deferred, meaning you’d lack the contextual depth that the reading would provide.\n\n**Option B – Prioritize background reading**\n- Spend 60 min on **Background reading** (own remaining 60).\n- Spend the remaining 30 min on the Report’s own work.\n- **Result:** You’ll acquire the necessary background/context and finish the Report’s own work, but the **Draft report** (60 min) would be untouched, leaving you with no written content to show.\n\n**Option C – Split time across all three activities**\n- Allocate 30 min to **Background reading** (half done).\n- Allocate 30 min to **Draft report** (half done).\n- Allocate the final 30 min to the Report’s own work (completed).\n- **Result:** The Report’s own work is finished, but both reading and drafting are only partially complete (≈50 % each). You’d have a rough outline and some notes, but neither a full background section nor a full draft.\n\n**Trade‑offs summary**\n- **Depth vs. completeness:** Options A and B give you a finished piece in one area (draft or context) but leave the other area empty. Option C gives you a bit of everything but nothing fully finished.\n- **Optional nature of reading:** The evidence marks the Background reading’s resource association as *optional* and its task requirement as *not_established_by_resource_role*. If you can justify skipping the reading entirely, Option A is the most efficient path to a usable draft. If the reading is truly required for quality, you may need to negotiate more time or accept a partial draft (Option C).\n- **Deferred work:** Whatever you don’t finish in the chosen option remains as the *deferred* work (e.g., reading in A, drafting in B, or both halves in C).\n\nLet me know which option aligns best with your priorities, or if you’d like to adjust the time splits (e.g., 40 min reading / 20 min drafting / 30 min own work). I can then outline the revised trade‑offs, but I won’t make any changes without your direction.",
+        "public_reply_sha256": "bf174ab54907db13478055604c1633887537519d4a433d4f559072e51086cc67",
+        "curated_review": {
+          "source": "curated_replay_annotations",
+          "reply_sha256": "bf174ab54907db13478055604c1633887537519d4a433d4f559072e51086cc67",
+          "checks": [
+            {
+              "kind": "meaning",
+              "quote": "final formatting/editing",
+              "task_id": "f0320000-0000-4000-8000-000000000001",
+              "basis": "title_only",
+              "conditional": false
+            },
+            {
+              "kind": "completion",
+              "quote": "You’ll have a complete draft ready for review",
+              "task_id": "f0320000-0000-4000-8000-000000000003",
+              "scope": "own",
+              "basis": "estimate",
+              "guarantee": true
+            }
+          ],
+          "usefulness": "fail",
+          "usefulness_reason": "Invents parent task meaning and promises deadline/completion outcomes from estimated allocations."
+        },
+        "manual_review": {
+          "correctness": "fail",
+          "usefulness": "fail",
+          "reason": "Invents parent task meaning and promises deadline/completion outcomes from estimated allocations."
+        },
+        "oracle_fixture": {
+          "id": "C02-additive",
+          "families": [
+            "C02",
+            "C03",
+            "C04",
+            "C05",
+            "C06",
+            "C17"
+          ],
+          "failure_ids": [],
+          "prompt": "Help me decide how to finish Report. I have only 90 minutes before the deadline. Check my task context, discuss distinct options and their tradeoffs, and leave the choice with me. Do not apply changes.",
+          "budget_minutes": 90,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "title": "Report",
+              "description": "",
+              "parent_task_id": null,
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 30,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "title": "Draft report",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            }
+          ],
+          "resources": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000004",
+              "task_id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "role": "optional",
+              "contents_read": false
+            }
+          ],
+          "expected": {
+            "demand_minutes": 150,
+            "tasks": [
+              {
+                "id": "f0320000-0000-4000-8000-000000000001",
+                "own_minutes": 30,
+                "subtree_minutes": 150,
+                "known_subtotal": 150,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000002",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000003",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              }
+            ],
+            "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+          }
+        },
+        "application_writes": 0,
+        "production_data_sent": false,
+        "provider_attempts": [],
+        "provider_traces": [
+          {
+            "model": "nvidia/nemotron-3-super-120b-a12b",
+            "provider": "nvidia-cloud",
+            "duration_ms": 25562,
+            "prompt_chars": 1836,
+            "system_prompt_chars": 668,
+            "conversation_chars": 1168,
+            "continuation_chars": 0,
+            "first_response_ms": 3935,
+            "first_reasoning_ms": 4402,
+            "first_content_ms": 24743,
+            "fallback_used": false,
+            "input_tokens": 634,
+            "output_tokens": 1146,
+            "cached_input_tokens": 0
+          }
+        ]
+      },
+      {
+        "run_id": "cb38c541-4147-40e6-b609-6571e882cf9b",
+        "provider": "nemotron",
+        "model": "nvidia/nemotron-3-super-120b-a12b",
+        "scenario": "C14-unread-resource",
+        "created_at": null,
+        "source_fingerprint": "158ecc13d93eb11a8e9ba6ac0e0bd87f1e8d9c5547c9c3de608ed3d4ae37c292",
+        "elapsed_ms": 16133,
+        "provider_call_count": 1,
+        "delivered": true,
+        "public_reply": "Based on the evidence, the only work that can be reduced or omitted without violating requirements is the optional Background reading task. The Report (own remaining 30 minutes) and Draft report (own remaining 60 minutes) are required and together exactly fill your 90‑minute budget. Therefore, you can cut the entire Background reading (60 minutes) now, or defer it to a later time if you wish to keep it for later completion. No required chapters or work can be cut without inventing or skipping a task.",
+        "public_reply_sha256": "38682a7a6b6bcb2d8bb50edace5bf9fb442d6b7fb8a36e728eda4873c37c5bad",
+        "curated_review": {
+          "source": "curated_replay_annotations",
+          "reply_sha256": "38682a7a6b6bcb2d8bb50edace5bf9fb442d6b7fb8a36e728eda4873c37c5bad",
+          "checks": [
+            {
+              "kind": "scope_cut",
+              "task_id": "f0320000-0000-4000-8000-000000000002",
+              "basis": "resource_role",
+              "conditional": false,
+              "quote": "the only work that can be reduced or omitted without violating requirements is the optional Background reading task"
+            }
+          ],
+          "usefulness": "fail",
+          "usefulness_reason": "Invents required/optional task partitions from resource metadata despite explicit non-establishment."
+        },
+        "manual_review": {
+          "correctness": "fail",
+          "usefulness": "fail",
+          "reason": "Invents required/optional task partitions from resource metadata despite explicit non-establishment."
+        },
+        "oracle_fixture": {
+          "id": "C14-unread-resource",
+          "families": [
+            "C14",
+            "C05",
+            "C06"
+          ],
+          "failure_ids": [],
+          "prompt": "I selected the optional Background reading reference for Report and have 90 minutes. Which required chapters or work can I cut? Its contents and assignment requirements have not been read. Do not invent requirements or silently skip a task.",
+          "budget_minutes": 90,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "title": "Report",
+              "description": "",
+              "parent_task_id": null,
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 30,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "title": "Draft report",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            }
+          ],
+          "resources": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000004",
+              "task_id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "role": "optional",
+              "contents_read": false
+            }
+          ],
+          "expected": {
+            "demand_minutes": 150,
+            "tasks": [
+              {
+                "id": "f0320000-0000-4000-8000-000000000001",
+                "own_minutes": 30,
+                "subtree_minutes": 150,
+                "known_subtotal": 150,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000002",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000003",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              }
+            ],
+            "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+          }
+        },
+        "application_writes": 0,
+        "production_data_sent": false,
+        "provider_attempts": [],
+        "provider_traces": [
+          {
+            "model": "nvidia/nemotron-3-super-120b-a12b",
+            "provider": "nvidia-cloud",
+            "duration_ms": 16131,
+            "prompt_chars": 1875,
+            "system_prompt_chars": 668,
+            "conversation_chars": 1207,
+            "continuation_chars": 0,
+            "first_response_ms": 4662,
+            "first_reasoning_ms": 4825,
+            "first_content_ms": 16124,
+            "fallback_used": false,
+            "input_tokens": 635,
+            "output_tokens": 570,
+            "cached_input_tokens": 0
+          }
+        ]
+      },
+      {
+        "run_id": "542531d9-60d5-4122-bec0-a35490f76e61",
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "scenario": "C14-unread-resource",
+        "created_at": null,
+        "source_fingerprint": "158ecc13d93eb11a8e9ba6ac0e0bd87f1e8d9c5547c9c3de608ed3d4ae37c292",
+        "elapsed_ms": 10839,
+        "provider_call_count": 1,
+        "delivered": true,
+        "public_reply": "You have 90 minutes available and a short‑fall of 60 minutes.  The only required work is the Report itself (30 min) and the Draft report (60 min), which together exactly use your 90 minutes.  The optional Background reading (60 min) can be omitted – it is not required for the assignment.  No required chapters or tasks can be cut without risking the assignment’s core requirements; you must keep both the Report overhead (30 min) and the Draft report (60 min).",
+        "public_reply_sha256": "dcfe83a00194a5e58dc2b2aec57bffb0e84cb09c5ebe1d483e6160a1a12356ff",
+        "curated_review": {
+          "source": "curated_replay_annotations",
+          "reply_sha256": "dcfe83a00194a5e58dc2b2aec57bffb0e84cb09c5ebe1d483e6160a1a12356ff",
+          "checks": [
+            {
+              "kind": "scope_cut",
+              "task_id": "f0320000-0000-4000-8000-000000000002",
+              "basis": "resource_role",
+              "conditional": false,
+              "quote": "The optional Background reading (60 min) can be omitted"
+            }
+          ],
+          "usefulness": "fail",
+          "usefulness_reason": "Invents required/optional task partitions from resource metadata despite explicit non-establishment."
+        },
+        "manual_review": {
+          "correctness": "fail",
+          "usefulness": "fail",
+          "reason": "Invents required/optional task partitions from resource metadata despite explicit non-establishment."
+        },
+        "oracle_fixture": {
+          "id": "C14-unread-resource",
+          "families": [
+            "C14",
+            "C05",
+            "C06"
+          ],
+          "failure_ids": [],
+          "prompt": "I selected the optional Background reading reference for Report and have 90 minutes. Which required chapters or work can I cut? Its contents and assignment requirements have not been read. Do not invent requirements or silently skip a task.",
+          "budget_minutes": 90,
+          "tasks": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000001",
+              "title": "Report",
+              "description": "",
+              "parent_task_id": null,
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 30,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            },
+            {
+              "id": "f0320000-0000-4000-8000-000000000003",
+              "title": "Draft report",
+              "description": "",
+              "parent_task_id": "f0320000-0000-4000-8000-000000000001",
+              "time_rollup_mode": "additive",
+              "estimated_minutes": 60,
+              "completed": false,
+              "requirement": "unspecified"
+            }
+          ],
+          "resources": [
+            {
+              "id": "f0320000-0000-4000-8000-000000000004",
+              "task_id": "f0320000-0000-4000-8000-000000000002",
+              "title": "Background reading",
+              "role": "optional",
+              "contents_read": false
+            }
+          ],
+          "expected": {
+            "demand_minutes": 150,
+            "tasks": [
+              {
+                "id": "f0320000-0000-4000-8000-000000000001",
+                "own_minutes": 30,
+                "subtree_minutes": 150,
+                "known_subtotal": 150,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000002",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              },
+              {
+                "id": "f0320000-0000-4000-8000-000000000003",
+                "own_minutes": 60,
+                "subtree_minutes": 60,
+                "known_subtotal": 60,
+                "unknown_count": 0,
+                "completed": false
+              }
+            ],
+            "explanation": "Hand calculation of the explicitly listed own work and child relationships; no production aggregation is used to create these expected values."
+          }
+        },
+        "application_writes": 0,
+        "production_data_sent": false,
+        "provider_attempts": [
+          {
+            "provider": "groq",
+            "model": "openai/gpt-oss-120b",
+            "elapsed_ms": 10775,
+            "prompt_chars": 1875,
+            "max_completion_tokens": 2500,
+            "reasoning_effort": "medium",
+            "status": 200,
+            "outcome": "completed",
+            "rate_headers": {
+              "x-ratelimit-limit-requests": "1000",
+              "x-ratelimit-limit-tokens": "8000",
+              "x-ratelimit-remaining-requests": "998",
+              "x-ratelimit-remaining-tokens": "6309",
+              "x-ratelimit-reset-requests": "2m52.8s",
+              "x-ratelimit-reset-tokens": "12.682s"
+            },
+            "finish_reason": "stop",
+            "input_tokens": 615,
+            "output_tokens": 468,
+            "reasoning_tokens": 335,
+            "native_tool_count": 0,
+            "public_content_chars": 473,
+            "public_response_excerpt": "{\"reply\":\"You have 90 minutes available and a short‑fall of 60 minutes.  The only required work is the Report itself (30 min) and the Draft report (60 min), which together exactly use your 90 minutes.  The optional Background reading (60 min) can be omitted – it is not required for the assignment.  No required chapters or tasks can be cut without risking the assignment’s core requirements; you must keep both the Report overhead (30 min) and the Draft report (60 min).\"}"
+          }
+        ],
+        "provider_traces": []
+      }
+    ]
+  },
+  "additional_failure": {
+    "run_id": "8c216a58-f190-4a8d-bed8-6afab50660c7",
+    "cohort_id": "cbdb105d-a1e7-4499-801f-cb49d352f197",
+    "source_fingerprint": "20f40f1790829967ef3667007078ebb854ad75cac4b68715ff9995c61e2dcaf1",
+    "model": "nvidia/nemotron-3-super-120b-a12b",
+    "public_reply": "**Current situation**\n- Total remaining work for the Report hierarchy: **150 minutes** (30 min for the parent *Report* + 60 min each for *Background reading* and *Draft report*).\n- You have **90 minutes** before the deadline, leaving a shortfall of **60 minutes** that will remain undone regardless of how you allocate time.\n\n**Possible allocations (based on your 90‑minute budget)**\n\n1. **Focus on parent report editing**\n   - *Report*: 30 min → fully completed (estimate covered).\n   - *Background reading*: 30 min → 50 % of its estimate covered, 30 min deferred.\n   - *Draft report*: 30 min → 50 % of its estimate covered, 30 min deferred.\n   - **Trade‑off**: You finish the core editing task, but make only modest progress on both background gathering and drafting. Good if the parent task is the critical deliverable.\n\n2. **Prioritize background reading**\n   - *Report*: 30 min → fully completed.\n   - *Background reading*: 60 min → fully completed.\n   - *Draft report*: 0 min → 0 % covered, 60 min deferred.\n   - **Trade‑off**: You gather all needed background and finish the parent edit, but you leave the drafting untouched. Choose this if having solid source material is more important than having a draft.\n\n3. **Prioritize drafting**\n   - *Report*: 30 min → fully completed.\n   - *Background reading*: 0 min → 0 % covered, 60 min deferred.\n   - *Draft report*: 60 min → fully completed.\n   - **Trade‑off**: You produce a complete draft and finish the parent edit, but you have no background research done. Suitable if you already know the material well enough to write without additional reading.\n\n4. **Split time evenly between the two child tasks**\n   - *Report*: 30 min → fully completed.\n   - *Background reading*: 45 min → 75 % covered, 15 min deferred.\n   - *Draft report*: 15 min → 25 % covered, 45 min deferred.\n   - **Trade‑off**: You make progress on both children, finishing neither completely but advancing each. This option spreads effort and may be useful if you want some background and some draft to show.\n\n**What each option leaves undone (known work deferred)**\n- All options defer **60 minutes** of work (the shortfall). The specific tasks that remain depend on the allocation, as shown above.\n\n**Next step**\nReview the trade‑offs above and decide which mix of finished vs. partially‑done work best fits your goals for the Report. No changes will be made until you confirm your choice.\n\nLet me know which option you’d like to proceed with, or if you’d like to adjust the allocations further.",
+    "public_reply_sha256": "1ecb557f0c85a849d48e06ae51e888d549635df2609602dd4a1816f54dc59c62",
+    "automated_accepted": true,
+    "manual_review": {
+      "correctness": "fail",
+      "usefulness": "fail",
+      "reason": "Invented parent purpose, estimate/completion conflation and an uneven child split labelled even."
+    }
+  }
+}

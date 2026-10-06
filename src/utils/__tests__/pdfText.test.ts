@@ -11,7 +11,10 @@ describe('serverless PDF extraction', () => {
   it('renders a real PDF page with the embedded serverless worker', async () => {
     const result = await renderPdfPage(new Uint8Array(textPdf('Visual evidence')), 1);
     expect(result.total).toBe(1); expect(result.dataUrl).toMatch(/^data:image\/png;base64,/);
-  });
+  // Native worker/canvas cold startup exceeded the generic five-second test
+  // default in two complete-suite runs, while isolated rendering took <700ms.
+  // Keep a bounded real-render check instead of skipping it or mocking the worker.
+  }, 15_000);
   it.each([0, -1, 1.5])('rejects invalid physical page %s', async page => {
     await expect(renderPdfPage(new Uint8Array(textPdf()), page)).rejects.toThrow('positive');
   });

@@ -1,3 +1,4 @@
+import {savedNemotronModel} from '../../server/config/nemotronChat';
 import { buildWorkHierarchy, type HierarchyTask } from '../../shared/workHierarchy';
 import { accountWork } from '../../shared/workAccounting';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -128,12 +129,12 @@ function fmtMins(mins: number): string {
 }
 
 function modelLabel(model: string) {
-  if (model === 'moonshotai/kimi-k3') return 'Kimi K3 · preview';
+
   if (model.includes('nemotron-3-ultra')) return 'Nemotron 3 Ultra';
   if (model.includes('nemotron-3-super')) return 'Nemotron 3 Super';
   if (model.includes('nemotron-3.5-lightning')) return 'Nemotron 3.5 Lightning';
   if (model.includes('nemotron')) return 'Nemotron';
-  if (model.includes('deepseek')) return 'DeepSeek';
+
   return model === 'AI model' ? 'Connecting…' : model;
 }
 
@@ -942,7 +943,7 @@ export function CopilotView() {
             fallback: [nvidiaFallback, localFallback].filter(Boolean).join(' → ') || null,
             options: health.models?.available ?? [],
           });
-          setSelectedModel(current => current || health.models?.primary?.model || '');
+          setSelectedModel(current => health.models?.available?.some(option=>option.model===current) ? current : health.models?.primary?.model || '');
         })
         .catch(() => {});
     };
@@ -1050,7 +1051,7 @@ export function CopilotView() {
       setAttachment(null);
       setResourceSelection(restoredSelection);
       const lastModelChoice = [...msgs].reverse().find(message => message.role === 'assistant' && message.metadata)?.metadata;
-      if (lastModelChoice?.model) setSelectedModel(lastModelChoice.model);
+      if (lastModelChoice?.model) setSelectedModel(savedNemotronModel(lastModelChoice.model, modelConfig.primary));
       setEvidenceModels(lastModelChoice?.evidence_models ?? {});
       followLatestRef.current = true;
       // Restore action cards from persisted metadata; card status reflects the
@@ -1076,7 +1077,7 @@ export function CopilotView() {
       })));
       setPanel(null);
     } catch { /* ignore */ }
-  }, [setActiveSessionId, setMessages, setAttachment]);
+  }, [setActiveSessionId, setMessages, setAttachment, modelConfig.primary]);
 
   useEffect(() => {
     if (activeSessionId && messages.length === 0 && !isLoading) void loadSession(activeSessionId);

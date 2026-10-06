@@ -1,3 +1,4 @@
+import {isNemotronChatModel} from '../server/config/nemotronChat.js';
 import 'dotenv/config';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
@@ -40,9 +41,7 @@ if (process.argv.includes('--env')) {
   }
 
   const primaryModel = value('MARINA_MAIN_MODEL');
-  const cloudModelOk = primaryModel.startsWith('gemini-')
-    ? Boolean(value('GEMINI_API_KEY'))
-    : Boolean(value('NVIDIA_API_KEY')) && primaryModel.includes('/');
+  const cloudModelOk = isNemotronChatModel(primaryModel) && Boolean(value('NVIDIA_API_KEY'));
   add('Cloud AI model', cloudModelOk, 'Vercel cannot reach a laptop-only Ollama instance');
 }
 

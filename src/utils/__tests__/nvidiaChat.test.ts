@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const fetchMock = vi.fn();
 import { KIMI_MODEL, MUSE_MODEL, nvidiaKeyForModel, prepareNvidiaMessages } from '../../../server/config/nvidiaModels.js';
+import {NEMOTRON_SUPER_MODEL} from '../../../server/config/nemotronChat.js';
 import { evidenceModelsSchema } from '../../../server/services/copilotModelRoles.js';
 beforeEach(() => { vi.resetModules(); fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock); vi.stubEnv('VERCEL', '1'); vi.stubEnv('NVIDIA_API_KEY', 'general-test'); vi.stubEnv('NVIDIA_KIMI_API_KEY', 'kimi-test'); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -19,19 +20,6 @@ describe('NVIDIA model contracts', () => {
     vi.stubEnv('NVIDIA_KIMI_API_KEY', ''); expect(nvidiaKeyForModel(KIMI_MODEL)).toBe('general-test');
     vi.stubEnv('NVIDIA_API_KEY', ''); expect(nvidiaKeyForModel(MUSE_MODEL)).toBe('');
   });
-  it('uses Kimi sampling and returns private state only to the continuation callback', async () => {
-    fetchMock.mockResolvedValue(stream());
-    const { chat } = await import('../../../server/ollama.js');
-    const onAssistantMessage = vi.fn(), onTrace = vi.fn();
-    const result = await chat([{ role: 'user', content: 'subtract' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage, onTrace });
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer kimi-test');
-    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(request).toMatchObject({ model: KIMI_MODEL, temperature: 1, reasoning_effort: 'low' });
-    expect(request).not.toHaveProperty('top_p');
-    expect(request).not.toHaveProperty('chat_template_kwargs');
-    expect(onAssistantMessage).toHaveBeenCalledWith({ role: 'assistant', content: result, reasoning_content: 'ephemeral-private-state' });
-    expect(result + JSON.stringify(onTrace.mock.calls)).not.toContain('ephemeral-private-state');
-  });
   it('keeps Muse out of chat until it passes the tool-loop contract', async () => {
     const { resolveChatModel } = await import('../../../server/ollama.js');
     expect(() => resolveChatModel(MUSE_MODEL)).toThrow('Unsupported chat model');
@@ -40,20 +28,14 @@ describe('NVIDIA model contracts', () => {
   it('rejects a truncated response instead of accepting a partial answer', async () => {
     fetchMock.mockResolvedValue(stream('length'));
     const { chat } = await import('../../../server/ollama.js'); const callback = vi.fn();
-    await expect(chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage: callback })).rejects.toThrow('response limit');
+    await expect(chat([{ role: 'user', content: 'q' }], { model: NEMOTRON_SUPER_MODEL, allowFallback: false, onAssistantMessage: callback })).rejects.toThrow('response limit');
     expect(callback).not.toHaveBeenCalled();
   });
   it('marks an empty reasoning-only stream as a retryable provider failure, never an answer', async () => {
     fetchMock.mockResolvedValue(stream('stop', ''));
     const { chat } = await import('../../../server/ollama.js'); const callback = vi.fn();
-    await expect(chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage: callback })).rejects.toMatchObject({ status: 502, code: 'NVIDIA_EMPTY_RESPONSE' });
+    await expect(chat([{ role: 'user', content: 'q' }], { model: NEMOTRON_SUPER_MODEL, allowFallback: false, onAssistantMessage: callback })).rejects.toMatchObject({ status: 502, code: 'NVIDIA_EMPTY_RESPONSE' });
     expect(callback).not.toHaveBeenCalled();
-  });
-  it('supports a dedicated Kimi key without a general NVIDIA key', async () => {
-    vi.stubEnv('NVIDIA_API_KEY', ''); fetchMock.mockResolvedValue(stream());
-    const { chat, validateChatModels } = await import('../../../server/ollama.js');
-    expect((await validateChatModels()).available.find(row => row.model === KIMI_MODEL)?.status).toBe('cloud');
-    expect(await chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false })).toContain('20');
   });
   it('aborts a stalled body at the deadline without returning partial text or provider state', async () => {
     vi.stubEnv('MARINA_NVIDIA_TIMEOUT_MS', '1000');
@@ -66,31 +48,12 @@ describe('NVIDIA model contracts', () => {
       } }), { headers: { 'Content-Type': 'text/event-stream' } });
     });
     const { chat } = await import('../../../server/ollama.js'); const onAssistantMessage = vi.fn(), onTrace = vi.fn();
-    await expect(chat([{ role: 'user', content: 'q' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage, onTrace })).rejects.toMatchObject({ code: 'NVIDIA_TIMEOUT', retryable: false });
+    await expect(chat([{ role: 'user', content: 'q' }], { model: NEMOTRON_SUPER_MODEL, allowFallback: false, onAssistantMessage, onTrace })).rejects.toMatchObject({ code: 'NVIDIA_TIMEOUT', retryable: false });
     expect(requestSignal?.aborted).toBe(true); expect(fetchMock).toHaveBeenCalledOnce();
     expect(onAssistantMessage).not.toHaveBeenCalled();
     expect(onTrace).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error', error_code: 'NVIDIA_TIMEOUT' }));
     expect(JSON.stringify(onTrace.mock.calls)).not.toContain('partial');
     expect(JSON.stringify(onTrace.mock.calls)).not.toContain('private');
-  });
-  it('sends preserved Kimi continuation unchanged in the next request', async () => {
-    fetchMock.mockImplementation(async () => stream());
-    const { chat } = await import('../../../server/ollama.js');
-    let assistant;
-    await chat([{ role: 'user', content: 'first' }], { model: KIMI_MODEL, allowFallback: false, onAssistantMessage: message => { assistant = message; } });
-    await chat([{ role: 'user', content: 'first' }, assistant, { role: 'user', content: 'tool result' }], { model: KIMI_MODEL, allowFallback: false });
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).messages[1]).toEqual(assistant);
-    expect(assistant.reasoning_content).toBe('ephemeral-private-state');
-  });
-  it('measures the converted wire prompt and counts private continuation separately', async () => {
-    fetchMock.mockResolvedValue(stream());
-    const { chat } = await import('../../../server/ollama.js');
-    const onTrace = vi.fn();
-    await chat([{ role: 'system', content: 'policy' }, { role: 'user', content: 'old question' }, { role: 'assistant', content: 'old answer' }, { role: 'user', content: 'current question' }, { role: 'assistant', content: 'tool call', reasoning_content: 'private-state' }, { role: 'user', content: 'synthetic observation' }], { model: KIMI_MODEL, allowFallback: false, onTrace });
-    const sent = JSON.parse(fetchMock.mock.calls[0][1].body).messages as Array<{ role: string; content: string }>;
-    const actualChars = sent.reduce((sum, message) => sum + message.content.length, 0);
-    expect(onTrace).toHaveBeenCalledWith(expect.objectContaining({ prompt_chars: actualChars, system_prompt_chars: 6, conversation_chars: actualChars - 6, continuation_chars: 13, first_response_ms: expect.any(Number), first_content_ms: expect.any(Number), first_reasoning_ms: expect.any(Number) }));
-    expect(JSON.stringify(onTrace.mock.calls)).not.toContain('private-state');
   });
   it('converts stored assistant history without inventing provider state, retaining current continuation', () => {
     const current = { role: 'assistant', content: '{"tool_calls":[]}', reasoning_content: 'state' };

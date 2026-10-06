@@ -3,22 +3,18 @@
  * All modules that need chat model names, embedding model names, or provider
  * mode must import from here — never read process.env directly for these values.
  *
- * Provider modes:
- *   local   — Ollama chat; embeddings still require Gemini (no local embedding
- *             implementation exists — see getProviderSummary)
- *   hybrid  — Ollama chat + Gemini embeddings (default; requires GEMINI_API_KEY)
- *   cloud   — cloud chat + cloud embeddings (requires explicit opt-in)
- *
- * The PROVIDER_MODE env var is set at startup and validated here.
+ * Chat is restricted to NVIDIA Nemotron. The legacy mode setting describes
+ * resource processing preferences; Gemini embeddings remain a separate role.
  */
 
-import { KIMI_MODEL, nvidiaKeyForModel } from './nvidiaModels.js';
+import { nvidiaKeyForModel } from './nvidiaModels.js';
+import {NEMOTRON_CHAT_MODELS,NEMOTRON_ULTRA_MODEL,NEMOTRON_LIGHTNING_MODEL,configuredNemotronModel,isNemotronChatModel} from './nemotronChat.js';
 export type ProviderMode = 'local' | 'hybrid' | 'cloud';
 
 function resolveMode(): ProviderMode {
   const raw = process.env.PROVIDER_MODE?.toLowerCase();
   if (raw === 'local' || raw === 'hybrid' || raw === 'cloud') return raw;
-  // Default: hybrid (Ollama chat + Gemini embeddings) when GEMINI_API_KEY is present
+  // Preserve the resource-processing mode when GEMINI_API_KEY is present.
   if (!process.env.GEMINI_API_KEY) return 'local';
   return 'hybrid';
 }
@@ -28,30 +24,23 @@ export const PROVIDER_MODE: ProviderMode = resolveMode();
 // ─── Chat provider ─────────────────────────────────────────────────────────────
 
 export const CHAT_HOST = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
-export const CHAT_MODEL_PRIMARY = process.env.MARINA_MAIN_MODEL ?? process.env.OLLAMA_MODEL
-  ?? process.env.MARINA_NVIDIA_NEMOTRON_MODEL ?? 'nvidia/nemotron-3-super-120b-a12b';
+export const CHAT_MODEL_PRIMARY = configuredNemotronModel(process.env.MARINA_MAIN_MODEL ?? process.env.MARINA_NVIDIA_NEMOTRON_MODEL);
 
 export function resolveLocalFallbackModel(
   env: Partial<Pick<NodeJS.ProcessEnv, 'VERCEL' | 'MARINA_LOCAL_FALLBACK_MODEL'>> = process.env,
 ): string {
-  // Vercel functions cannot reach a developer-machine Ollama daemon. Keeping a
-  // local fallback there only delays the real cloud error and produces a
-  // misleading qwen3 message, so cloud deployments deliberately have none.
-  if (env.VERCEL === '1') return '';
-  return env.MARINA_LOCAL_FALLBACK_MODEL ?? 'qwen3:8b';
+  // Chat is Nemotron-only in every environment; stale local settings cannot reopen another provider.
+  return '';
 }
 
 export const CHAT_MODEL_FALLBACK = resolveLocalFallbackModel();
 export const NVIDIA_API_BASE = process.env.NVIDIA_API_BASE ?? 'https://integrate.api.nvidia.com/v1';
-export const NVIDIA_NEMOTRON_MODEL = process.env.MARINA_NVIDIA_NEMOTRON_MODEL
-  ?? 'nvidia/nemotron-3-super-120b-a12b';
-export const NVIDIA_ULTRA_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b';
-export const NVIDIA_LIGHTNING_MODEL = 'nvidia/nemotron-3.5-lightning-30b-a3b';
+export const NVIDIA_NEMOTRON_MODEL = configuredNemotronModel(process.env.MARINA_NVIDIA_NEMOTRON_MODEL);
+export const NVIDIA_ULTRA_MODEL = NEMOTRON_ULTRA_MODEL;
+export const NVIDIA_LIGHTNING_MODEL = NEMOTRON_LIGHTNING_MODEL;
 export const NVIDIA_PARSE_MODEL = 'nvidia/nemotron-parse-2.0';
-export const NVIDIA_DEEPSEEK_MODEL = process.env.MARINA_NVIDIA_DEEPSEEK_MODEL
-  ?? 'deepseek-ai/deepseek-v4-pro';
-export const NVIDIA_FALLBACK_MODEL = process.env.MARINA_NVIDIA_FALLBACK_MODEL
-  ?? NVIDIA_DEEPSEEK_MODEL;
+export const NVIDIA_FALLBACK_MODEL = isNemotronChatModel(process.env.MARINA_NVIDIA_FALLBACK_MODEL??'')
+  ? process.env.MARINA_NVIDIA_FALLBACK_MODEL! : '';
 // Separate evidence specialists; never mix their outputs into the Gemini vector column.
 export const NVIDIA_RERANK_MODEL = process.env.MARINA_NVIDIA_RERANK_MODEL
   ?? 'nvidia/llama-nemotron-rerank-vl-1b-v2';
@@ -66,48 +55,34 @@ export const NVIDIA_OCR_MODELS = {
 };
 export const NVIDIA_OCR_MODEL = 'nvidia/nemotron-ocr-v2';
 
+/** Explicit optional source-check model; never a fallback for the selected writer. */
+export const PLANNING_GROUNDING_MODEL=isNemotronChatModel(process.env.MARINA_PLANNING_GROUNDING_MODEL??'')
+  ? process.env.MARINA_PLANNING_GROUNDING_MODEL! : null;
+
 /** NVIDIA Build models that can be selected for an individual Copilot turn. */
-export const NVIDIA_CHAT_MODELS = [...new Set([
-  NVIDIA_NEMOTRON_MODEL,
-  NVIDIA_ULTRA_MODEL,
-  NVIDIA_LIGHTNING_MODEL,
-  NVIDIA_DEEPSEEK_MODEL,
-  NVIDIA_FALLBACK_MODEL,
-  // Kimi is an explicitly requested preview. Muse remains a document specialist:
-  // live evaluations did not meet the Copilot tool-loop JSON contract reliably.
-  KIMI_MODEL,
-])];
+export const NVIDIA_CHAT_MODELS: string[] = [...NEMOTRON_CHAT_MODELS];
 
 export function isNvidiaChatModel(model: string): boolean {
   return NVIDIA_CHAT_MODELS.includes(model);
 }
 
-export const SELECTABLE_CHAT_MODELS = [...new Set([
-  CHAT_MODEL_PRIMARY,
-  ...NVIDIA_CHAT_MODELS,
-])];
+export const SELECTABLE_CHAT_MODELS = [...NVIDIA_CHAT_MODELS];
 
 export function isSelectableChatModel(model: string): boolean {
   return SELECTABLE_CHAT_MODELS.includes(model);
 }
 
-// An Ollama model with the ':cloud' tag executes on Ollama's cloud service —
-// prompts leave this machine even though the API endpoint is localhost.
+// Every selectable chat model executes on NVIDIA's cloud.
 export function isCloudChatModel(model: string): boolean {
-  return model.startsWith('gemini-')
-    || isNvidiaChatModel(model)
-    || model.endsWith(':cloud')
-    || model.endsWith('-cloud');
+  return isNvidiaChatModel(model);
 }
 
-export const LOCAL_CHAT_ENABLED = [
-  CHAT_MODEL_PRIMARY,
-  CHAT_MODEL_FALLBACK,
-  ...SELECTABLE_CHAT_MODELS,
-].some(model => Boolean(model) && !isCloudChatModel(model));
+export const LOCAL_CHAT_ENABLED = false;
 
 // Bounded chat request wait — callers must not hang forever on a wedged model.
 export const CHAT_TIMEOUT_MS = Number(process.env.MARINA_CHAT_TIMEOUT_MS ?? 180_000);
+/** Split source grounding is opt-in until its live usefulness cohort is qualified. */
+export const PLANNING_REVIEW_MODE=process.env.MARINA_PLANNING_REVIEW_MODE==='split'?'split':'combined';
 
 // ─── Embedding provider ────────────────────────────────────────────────────────
 
@@ -124,19 +99,16 @@ export function getProviderSummary() {
   return {
     mode: PROVIDER_MODE,
     chat: {
-      provider: CHAT_MODEL_PRIMARY.startsWith('gemini-')
-        ? 'gemini'
-        : isNvidiaChatModel(CHAT_MODEL_PRIMARY)
-          ? 'nvidia'
-          : 'ollama',
+      provider: 'nvidia',
       model: CHAT_MODEL_PRIMARY,
-      // ':cloud' models run on Ollama's cloud — chat prompts leave this machine
+      // Nemotron chat prompts execute on NVIDIA's cloud.
       model_is_cloud: isCloudChatModel(CHAT_MODEL_PRIMARY),
       fallback: CHAT_MODEL_FALLBACK || null,
       fallback_is_cloud: CHAT_MODEL_FALLBACK ? isCloudChatModel(CHAT_MODEL_FALLBACK) : null,
       nvidia_fallback: NVIDIA_FALLBACK_MODEL,
-      nvidia_fallback_configured: Boolean(nvidiaKeyForModel(NVIDIA_FALLBACK_MODEL)),
+      nvidia_fallback_configured: Boolean(NVIDIA_FALLBACK_MODEL && nvidiaKeyForModel(NVIDIA_FALLBACK_MODEL)),
       host: LOCAL_CHAT_ENABLED ? CHAT_HOST : null,
+      planning_review:{mode:PLANNING_REVIEW_MODE,grounding_model:PLANNING_GROUNDING_MODEL,quality:'not_qualified'},
     },
     embeddings: {
       // There is no local embedding implementation — embeddings always go to

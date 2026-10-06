@@ -1,3 +1,4 @@
+import {savedNemotronModel} from '../config/nemotronChat.js';
 import { hierarchyDependencies } from '../../shared/hierarchyDependencies.js';
 import { buildWorkHierarchy } from '../../shared/workHierarchy.js';
 import { accountWork, loadWorkAccounting, workColumns } from '../services/workAccounting.js';
@@ -2579,7 +2580,7 @@ router.post('/sessions/:id/chat', rateLimit(60, 60_000, 'ai-session-chat'), asyn
   if (!sessionRows.length) return res.status(404).json({ error: 'Session not found' });
   let selectedModel: string;
   try {
-    selectedModel = resolveChatModel(model ?? sessionRows[0].model);
+    selectedModel = model ? resolveChatModel(model) : savedNemotronModel(sessionRows[0].model,CHAT_MODEL);
   } catch (error) {
     return res.status(400).json({ error: String((error as Error).message), available_models: CHAT_MODEL_OPTIONS });
   }

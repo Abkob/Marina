@@ -1,20 +1,15 @@
-import { Ollama } from 'ollama';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import type OpenAI from 'openai';
 import { NvidiaError, nvidiaResponse, readNvidiaChat, nvidiaTimeout, type NvidiaTiming } from './services/nvidiaTransport.js';
 import type { ChatCallTrace } from '../src/types/copilotRuntime.js';
 export type { ChatCallTrace } from '../src/types/copilotRuntime.js';
-import { KIMI_MODEL, supportsDocumentModel, documentModelParameters, nvidiaKeyForModel, prepareNvidiaMessages } from './config/nvidiaModels.js';
+import { nvidiaKeyForModel, prepareNvidiaMessages } from './config/nvidiaModels.js';
 import {
-  CHAT_HOST,
   CHAT_MODEL_PRIMARY,
   CHAT_MODEL_FALLBACK,
   CHAT_TIMEOUT_MS,
   NVIDIA_API_BASE,
   NVIDIA_FALLBACK_MODEL,
-  LOCAL_CHAT_ENABLED,
   SELECTABLE_CHAT_MODELS,
-  isCloudChatModel,
   isNvidiaChatModel,
   isSelectableChatModel,
 } from './config/providers.js';
@@ -30,11 +25,6 @@ export function resolveChatModel(model?: string | null): string {
   if (!isSelectableChatModel(model)) throw new Error(`Unsupported chat model: ${model}`);
   return model;
 }
-
-export const ollama = new Ollama({ host: CHAT_HOST });
-const gemini = process.env.GEMINI_API_KEY
-  ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
-  : null;
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -63,37 +53,12 @@ export interface ChatOptions {
 
 export type ModelStatus = 'available' | 'cloud' | 'missing' | 'unknown';
 
-// Cache the installed-model list briefly so health checks and per-request
-// fallback guards don't hammer the Ollama API.
-let modelListCache: { names: string[]; fetchedAt: number } | null = null;
-const MODEL_LIST_TTL_MS = 60_000;
-
-async function listInstalledModels(): Promise<string[]> {
-  if (modelListCache && Date.now() - modelListCache.fetchedAt < MODEL_LIST_TTL_MS) {
-    return modelListCache.names;
-  }
-  const list = await ollama.list();
-  const names = list.models.map(m => m.name);
-  modelListCache = { names, fetchedAt: Date.now() };
-  return names;
-}
-
-function classifyModel(model: string, installed: string[]): ModelStatus {
-  // A cloud manifest can appear in `ollama list` after first use, but its
-  // inference still happens remotely. Preserve that distinction in readiness
-  // and privacy indicators instead of reporting it as locally available.
-  if (model.startsWith('gemini-')) return gemini ? 'cloud' : 'missing';
-  if (isNvidiaChatModel(model)) return nvidiaKeyForModel(model) ? 'cloud' : 'missing';
-  if (isCloudChatModel(model)) return 'cloud';
-  // Exact match, or match ignoring the ':latest' suffix convention
-  if (installed.some(n => n === model || n === `${model}:latest` || `${n}:latest` === model)) {
-    return 'available';
-  }
-  return 'missing';
+function classifyModel(model: string, _installed: string[]): ModelStatus {
+  return nvidiaKeyForModel(model) ? 'cloud' : 'missing';
 }
 
 /**
- * Validates the configured chat models against what Ollama actually has.
+ * Reports credential readiness for the configured Nemotron chat models.
  * Used by readiness endpoints so a configured-but-missing model is surfaced
  * instead of failing silently at chat time.
  */
@@ -102,12 +67,12 @@ export async function validateChatModels(): Promise<{
   primary: { model: string; status: ModelStatus };
   nvidia_fallback: { model: string; status: ModelStatus };
   fallback: { model: string; status: ModelStatus } | null;
-  available: Array<{ model: string; provider: 'gemini' | 'nvidia' | 'ollama'; status: ModelStatus }>;
+  available: Array<{ model: string; provider: 'nvidia'; status: ModelStatus }>;
   installed: string[];
   error?: string;
 }> {
   try {
-    const installed = LOCAL_CHAT_ENABLED ? await listInstalledModels() : [];
+    const installed: string[] = [];
     return {
       reachable: true,
       primary: { model: CHAT_MODEL, status: classifyModel(CHAT_MODEL, installed) },
@@ -117,9 +82,7 @@ export async function validateChatModels(): Promise<{
         : null,
       available: CHAT_MODEL_OPTIONS.map(model => ({
         model,
-        provider: model.startsWith('gemini-') ? 'gemini' as const
-          : isNvidiaChatModel(model) ? 'nvidia' as const
-            : 'ollama' as const,
+        provider: 'nvidia' as const,
         status: classifyModel(model, installed),
       })),
       installed,
@@ -132,9 +95,7 @@ export async function validateChatModels(): Promise<{
       fallback: FALLBACK_MODEL ? { model: FALLBACK_MODEL, status: 'unknown' } : null,
       available: CHAT_MODEL_OPTIONS.map(model => ({
         model,
-        provider: model.startsWith('gemini-') ? 'gemini' as const
-          : isNvidiaChatModel(model) ? 'nvidia' as const
-            : 'ollama' as const,
+        provider: 'nvidia' as const,
         status: isNvidiaChatModel(model) && nvidiaKeyForModel(model) ? 'cloud' as const : 'unknown' as const,
       })),
       installed: [],
@@ -226,9 +187,7 @@ async function chatOnce(
       // Extended reasoning is useful for the substantive 8K-token Copilot
       // answer, but it makes tiny routing/JSON calls slow and can consume their
       // entire output allowance before the model emits the required JSON.
-      const thinkingEnabled = (opts.thinking ?? (isNemotron3
-        ? process.env.MARINA_NVIDIA_THINKING === 'true'
-        : process.env.MARINA_DEEPSEEK_THINKING === 'true'))
+      const thinkingEnabled = (opts.thinking ?? (process.env.MARINA_NVIDIA_THINKING === 'true'))
         && maxTokens > 1_024;
       const configuredReasoningBudget = Number(process.env.MARINA_NVIDIA_REASONING_BUDGET ?? 4_096);
       // NVIDIA counts reasoning against the generated-token allowance. Always
@@ -247,9 +206,7 @@ async function chatOnce(
         ...(opts.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
         stream: true,
         stream_options: { include_usage: true },
-        ...(supportsDocumentModel(model) ? documentModelParameters(model) : { chat_template_kwargs: isNemotron3
-          ? { enable_thinking: thinkingEnabled }
-          : { thinking: thinkingEnabled } }),
+        chat_template_kwargs: { enable_thinking: thinkingEnabled },
         ...(isNemotron3 && thinkingEnabled ? { reasoning_budget: reasoningBudget } : {}),
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming & {
         chat_template_kwargs?: {
@@ -258,16 +215,13 @@ async function chatOnce(
         };
         reasoning_budget?: number;
       };
-      // Kimi's hosted contract fixes the remaining sampling parameters.
-      if (model === KIMI_MODEL) delete request.top_p;
       const streamedResult = (async () => {
         const response = await nvidiaResponse(`${NVIDIA_API_BASE.replace(/\/$/, '')}/chat/completions`, request, apiKey, abortController!.signal, model, timing);
         return readNvidiaChat(response, abortController!, model, timing);
       })();
-      const { content, reasoningChars, usage, continuationReasoning } = await Promise.race([streamedResult, timeout]);
+      const { content, reasoningChars, usage } = await Promise.race([streamedResult, timeout]);
       const text = content.trim();
-      opts.onAssistantMessage?.({ role: 'assistant', content,
-        ...(model === KIMI_MODEL ? { reasoning_content: continuationReasoning } : {}) });
+      opts.onAssistantMessage?.({ role: 'assistant', content });
       const durationMs = Date.now() - startedAt;
       opts.onTrace?.({
         model,
@@ -287,77 +241,7 @@ async function chatOnce(
       return text;
     }
 
-    if (model.startsWith('gemini-')) {
-      if (!gemini) throw new Error('GEMINI_API_KEY is required for Gemini chat');
-      const systemInstruction = messages
-        .filter(message => message.role === 'system')
-        .map(message => message.content)
-        .join('\n\n');
-      const contents = messages
-        .filter(message => message.role !== 'system')
-        .map(message => ({
-          role: message.role === 'assistant' ? 'model' as const : 'user' as const,
-          parts: [{ text: message.content }],
-        }));
-      const response = await Promise.race([
-        gemini.models.generateContent({
-          model,
-          contents,
-          config: {
-            systemInstruction,
-            maxOutputTokens: opts.max_tokens ?? 8192,
-            responseMimeType: 'application/json',
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          },
-        }),
-        timeout,
-      ]);
-      const text = response.text?.trim();
-      if (!text) throw new Error(`Gemini model ${model} returned an empty response`);
-      const durationMs = Date.now() - startedAt;
-      opts.onTrace?.({
-        model,
-        provider: 'gemini-cloud',
-        duration_ms: durationMs,
-        prompt_chars: promptChars,
-        fallback_used: model !== (opts.model ?? CHAT_MODEL),
-      });
-      console.log(`[chat] ${model} ok in ${Math.round(durationMs / 1000)}s (prompt ${promptChars} chars)`);
-      return text;
-    }
-
-    const response = await Promise.race([
-        ollama.chat({
-          model,
-          messages,
-          ...(opts.jsonMode ? { format: 'json' as const } : {}),
-          // qwen3 emits long chain-of-thought by default, which multiplies
-          // latency and routinely blows the timeout on structured extraction.
-          ...(model.startsWith('qwen3') ? { think: false } : {}),
-          // Keep the model resident between calls — a cold reload plus prompt
-          // evaluation costs minutes on this hardware and blows the timeout.
-          keep_alive: process.env.MARINA_KEEP_ALIVE ?? '60m',
-          options: {
-            temperature: opts.temperature ?? 0.3,
-            num_predict: opts.max_tokens ?? 8192,
-            // Ollama defaults num_ctx to 4096, silently truncating our prompts:
-            // the copilot context budget alone allows ~13K tokens. Truncation
-            // made the model return unusable output with no error.
-            num_ctx: Number(process.env.MARINA_NUM_CTX ?? 16384),
-          },
-        }),
-        timeout,
-      ]);
-    const durationMs = Date.now() - startedAt;
-    opts.onTrace?.({
-      model,
-      provider: isCloudChatModel(model) ? 'ollama-cloud' : 'ollama-local',
-      duration_ms: durationMs,
-      prompt_chars: promptChars,
-      fallback_used: model !== (opts.model ?? CHAT_MODEL),
-    });
-    console.log(`[ollama] ${model} ok in ${Math.round(durationMs / 1000)}s (prompt ${promptChars} chars)`);
-    return response.message.content;
+    throw new Error(`Unsupported chat model: ${model}`);
   } catch (err) {
     if (err instanceof NvidiaError) opts.onTrace?.({ model, provider: 'nvidia-cloud', duration_ms: Date.now() - startedAt,
       prompt_chars: promptChars, ...promptStats, ...timingStats(), fallback_used: model !== (opts.model ?? CHAT_MODEL),
@@ -422,29 +306,6 @@ export async function chat(
         console.warn(`[nvidia] Fallback model ${NVIDIA_MODEL} failed: ${(nvidiaErr as Error).message}`);
       }
     }
-    if (opts.allowLocalFallback === false) throw fallbackError;
-    if (FALLBACK_MODEL && FALLBACK_MODEL !== primaryModel) {
-      const promptChars = messages.reduce((sum, message) => sum + message.content.length, 0);
-      const fallbackPromptCharLimit = opts.fallbackPromptCharLimit ?? Number.POSITIVE_INFINITY;
-      if (promptChars > fallbackPromptCharLimit) {
-        throw new Error(
-          `${(fallbackError as Error).message}. Local fallback ${FALLBACK_MODEL} was not started because this ${promptChars.toLocaleString()}-character request exceeds its interactive limit of ${fallbackPromptCharLimit.toLocaleString()} characters.`,
-        );
-      }
-      // Only attempt the fallback when it is actually usable — retrying a
-      // missing model would just mask the real failure with a second one.
-      let fallbackUsable = true;
-      try {
-        const installed = await listInstalledModels();
-        fallbackUsable = classifyModel(FALLBACK_MODEL, installed) !== 'missing';
-      } catch { /* Ollama unreachable — the fallback attempt will surface it */ }
-
-      if (fallbackUsable) {
-        console.warn(`[ollama] Cloud models failed (${(fallbackError as Error).message}), trying local fallback ${FALLBACK_MODEL}`);
-        return chatOnce(FALLBACK_MODEL, messages, opts);
-      }
-      console.error(`[ollama] Primary model ${primaryModel} failed and configured fallback ${FALLBACK_MODEL} is not installed`);
-    }
     throw fallbackError;
   }
 }
@@ -464,13 +325,7 @@ export function parseJSON<T = Record<string, unknown>>(raw: string): T {
   }
 }
 
-// Local runtime health. Cloud-only deployments do not require an Ollama daemon.
+// Compatibility health field: Nemotron chat needs no local daemon.
 export async function ollamaHealth(): Promise<{ ok: boolean; models: string[]; error?: string }> {
-  if (!LOCAL_CHAT_ENABLED) return { ok: true, models: [] };
-  try {
-    const models = await listInstalledModels();
-    return { ok: true, models };
-  } catch (err) {
-    return { ok: false, models: [], error: String(err) };
-  }
+  return { ok: true, models: [] };
 }

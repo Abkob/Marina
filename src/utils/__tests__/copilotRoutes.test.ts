@@ -52,9 +52,9 @@ describe('shared conversation endpoints', () => {
     } finally { vi.useRealTimers(); }
   });
   it('reports timed-out session calls and does not advertise a disabled fallback', async () => {
-    vi.mocked(query).mockImplementation(async (sql: string) => ({ rows: sql.includes('SELECT id, model FROM chat_sessions') ? [{ id: 'session-id', model: 'moonshotai/kimi-k3' }] : [], rowCount: 1 }) as never);
+    vi.mocked(query).mockImplementation(async (sql: string) => ({ rows: sql.includes('SELECT id, model FROM chat_sessions') ? [{ id: 'session-id', model: 'nvidia/nemotron-3-super-120b-a12b' }] : [], rowCount: 1 }) as never);
     vi.mocked(runCopilotConversation).mockImplementationOnce(async options => {
-      options.onTrace?.({ model: 'moonshotai/kimi-k3', provider: 'nvidia-cloud', duration_ms: 32000, prompt_chars: 2, fallback_used: false, outcome: 'error', error_code: 'NVIDIA_ENDPOINT_TIMEOUT', first_response_ms: 32000 });
+      options.onTrace?.({ model: 'nvidia/nemotron-3-super-120b-a12b', provider: 'nvidia-cloud', duration_ms: 32000, prompt_chars: 2, fallback_used: false, outcome: 'error', error_code: 'NVIDIA_ENDPOINT_TIMEOUT', first_response_ms: 32000 });
       throw new Error('Provider timed out');
     });
     const response = await request('/sessions/:id/chat', { message: 'hi' });
@@ -120,4 +120,18 @@ describe('shared conversation endpoints', () => {
     expect(response.status).toHaveBeenCalledWith(502);
     expect(response.json).toHaveBeenCalledWith({ error: 'Provider unavailable', evaluation_trace: expect.objectContaining({ version: 1, run_id: null, storage: 'unavailable' }) });
   });
+});
+
+describe('retired saved chat selections',()=>{
+ it('continues an old Gemini session using Nemotron without deleting history',async()=>{
+  vi.mocked(query).mockImplementation(async(sql:string)=>({rows:sql.includes('SELECT id, model FROM chat_sessions')?[{id:'session-id',model:'gemini-3.8-flash'}]:[],rowCount:1}) as never);
+  await request('/sessions/:id/chat',{message:'Continue'});
+  expect(vi.mocked(runCopilotConversation).mock.calls[0][0].model).toBe('nvidia/nemotron-3-super-120b-a12b');
+  expect(vi.mocked(query).mock.calls.some(([sql])=>/^DELETE/i.test(sql.trim()))).toBe(false);
+ });
+ it('rejects new explicit retired selections before running a conversation',async()=>{
+  vi.mocked(query).mockImplementation(async(sql:string)=>({rows:sql.includes('SELECT id, model FROM chat_sessions')?[{id:'session-id',model:null}]:[],rowCount:1}) as never);
+  const response=await request('/sessions/:id/chat',{message:'Continue',model:'gemini-3.8-flash'});
+  expect(response.status).toHaveBeenCalledWith(400);expect(runCopilotConversation).not.toHaveBeenCalled();
+ });
 });
