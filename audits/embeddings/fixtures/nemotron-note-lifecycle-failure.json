@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "observed_at": "2026-10-07T05:53:56.701Z",
+  "failure": "A new production note had no native embedding or queued embedding job after an otherwise complete index activation.",
+  "initial_native_targets": 571,
+  "later_active_targets": 571,
+  "later_native_vectors": 570,
+  "missing_current_targets": 1,
+  "missing_entity_type": "note",
+  "source_records_modified_by_evaluation": 0,
+  "root_causes": [
+    "Note creation did not queue indexing.",
+    "Note content/title edits invalidated embeddings without queuing replacements.",
+    "Date edits omitted replacement indexing.",
+    "Unchanged submitted text unnecessarily invalidated retained-profile vectors."
+  ],
+  "before_repair_regression_cases": {"failed": 8, "passed": 0},
+  "acceptance": [
+    "Note creation and its indexing job commit in one transaction.",
+    "Changed embedding source fields queue a replacement in the source-save transaction.",
+    "Metadata and identical source fields retain current vectors.",
+    "Queue failure rolls back the source save and invalidation instead of reporting success.",
+    "Concurrent edits deduplicate pending work; deletion cannot resurrect the source.",
+    "A current-source coverage readback must use fresh targets, not a fixed earlier row count."
+  ],
+  "production_source_text_or_identifiers_included": false
+}
