@@ -16,7 +16,7 @@ struct MarinaProvider: TimelineProvider {
         Task {
             let cached = SharedStore.cache()
             var value = cached.context; var message = cached.message
-            do { value = try await SharedStore.refresh(); message = SharedStore.cache().command == nil ? nil : "Save needs retry" }
+            do { value = try await SharedStore.refresh(); let fresh = SharedStore.cache(); message = fresh.command == nil ? fresh.message : "Save needs retry" }
             catch { message = (try? SharedStore.connection()) == nil ? "Open Marina to connect" : "Open to refresh · cached schedule" }
             let now = Date(); var dates = [now]
             // Request timeline boundaries in advance. iOS owns actual refresh

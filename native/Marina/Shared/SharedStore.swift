@@ -62,7 +62,8 @@ enum SharedStore {
     }
     static func refresh() async throws -> ScheduleContext {
         let context = try await MarinaAPI(token: connection().token).context()
-        var cache = cache(); cache.context = context; cache.updatedAt = Date(); cache.message = nil
+        var cache = cache(); cache.context = context; cache.updatedAt = Date()
+        if cache.message == "Saved" { cache.message = nil }
         try write(cache, to: "schedule.json"); return context
     }
     static func submit(target: CheckInTarget, at time: Date) async throws {

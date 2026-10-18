@@ -51,7 +51,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         do {
             context = try await SharedStore.refresh(); connection = true
             if let context { await NativeNotifications.schedule(context) }
-            message = SharedStore.cache().command == nil ? "" : "A save is unconfirmed. Retry its original time below."
+            message = SharedStore.cache().command == nil ? (SharedStore.cache().message ?? "") : "A save is unconfirmed. Retry its original time below."
             WidgetCenter.shared.reloadTimelines(ofKind: SharedStore.widgetKind)
         } catch { message = error.localizedDescription }
     }
@@ -81,6 +81,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
     func disconnect() async {
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
+            guard SharedStore.cache().command == nil else { throw MarinaError.message("Retry the unconfirmed check-in before disconnecting.") }
             let key = try SharedStore.connection()
             guard webView.url?.host == MarinaAPI.origin.host else { throw MarinaError.message("Open Marina and sign in to revoke this connection.") }
             let result = try await webView.callAsyncJavaScript("return await fetch('/api/schedule-review/shortcuts/keys/'+id,{method:'DELETE',credentials:'same-origin'}).then(r=>r.ok)", arguments: ["id": key.id], in: nil, contentWorld: .page)
