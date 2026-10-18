@@ -38,14 +38,16 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
     @Published var connection = NativePreview.isUITesting ? false : (try? SharedStore.connection()) != nil
     @Published var webError: String?
     @Published var preview = false
-    let webView: WKWebView
-    var isUITesting: Bool { NativePreview.isUITesting }
-    init() {
+    lazy var webView: WKWebView = {
         let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
-        webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.allowsBackForwardNavigationGestures = true
-        webView.isInspectable = false
+        let web = WKWebView(frame: .zero, configuration: configuration)
+        web.allowsBackForwardNavigationGestures = true
+        web.isInspectable = false
+        return web
+    }()
+    var isUITesting: Bool { NativePreview.isUITesting }
+    init() {
         if isUITesting && ProcessInfo.processInfo.arguments.contains("--checkin-preview") {
             context = NativePreview.context(); connection = true
         }

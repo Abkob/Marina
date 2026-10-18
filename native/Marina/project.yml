@@ -36,6 +36,9 @@ targets:
         CFBundleDisplayName: Marina
         MarinaAppGroup: $(MARINA_APP_GROUP)
         UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         CFBundleURLTypes:
           - CFBundleURLName: com.abkob.marina.checkin

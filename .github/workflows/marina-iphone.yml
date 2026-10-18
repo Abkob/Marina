@@ -23,21 +23,6 @@ jobs:
           swift native/Marina/make-icon.swift "$GITHUB_WORKSPACE/native/Marina"
           cd native/Marina
           xcodegen generate
-      - name: Test app and capture preview states
-        run: |
-          set -o pipefail
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["name"].startswith("iPhone")))')
-          xcrun simctl boot "$DEVICE" || true
-          xcrun simctl bootstatus "$DEVICE" -b
-          set +e
-          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath native/Build/Simulator -resultBundlePath native/Build/Tests.xcresult CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test | tee native-simulator.log
-          RESULT=${PIPESTATUS[0]}
-          xcrun xcresulttool export attachments --path native/Build/Tests.xcresult --output-path native/Build/Previews
-          xcrun xcresulttool export diagnostics --path native/Build/Tests.xcresult --output-path native/Build/Diagnostics
-          mkdir -p native/Build/CrashReports
-          cp -R "$HOME/Library/Logs/DiagnosticReports/" native/Build/CrashReports/ 2>/dev/null
-          xcrun simctl spawn "$DEVICE" log show --last 5m --style compact --predicate 'process == "Marina"' > native/Build/app-console.log 2>&1
-          exit "$RESULT"
       - name: Build device app and both extensions
         run: |
           set -o pipefail
@@ -53,6 +38,15 @@ jobs:
           cp -R "$APP" native/Build/Package/Payload/
           cd native/Build/Package
           ditto -c -k --sequesterRsrc --keepParent Payload ../Marina-AltStore.ipa
+      - name: Test app and capture preview states
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["name"].startswith("iPhone")))')
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath native/Build/Simulator CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build-for-testing | tee native-simulator.log
+          python3 native/Marina/test-simulator.py "$DEVICE"
       - name: Upload app, test results and previews
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,4 +61,6 @@ jobs:
             native/Build/app-console.log
             native-simulator.log
             native-device.log
+            native-ui-tests.log
+            native/Build/launch.log
           retention-days: 14
