@@ -35,18 +35,23 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
     @Published var context: ScheduleContext?
     @Published var busy = false
     @Published var message = ""
-    @Published var connection = (try? SharedStore.connection()) != nil
+    @Published var connection = NativePreview.isUITesting ? false : (try? SharedStore.connection()) != nil
     @Published var webError: String?
     @Published var preview = false
     let webView: WKWebView
+    var isUITesting: Bool { NativePreview.isUITesting }
     init() {
         let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         webView.isInspectable = false
+        if isUITesting && ProcessInfo.processInfo.arguments.contains("--checkin-preview") {
+            context = NativePreview.context(); connection = true
+        }
     }
     func refresh() async {
+        guard !isUITesting else { return }
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
             context = try await SharedStore.refresh(); connection = true
@@ -56,6 +61,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         } catch { message = error.localizedDescription }
     }
     func connect() async {
+        guard !isUITesting else { return }
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
             _ = try SharedStore.container()
@@ -72,6 +78,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         } catch { message = error.localizedDescription }
     }
     func submit(_ target: CheckInTarget, time: Date) async {
+        if isUITesting { message = "Preview only · \(target.label) recorded · other ends unconfirmed"; return }
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
             try await SharedStore.submit(target: target, at: time); context = SharedStore.cache().context
@@ -79,6 +86,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         } catch { message = error.localizedDescription }
     }
     func disconnect() async {
+        guard !isUITesting else { return }
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
             guard SharedStore.cache().command == nil else { throw MarinaError.message("Retry the unconfirmed check-in before disconnecting.") }
@@ -90,6 +98,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         } catch { message = error.localizedDescription }
     }
     func enableReminders() async {
+        guard !isUITesting else { return }
         do {
             guard try await NativeNotifications.enable() else { throw MarinaError.message("Notifications are disabled in iPhone Settings.") }
             if let context { await NativeNotifications.schedule(context)
@@ -114,9 +123,12 @@ struct MarinaRoot: View {
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(.background)
             }
         }
-        .sheet(isPresented: $model.showControls) { CheckInSheet(model: model).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+        .sheet(isPresented: $model.showControls) { CheckInSheet(model: model).presentationDetents(model.isUITesting ? [.large] : [.medium, .large]).presentationDragIndicator(.visible) }
         .onReceive(NotificationCenter.default.publisher(for: .marinaCheckIn)) { _ in model.showControls = true }
-        .task { if ProcessInfo.processInfo.arguments.contains("--widget-preview") { model.preview = true; model.showControls = true } }
+        .task {
+            if model.isUITesting && ProcessInfo.processInfo.arguments.contains("--checkin-preview") { model.showControls = true }
+            if ProcessInfo.processInfo.arguments.contains("--widget-preview") { model.preview = true; model.showControls = true }
+        }
     }
 }
 struct CheckInSheet: View {
@@ -138,7 +150,7 @@ struct CheckInSheet: View {
                         ForEach(targets) { target in
                             Button { selected = target; exact = false; exactTime = defaultTime(target) } label: {
                                 HStack { VStack(alignment: .leading, spacing: 4) { Text(target.title).foregroundStyle(.primary); Text(target.kind == .end ? "End unconfirmed" : "Not started").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }.frame(minHeight: 44)
-                            }.buttonStyle(.plain)
+                            }.buttonStyle(.plain).accessibilityIdentifier("checkin-target-\(target.id)")
                         }
                         if let target = selected ?? model.context?.primary() {
                             VStack(alignment: .leading, spacing: 12) {
@@ -153,7 +165,7 @@ struct CheckInSheet: View {
                                 }
                             }.padding(16).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
                         }
-                        if let command = SharedStore.cache().command {
+                        if let command = model.isUITesting ? nil : SharedStore.cache().command {
                             Button("Retry original check-in") { Task { await model.submit(command.target, time: MarinaClock.parse(command.instant) ?? Date()) } }.disabled(model.busy)
                         }
                         Divider()
@@ -178,6 +190,6 @@ struct CheckInSheet: View {
 }
 struct HoldTimeView: UIViewRepresentable {
     let target: CheckInTarget; let disabled: Bool; let initial: Date; let onTap: () -> Void; let onChoose: (Date) -> Void
-    func makeUIView(context: Context) -> HoldTimeControl { let view = HoldTimeControl(); view.instant = initial; return view }
+    func makeUIView(context: Context) -> HoldTimeControl { let view = HoldTimeControl(); view.instant = initial; view.accessibilityIdentifier = "actual-time-control"; return view }
     func updateUIView(_ view: HoldTimeControl, context: Context) { view.caption = target.label; view.timezone = TimeZone(identifier: target.timezone) ?? .current; view.isEnabled = !disabled; view.onTap = onTap; view.onChoose = onChoose }
 }

@@ -27,7 +27,9 @@ struct MarinaWebView: UIViewRepresentable {
             oauth = url.host == "accounts.google.com"
             let browser = SFSafariViewController(url: url); browser.delegate = self; presenter?.present(browser, animated: true)
         }
-        func safariViewControllerDidFinish(_ controller: SFSafariViewController) { if oauth { model.webView.reload(); oauth = false } }
+        nonisolated func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+            Task { @MainActor in if self.oauth { self.model.webView.reload(); self.oauth = false } }
+        }
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url else { return .cancel }
             if navigationAction.shouldPerformDownload { return .download }

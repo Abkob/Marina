@@ -20,6 +20,8 @@ open Marina.xcodeproj
 
 Run the Marina scheme on an iPhone Simulator. The native control sheet’s **Preview widget** action shows sample states using the same face component as the widget. This previews layout, not SpringBoard’s widget hosting or live API writes. In Simulator, add the actual installed widget through the Home Screen widget gallery to test its OS presentation. Windows cannot run Apple’s iPhone Simulator; use the cloud test artifacts or a Mac for that stage.
 
+The UI tests also launch an offline check-in fixture with overlapping events and a previous activity whose end is unconfirmed. They exercise the actual UIKit hold-and-slide control and capture its result. Simulator-only test mode intercepts saves and disables pairing, reminders and refresh, so these gestures cannot alter cloud data. This is gesture/layout coverage, not a replacement for the backend’s reconciliation tests or an end-to-end test of every web feature.
+
 The preview and CI tests do not prove physical-device signing, App Group provisioning, notifications, background execution, camera/file dialogs, Google sign-in, or all WebKit behavior. Check those on the actual iPhone before relying on the app daily. A true widget does not receive the app’s arbitrary hold/drag recognizer: it uses App Intent buttons. Hold-and-slide lives in the native check-in sheet and expanded notification content.
 
 ## Install with AltStore Classic

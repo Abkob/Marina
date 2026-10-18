@@ -27,8 +27,17 @@ jobs:
         run: |
           set -o pipefail
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["name"].startswith("iPhone")))')
-          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath native/Build/Simulator -resultBundlePath native/Build/Tests.xcresult CODE_SIGNING_ALLOWED=NO test | tee native-simulator.log
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          set +e
+          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath native/Build/Simulator -resultBundlePath native/Build/Tests.xcresult CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES test | tee native-simulator.log
+          RESULT=${PIPESTATUS[0]}
           xcrun xcresulttool export attachments --path native/Build/Tests.xcresult --output-path native/Build/Previews
+          xcrun xcresulttool export diagnostics --path native/Build/Tests.xcresult --output-path native/Build/Diagnostics
+          mkdir -p native/Build/CrashReports
+          cp -R "$HOME/Library/Logs/DiagnosticReports/" native/Build/CrashReports/ 2>/dev/null
+          xcrun simctl spawn "$DEVICE" log show --last 5m --style compact --predicate 'process == "Marina"' > native/Build/app-console.log 2>&1
+          exit "$RESULT"
       - name: Build device app and both extensions
         run: |
           set -o pipefail
@@ -53,6 +62,9 @@ jobs:
             native/Build/Marina-AltStore.ipa
             native/Build/Tests.xcresult
             native/Build/Previews
+            native/Build/Diagnostics
+            native/Build/CrashReports
+            native/Build/app-console.log
             native-simulator.log
             native-device.log
           retention-days: 14

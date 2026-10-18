@@ -9,4 +9,20 @@ final class MarinaUITests: XCTestCase {
         let lower = XCTAttachment(screenshot: app.screenshot()); lower.name = "Widget states"; lower.lifetime = .keepAlways; add(lower)
         XCTAssertTrue(app.buttons["Close check-in"].exists)
     }
+    func testHoldAndSlideUsesOfflineCheckIn() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--checkin-preview"]; app.launch()
+        let reading = app.buttons["checkin-target-reading"]
+        XCTAssertTrue(reading.waitForExistence(timeout: 15)); reading.tap()
+        let touch = app.descendants(matching: .any)["actual-time-control"].firstMatch
+        XCTAssertTrue(touch.waitForExistence(timeout: 5))
+        let start = touch.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5))
+        let end = touch.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5))
+        start.press(forDuration: 0.5, thenDragTo: end)
+        let status = app.staticTexts["checkin-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        XCTAssertTrue(status.label.contains("Preview only · Started recorded"))
+        XCTAssertTrue(app.buttons["checkin-target-previous-session"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = "Actual check-in gesture"; image.lifetime = .keepAlways; add(image)
+    }
 }
