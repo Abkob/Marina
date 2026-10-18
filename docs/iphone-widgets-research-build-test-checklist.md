@@ -2,6 +2,20 @@
 
 Research checked: **19 October 2026, Asia/Beirut**. This is a research-first implementation plan for the newly requested two-widget system. Competitor findings below come from official documentation, not hands-on testing of those apps. Checked boxes record evidence already obtained; unchecked boxes are future work.
 
+## Top priority: one-tap Home Screen task launcher
+
+Build this as the **first user-facing milestone**, after the shared queue, credential, and timer-accounting prerequisites below. It takes priority over the richer wheel, notification enhancements, and Live Activity. These boxes remain unchecked until implemented and verified.
+
+- [ ] Small Home Screen widget: show one suggested task with a direct Start action; one tap selects that task and starts its canonical work timer without opening the app.
+- [ ] Medium Home Screen widget: show up to three named today tasks, including eligible subtasks with short parent context. Tapping a task selects and starts it in one action; provide a discreet next-page control for more choices.
+- [ ] Rank suggestions by the single unambiguous current event's linked actionable task, then explicit today pins/order, then recent unfinished work within today's queue. Multiple eligible tasks or overlapping events show choices rather than guessing. Deduplicate stable task IDs.
+- [ ] Suggestions and calendar changes never start work on their own. A user's tap is required; stale or ineligible targets fail visibly without starting a different task.
+- [ ] While running, show the task, elapsed time, and a small accessible **×** to stop. Stop does not complete/delete the task or end calendar attendance. Starting another task uses the shared atomic switch, with no duplicate minutes.
+- [ ] Keep controls restrained with comfortable touch targets, accessible names, and long-title/large-text support. The custom hold-and-slide wheel remains in the native sheet.
+- [ ] Verify on actual hosted small/medium widgets: one tap starts the captured task without opening Marina, paging only changes choices, double taps/retries create one session, and concurrent web/phone actions cannot replace a newer timer silently. Check stale/offline/empty/overlapping states and cross-client totals before release.
+
+Implementation references: [Apple interactive widget actions](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities) and [Timery's direct timer controls and widget paging](https://www.timeryapp.com/).
+
 ## Recommended product
 
 Build two separate Lock Screen widgets in the existing Marina widget extension:
@@ -33,7 +47,7 @@ Additional gesture precedent: TickTick documents holding and dragging its **in-a
 | Surface | Planned Marina behavior | Constraint |
 |---|---|---|
 | Lock Screen rectangular widget | Task/event title, short state or elapsed time, one clear start/stop action, link to the relevant sheet. | App Intent buttons/toggles and navigation links; no arbitrary scrolling wheel. Authentication is required on a locked device. |
-| Home Screen widget | The same state, with room for an optional next-task button or a few named choices. | No custom drag recognizer; keep selection separate from starting. |
+| Home Screen widget — top priority | Small: suggested task with direct Start. Medium: up to three one-tap task choices and discreet paging. Running: task, elapsed time, and Stop. | App Intent combines explicit task selection and Start in one action. Paging/browsing never starts work; no custom drag wheel. |
 | Native quick sheet | Hold, move vertically through a small wheel, release to start/switch focus; drag out to cancel. Ordinary selection plus Start is the accessible alternative. | App-owned interaction; opening from the Lock Screen may require unlocking. |
 | Expanded native notification | Optional reminder containing the relevant time control or task picker. | The OS presents and expands the notification first. Never promise one continuous gesture through system expansion and the custom control. |
 | Live Activity | Optional running-task title, elapsed work clock, stop, and link to the picker. | Good for ongoing work, not an unrestricted mini-app or scroll wheel. Local ActivityKit and remote APNs updates are different implementations. |
@@ -160,7 +174,7 @@ flowchart LR
 - [ ] Add the native wheel and ordinary accessible selection flow over the same queue IDs.
 - [ ] Use the same canonical commands from web, native sheet, widget intents, and any notification actions.
 - [ ] Refresh both timer state and changed work/schedule totals after native actions, including corrections that do not change the running session ID.
-- [ ] Add two actual Lock Screen configurations and optional Home Screen layouts. A SwiftUI gallery alone is not acceptance evidence for OS-hosted widgets.
+- [ ] Deliver the top-priority small/medium Home Screen launcher first once backend prerequisites pass, then add the two Lock Screen configurations and richer wheel. A SwiftUI gallery alone is not acceptance evidence for OS-hosted widgets.
 
 ### D. Production data and delivery — backend + release
 
