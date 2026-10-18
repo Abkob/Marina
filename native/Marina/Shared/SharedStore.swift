@@ -95,8 +95,8 @@ enum SharedStore {
                 cache.command = nil; try? write(PendingCommandFile(command: nil), to: "pending-command.json")
             }
             cache.message = error.localizedDescription; try? write(cache, to: "schedule.json")
-            WidgetCenter.shared.reloadTimelines(ofKind: widgetKind); throw error
+            WidgetCenter.shared.reloadAllTimelines(); throw error
         }
-        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
