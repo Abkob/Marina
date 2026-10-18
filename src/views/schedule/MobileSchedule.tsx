@@ -13,6 +13,7 @@ import { MobileDayTimeline } from './MobileDayTimeline';
 import { useCalendarSwipe } from '../../hooks/useCalendarSwipe';
 import type { CalendarPlacement } from '../../utils/calendarGestures';
 import { useMobileSchedulePreferences } from '../../hooks/useMobileSchedulePreferences';
+import { ScheduleReview } from './ScheduleReview';
 
 
 const TONES = {
@@ -130,6 +131,7 @@ export function MobileSchedule(props: Props) {
         </button>)}
       </div>}
     </header>
+    <ScheduleReview date={date}/>
     {monthOpen && <MobileSheet title="Choose a date" onClose={() => setMonthOpen(false)}>
       <div ref={monthSwipe} aria-label="Month date picker" className="mobile-gesture-surface mt-2 rounded-2xl border border-slate-100 bg-slate-50 p-2">
         <div className="flex items-center justify-between"><button aria-label="Previous month" className="mobile-icon-button" onClick={() => shiftMonth(-1)}><ChevronLeft size={18} /></button>

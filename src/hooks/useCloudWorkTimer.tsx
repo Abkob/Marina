@@ -5,7 +5,7 @@ import { WORK_TIMER_STORAGE_KEY, readActiveWorkTimer, writeActiveWorkTimer, type
 
 export const CLOUD_TIMER_KEY = ['cloud-work-timer'];
 const timerIdentity = (timer: ActiveWorkTimer | null) => timer
-  ? JSON.stringify([timer.taskId, timer.routineId, timer.startedAt, timer.sessionId]) : null;
+  ? JSON.stringify([timer.taskId, timer.routineId, timer.scheduleOccurrenceId, timer.startedAt, timer.sessionId]) : null;
 type CloudTimer = ActiveWorkTimer & { sessionId: string };
 type Reply = { timer: CloudTimer | null; serverNow: string; started?: boolean; minutes?: number; duplicate?: boolean };
 type Snapshot = Reply & { serverTime: number; receivedAt: number; observedLocalTimer: string | null };
@@ -13,7 +13,7 @@ const snapshot = (reply: Reply, observedLocalTimer: string | null): Snapshot => 
 type TimerContext = {
   timer: CloudTimer | null; nowMs: number; ready: boolean; busy: boolean; error: string | null;
   start: (input: { taskId: string; routineId?: string; notes?: string }) => Promise<Reply>;
-  stop: (id: string, input?: { minutes?: number; notes?: string }) => Promise<Reply>;
+  stop: (id: string, input?: { minutes?: number; notes?: string; ended_at?:string }) => Promise<Reply>;
   discard: (id: string) => Promise<Reply>;
   updateNotes: (id: string, notes: string) => Promise<Reply>;
 };
@@ -36,7 +36,7 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
       let reply: Reply | undefined;
       const local = readActiveWorkTimer();
       const observedLocalTimer = timerIdentity(local);
-      if (local && observedLocalTimer !== mirroredTimer.current) {
+      if (local && !local.scheduleOccurrenceId && observedLocalTimer !== mirroredTimer.current) {
         // Preserve the original before adopting the cloud's authoritative timer.
         try { localStorage.setItem(`marina-work-timer-recovery:${local.sessionId ?? local.startedAt}`, JSON.stringify(local)); } catch { /* optional cache */ }
         // Failed imports leave the local timer intact for the next retry.

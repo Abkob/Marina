@@ -1,10 +1,11 @@
 import { addRoutineDays } from './routines.js';
+import { uncoveredRanges } from '../../shared/scheduleReview.js';
 
 export type TimeCategory = { taskId?: string | null; taskTitle?: string | null; goalId?: string | null; goalTitle?: string | null };
 export type TimeDetail = TimeCategory & { key: string; title: string; source: 'work' | 'calendar'; minutes: number };
 export type TimeDay = { date: string; minutes: number; sessions: number; calendarMinutes?: number; details?: TimeDetail[] };
 export type TimeInterval = { id: string; started_at: string; ended_at: string | null; minutes: number | null };
-export type TimeWork = TimeInterval & TimeCategory;
+export type TimeWork = TimeInterval & TimeCategory & { source?: string };
 export type TimeCalendar = { id: string; title: string; start: number; end: number; allocations: (TimeCategory & { weight: number })[] };
 export type TimeSources = { work: TimeWork[]; calendar: TimeCalendar[]; tasks: Record<string, TimeCategory> };
 export type TimeHeatmap = { year: number; timezone: string; today: string; days: TimeDay[]; loggedSessionIds: string[]; sources?: TimeSources };
@@ -75,11 +76,11 @@ export function mergeLiveTime(data: TimeHeatmap, timer: TimeLiveTimer | null, no
   return days;
 }
 
-/** Calendar is a fallback for elapsed time. Logs retain their saved minutes;
- * overlapping calendar blocks share only the time not covered by those logs. */
+/** Integrate recorded intervals with a one-person-minute cap. Optional legacy
+ * calendar assumptions can fill only unobserved spans, never corrected work. */
 export function accountedTime(sources: TimeSources, year: number, timezone: string, now: number, timer: TimeLiveTimer | null = null): Map<string, TimeLiveDay> {
   const days = new Map<string, TimeLiveDay>();
-  const work = [...sources.work];
+  let work = [...new Map(sources.work.map(s=>[s.id,s])).values()];
   const live = timer && !work.some(row => row.id === timer.sessionId) ? {
     ...sources.tasks[timer.taskId ?? ''], taskId: timer.taskId || null,
     taskTitle: sources.tasks[timer.taskId ?? '']?.taskTitle ?? timer.title,
@@ -88,6 +89,9 @@ export function accountedTime(sources: TimeSources, year: number, timezone: stri
     minutes: Math.max(0, now - Date.parse(timer.startedAt)) / 60_000,
   } : null;
   if (live) work.push(live);
+  // A newly started timer can cover a previously reported block. Prefer the
+  // measured span immediately, before Stop persists the server projection.
+  if(live)work=work.flatMap(s=>s.source==='schedule_checkin'&&s.ended_at?uncoveredRanges({start:Date.parse(s.started_at),end:Date.parse(s.ended_at)},[{start:Date.parse(live.started_at),end:now}]).map((part,index)=>({...s,id:`${s.id}:${index}`,started_at:new Date(part.start).toISOString(),ended_at:new Date(part.end).toISOString(),minutes:Number(s.minutes)*(part.end-part.start)/(Date.parse(s.ended_at!)-Date.parse(s.started_at))})):[s]);
   const dayFor = (date: string) => {
     if (!days.has(date)) days.set(date, { date, minutes: 0, sessions: 0, liveMinutes: 0, calendarMinutes: 0, details: [] });
     return days.get(date)!;
@@ -105,12 +109,22 @@ export function accountedTime(sources: TimeSources, year: number, timezone: stri
   const untimed = new Map<string, number>();
   type Coverage = { start: number; end: number; rate: number };
   const coverage: Coverage[] = [];
+  const timedWork: {session:TimeWork;start:number;end:number;rate:number}[]=[];
+  const counted=new Set<string>();
+  const addWork=(session:TimeWork,start:number,end:number,minutes:number)=>{
+    for(const part of timeDays([{...session,started_at:new Date(start).toISOString(),ended_at:new Date(end).toISOString(),minutes}],year,timezone)){
+      const key=`${session.id}:${part.date}`,day=dayFor(part.date);
+      if(!counted.has(key)){day.sessions+=1;counted.add(key);}
+      if(session===live)day.liveMinutes+=part.minutes;
+      addDetail(part.date,{...session,key:`work:${categoryKey(session)}`,title:session.taskTitle||session.goalTitle||'Miscellaneous',source:'work',minutes:part.minutes});
+    }
+  };
   for (const session of work) {
     const start = Date.parse(session.started_at), end = Date.parse(session.ended_at ?? '');
     const minutes = Number(session.minutes);
-    if (!Number.isFinite(start) || !Number.isFinite(minutes) || minutes <= 0) continue;
+    if (!Number.isFinite(start) || start>now || !Number.isFinite(minutes) || minutes < 0) continue;
     const timed = Number.isFinite(end) && end > start;
-    if (timed) coverage.push({ start, end, rate: Math.min(1, minutes * 60_000 / (end - start)) });
+    if(timed){const stop=Math.min(end,now);coverage.push({start,end:stop,rate:1});timedWork.push({session,start,end:stop,rate:Math.min(1,minutes*60_000/(end-start))});continue;}
     for (const part of timeDays([session], year, timezone)) {
       const day = dayFor(part.date);
       day.sessions += 1;
@@ -123,6 +137,14 @@ export function accountedTime(sources: TimeSources, year: number, timezone: stri
         untimed.set(key, (untimed.get(key) ?? 0) + part.minutes);
       }
     }
+  }
+  // Integrate overlapping recorded claims at no more than one person-minute
+  // per clock minute, keeping corrected durations and unique session IDs.
+  const workPoints=[...new Set(timedWork.flatMap(s=>[s.start,s.end]))].sort((a,b)=>a-b);
+  for(let i=0;i<workPoints.length-1;i++){
+    const start=workPoints[i],end=workPoints[i+1],active=timedWork.filter(s=>s.start<end&&s.end>start);
+    const scale=Math.max(1,active.reduce((sum,s)=>sum+s.rate,0));
+    for(const s of active)addWork(s.session,start,end,(end-start)/60_000*s.rate/scale);
   }
   const calendar = sources.calendar.map(block => ({ ...block, end: Math.min(block.end, now) }))
     .filter(block => Number.isFinite(block.start) && Number.isFinite(block.end) && block.end > block.start);

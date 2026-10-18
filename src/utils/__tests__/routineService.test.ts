@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('../../../server/services/scheduleReview.js',()=>({lockScheduleAccounting:vi.fn(),reconcileScheduleSessions:vi.fn()}));
 
 const db = vi.hoisted(() => ({ query: vi.fn(), clientQuery: vi.fn() }));
 vi.mock('../../../server/db.js', () => ({ query: db.query, transaction: async (fn: Function) => fn({ query: db.clientQuery }) }));

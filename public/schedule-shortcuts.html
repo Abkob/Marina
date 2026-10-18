@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Marina · iPhone Shortcuts</title>
+<style>body{font:16px/1.65 system-ui,sans-serif;color:#334155;max-width:640px;margin:40px auto;padding:0 22px}h1{font-size:25px;font-weight:550}h2{font-size:19px;margin-top:32px}code,pre{font-size:13px;background:#f5f4fa;border-radius:6px}code{padding:2px 5px}pre{padding:14px;overflow:auto}li{margin:10px 0}a{color:#625798}small{color:#64748b}</style>
+<h1>Marina on your iPhone</h1>
+<p>The quickest setup opens the check-in. A connected shortcut can save actual times directly with Apple’s date picker. Both work with Marina’s Vercel website.</p>
+<h2>Quick setup · open check-in</h2>
+<ol><li>Open <strong>Shortcuts</strong> → <strong>+</strong>. Name it “Marina check-in”.</li><li>Add <strong>URL</strong>. Paste the check-in link from Marina’s Schedule → Proposed / Actual → help.</li><li>Add <strong>Open URLs</strong>. Run it once and sign into Marina if needed.</li><li>Add Apple’s <strong>Shortcuts</strong> widget to your Home Screen. Edit the widget and select “Marina check-in”.</li></ol>
+<p>It opens in a browser. The installed Home Screen app may have a separate sign-in. A shortcut cannot force iOS to open a particular installed web app.</p>
+<h2>Connected setup · save actual times</h2>
+<p>In Marina’s check-in help, select <strong>Connect Shortcuts</strong> and copy the private connection key. Do not put it in a URL or share the shortcut with that key included.</p>
+<p>In the steps below, <strong>Marina URL</strong> means this website’s origin, with no trailing slash. Every <strong>Get Contents of URL</strong> action needs this header:</p>
+<pre>Authorization: Bearer YOUR_CONNECTION_KEY</pre>
+<p>Start with two shortcuts, “Marina Started” and “Marina Ended”. Use <strong>Format Date → ISO 8601</strong> for all times. Keep the same request UUID if retrying a failed Start; an End retry is already safe.</p>
+<h2>“Marina Started”</h2>
+<ol>
+<li><strong>Get Contents of URL</strong>: <code>Marina URL/api/schedule-shortcuts/context</code>, method GET, with the header above. Save the result as <strong>Context</strong>.</li>
+<li><strong>Get Dictionary Value</strong> → <code>events</code> from Context. <strong>Repeat with Each</strong> event: only keep ones with <code>status</code> = <code>unknown</code> and no <code>actual_start</code>. Build a list of their <code>title</code> values. Use <strong>Choose from List</strong>. Find the corresponding event dictionary by list index; preserve its <code>occurrence_id</code> and <code>date</code>. For identical titles, append the planned start time to each label.</li>
+<li><strong>Ask for Input</strong>, type <strong>Date and Time</strong>, prompt “When did you start?”, default <strong>Current Date</strong>. Format the chosen date as ISO 8601.</li>
+<li><strong>Generate UUID</strong>. Save it as <strong>Start ID</strong>.</li>
+<li><strong>Get Contents of URL</strong>: <code>Marina URL/api/schedule-shortcuts/start</code>, method POST, body JSON, same Authorization header. Add the following fields using the saved variables:</li>
+</ol>
+<pre>{
+  "session_id": "Start ID",
+  "occurrence_id": "Chosen event occurrence_id",
+  "date": "Chosen event date",
+  "expected_running_id": "Context running_id",
+  "started_at": "Chosen ISO 8601 date",
+  "track_live": true
+}</pre>
+<p><code>expected_running_id</code> must be the actual context value, including JSON null when nothing is running. Do not send the word “null” as text. For an older event you are filling in later, use <code>track_live: false</code> so your current timer stays running. The website also offers a simpler hold-and-slide entry for these corrections.</p>
+<h2>“Marina Ended”</h2>
+<ol><li>GET the same context, with the same header.</li><li>Get <code>pending</code>. Choose an activity by <code>title</code> and <code>started_at</code>, retaining its dictionary and <code>id</code>. This list includes earlier starts still awaiting an end.</li><li><strong>Ask for Input</strong> → <strong>Date and Time</strong>: “When did you end?”, default Current Date. Format as ISO 8601.</li><li>POST to <code>Marina URL/api/schedule-shortcuts/end</code>, same header, JSON:</li></ol>
+<pre>{
+  "session_id": "Chosen pending id",
+  "ended_at": "Chosen ISO 8601 date"
+}</pre>
+<p>Read the response before showing success. If it contains <code>error</code>, show that message. A successful save returns <code>serverNow</code> and the saved timer state; End also returns <code>minutes</code>. There is no automatic end when you move on. Overlapping actual times require a corrected boundary and stay unconfirmed until fixed.</p>
+<h2>Add the widget</h2>
+<p>Put both shortcuts in a “Marina” folder. Add Apple’s Shortcuts widget to the Home Screen, edit it, and select that folder. iOS may open Shortcuts to show the event list or date picker. The widget does not display Marina’s live schedule or its custom hold-and-slide control.</p>
+<p>To disconnect, return to Marina’s check-in help and select <strong>Revoke</strong>. A key only reads schedule context and records scheduled starts/ends; it cannot access notes, uploads, account settings, or unrelated timers.</p>
+<p><a href="https://support.apple.com/guide/shortcuts/apd029b36d05/ios">Apple: Shortcuts widgets</a> · <a href="https://support.apple.com/guide/shortcuts/apd58d46713f/ios">Apple: web requests</a> · <a href="https://support.apple.com/guide/shortcuts/apd68b5c9161/ios">Apple: input prompts</a></p>
+</html>

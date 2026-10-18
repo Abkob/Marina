@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('../../../server/services/scheduleReview.js',()=>({lockScheduleAccounting:vi.fn(),reconcileScheduleSessions:vi.fn()}));
 import type { DBRoutine, DBRoutineEntry } from '../../types/routines';
 import { parseRoutineDuration, routineForDate, routineProgress, routineReservations, routineSchedule } from '../routines';
 const db = vi.hoisted(() => ({ query: vi.fn() }));

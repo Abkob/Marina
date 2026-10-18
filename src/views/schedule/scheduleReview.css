@@ -1,0 +1,75 @@
+.schedule-review-entry{margin:6px 0 12px}
+.schedule-bottom-checkin{position:fixed;z-index:30;bottom:calc(82px + env(safe-area-inset-bottom,0px));right:20px;width:min(360px,calc(100vw - 32px));border:1px solid #e6e3ee;border-radius:18px;background:#fff;padding:12px 14px;box-shadow:0 8px 32px #26213a12}
+.schedule-bottom-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:#334155}
+.schedule-bottom-heading small{display:block;font-size:11px;color:#64748b;margin-top:3px}
+.schedule-bottom-heading button{min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center;color:#94a3b8}
+.schedule-bottom-checkin .actual-time-gesture{margin:6px 0}
+.schedule-bottom-checkin .actual-time-hold{border-radius:10px;min-height:56px}
+.schedule-bottom-review{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-height:44px;width:100%;font-size:11px;color:#625798}
+.schedule-bottom-checkin button:focus-visible,.schedule-bottom-checkin input:focus-visible{outline:2px solid #6366f1;outline-offset:3px}
+.schedule-bottom-checkin button{min-height:44px;min-width:44px}
+@media(max-width:600px){.schedule-bottom-checkin{left:16px;right:16px;width:auto;padding:8px 12px}.schedule-bottom-checkin .actual-time-value{font-size:20px}}
+.actual-time-gesture{position:relative;margin:14px 0}
+.actual-time-hold{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e3e1ee;padding:12px;text-align:left;touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+.actual-time-hold.held{border-color:#8a82b9;background:#f0eef8}
+.actual-time-hold small{display:block;font-size:11px;color:#64748b;margin-top:3px}
+.actual-time-value{font-size:22px;color:#59518f;font-variant-numeric:tabular-nums}
+.actual-time-ruler{position:absolute;bottom:calc(100% + 6px);left:0;right:0;z-index:5;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:12px;background:#fff;border:1px solid #e3e1ee;border-radius:12px;box-shadow:0 3px 12px #20232e12;text-align:center;font-size:12px;color:#64748b;font-variant-numeric:tabular-nums}
+.actual-time-ruler>span:nth-child(2){color:#59518f;font-weight:500}
+.actual-time-ruler p{grid-column:1/-1;font-size:11px;margin:0}
+.actual-time-entry{display:flex;align-items:flex-end;gap:12px;margin-top:10px}
+.actual-time-entry label{min-width:0;flex:1;font-size:12px;color:#64748b}
+.actual-time-entry input{display:block;min-height:44px;min-width:0;width:100%;font-size:16px;background:white;border:1px solid #e2e1e9;border-radius:9px;padding:8px;margin-top:5px}
+.actual-time-entry button{display:flex;align-items:center;justify-content:center;color:#59518f}
+.schedule-live-prompt{display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:12px;background:#f5f4fa;padding:6px 10px;font-size:12px;color:#514c81}
+.schedule-live-prompt small{display:block;color:#64748b;font-size:11px;margin-top:2px}
+.schedule-live-prompt button{min-width:44px;min-height:44px;border-radius:9px;padding:8px 10px;color:#514c81}
+.schedule-review-launch{display:flex;width:100%;min-height:44px;align-items:center;justify-content:space-between;gap:12px;color:#64748b;font-size:12px;text-align:left}
+.schedule-review-launch>span:last-child{display:flex;align-items:center;gap:5px;color:#6366a5}
+.schedule-review{font-size:14px;color:#334155}
+.schedule-review button{min-height:44px;min-width:44px;border-radius:10px}
+.schedule-review button:disabled{opacity:.45}
+.schedule-review button:focus-visible,.schedule-review input:focus-visible,.schedule-review-launch:focus-visible{outline:2px solid #6366f1;outline-offset:3px}
+.schedule-review-date{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#64748b;margin-bottom:14px}
+.schedule-review-tabs{display:flex;background:#f4f4f8;padding:3px;border-radius:12px;margin-bottom:12px}
+.schedule-review-tabs button{flex:1;font-size:12px;color:#64748b}
+.schedule-review-tabs button[aria-pressed=true]{background:#fff;color:#4f46a0;box-shadow:0 1px 3px #20232e0a}
+.schedule-review-caption{font-size:12px;color:#64748b;line-height:1.6;margin:8px 0}
+.schedule-review-row{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;padding:10px 4px;border-bottom:1px solid #eef0f5;text-align:left;font-size:13px}
+.schedule-review-row.active{background:#f8f8fc}
+.schedule-review-row>span:first-child{min-width:0;overflow-wrap:anywhere}
+.schedule-review-row>span:last-child{font-size:11px;color:#64748b;white-space:nowrap;font-variant-numeric:tabular-nums}
+.schedule-review-row small{display:block;font-size:11px;color:#64748b;margin-top:3px}
+.schedule-checkin-card{padding:18px 16px 10px;background:#f6f5fa;border-radius:18px;margin-top:18px}
+.schedule-checkin-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.schedule-checkin-heading p{font-size:11px;color:#64748b}
+.schedule-checkin-heading h3{font-size:17px;font-weight:500;margin-top:5px;overflow-wrap:anywhere}
+.schedule-checkin-heading button{display:flex;align-items:center;justify-content:center;color:#94a3b8;margin-top:-10px;margin-right:-8px}
+.schedule-checkin-evidence{font-size:12px;color:#39765f;line-height:1.6;margin:8px 0}
+.schedule-checkin-pad{text-align:center;margin:16px 0 8px;font-size:11px;color:#64748b;user-select:none;-webkit-user-select:none}
+.schedule-checkin-directions{display:flex;align-items:center;justify-content:space-between;gap:4px;margin:12px 0}
+.schedule-checkin-directions>span{width:65px}
+.schedule-review .schedule-checkin-thumb{width:64px;height:64px;border-radius:50%;background:#fff;border:1px solid #e4e3ed;color:#6863a5;touch-action:none;-webkit-touch-callout:none;font-size:12px}
+.schedule-checkin-thumb.held{background:#eceaf8;border-color:#8177c3}
+.schedule-checkin-pad .selected{color:#4f46a0;font-weight:500}
+.schedule-checkin-pad p{min-height:18px}
+.schedule-checkin-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;border-top:1px solid #e6e5ed;margin-top:12px;padding-top:4px;font-size:12px}
+.schedule-checkin-actions button:first-child{color:#56509b}
+.schedule-actual-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.schedule-actual-fields label{min-width:0;font-size:12px;color:#64748b}
+.schedule-actual-fields input{display:block;min-width:0;width:100%;font-size:16px;padding:9px 6px;min-height:44px;background:#fff;border:1px solid #e4e3ed;border-radius:9px;margin-top:6px}
+.schedule-next-day{display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;min-height:44px;margin-top:8px}
+.schedule-actual-save,.schedule-review-secondary,.schedule-review-message{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:#64748b;margin-top:10px}
+.schedule-actual-save button:last-child,.schedule-review-secondary button:last-child{display:flex;align-items:center;justify-content:center;color:#6366a5}
+.schedule-review-message button{display:flex;align-items:center;gap:5px;color:#6366a5}
+.schedule-review-error{font-size:12px;color:#b54343;margin:12px 0}
+.schedule-review-error button{margin-left:8px;text-decoration:underline}
+.schedule-review-secondary{border-top:1px solid #eef0f5;margin-top:16px}
+.schedule-review-help{font-size:12px;line-height:1.7;color:#64748b}
+.schedule-review-help p{margin:10px 0}
+.schedule-review-help input{width:100%;min-height:44px;font-size:16px;border:1px solid #e2e8f0;border-radius:8px;padding:8px}
+.schedule-shortcuts{border-top:1px solid #e2e8f0;padding-top:10px;margin-top:14px}
+.schedule-shortcuts a{text-decoration:underline;display:inline-block;padding:10px 0}
+.schedule-shortcut-key{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.schedule-shortcut-key small{display:block}
+@media(max-width:360px){.schedule-actual-fields{grid-template-columns:1fr}.schedule-checkin-card{padding:16px 12px 8px}}

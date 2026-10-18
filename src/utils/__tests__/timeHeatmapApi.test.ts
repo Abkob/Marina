@@ -15,10 +15,10 @@ it('reads a complete year without truncating to the old stats endpoint’s 90 da
   expect(vi.mocked(query).mock.calls.every(([sql]) => sql.trim().startsWith('SELECT'))).toBe(true);
   expect(vi.mocked(query).mock.calls[1][0]).not.toContain('LIMIT');
 });
-it('attributes calendar blocks through parent tasks, direct meeting goals and missing links', async () => {
+it('counts actual study through parent goals without converting elapsed plans to actual time', async () => {
   const event = { week_start: '2026-01-05', day_index: 0, start_hour: 9, duration_hours: 2 };
   vi.mocked(query).mockResolvedValueOnce({ rows: [{ timezone: 'UTC' }] } as never)
-    .mockResolvedValueOnce({ rows: [] } as never)
+    .mockResolvedValueOnce({ rows: [{id:'study',task_id:'child',goal_id:null,started_at:'2026-01-05T09:00:00Z',ended_at:null,minutes:30}] } as never)
     .mockResolvedValueOnce({ rows: [
       { ...event, id: 'linked', title: 'Study', links: [{ task_id: 'child', planned_minutes: 30 }, { task_id: 'parent', planned_minutes: null }] },
       { ...event, start_hour: 12, id: 'missing', title: 'Errand', links: [{ task_id: 'deleted', planned_minutes: 120 }] },
@@ -28,14 +28,9 @@ it('attributes calendar blocks through parent tasks, direct meeting goals and mi
     .mockResolvedValueOnce({ rows: [{ id: 'child', title: 'Quiz', parent_task_id: 'parent', goal_id: null }, { id: 'parent', title: 'Course', parent_task_id: null, goal_id: 'goal' }] } as never)
     .mockResolvedValueOnce({ rows: [{ id: 'goal', title: 'Biology' }] } as never);
   const result = await getTimeHeatmap(2026);
-  expect(result.days[0]).toMatchObject({ minutes: 270, calendarMinutes: 270, sessions: 0 });
-  expect(result.days[0].details).toEqual(expect.arrayContaining([
-    expect.objectContaining({ title: 'Study', taskId: 'child', goalId: 'goal', minutes: 30 }),
-    expect.objectContaining({ title: 'Study', taskId: 'parent', minutes: 90 }),
-    expect.objectContaining({ title: 'Errand', goalId: null, minutes: 120 }),
-    expect.objectContaining({ title: 'Review', goalId: 'goal', goalTitle: 'Biology', minutes: 30 }),
-  ]));
-  expect(result.sources?.calendar).toHaveLength(3);
+  expect(result.days[0]).toMatchObject({ minutes: 30, calendarMinutes: 0, sessions: 1 });
+  expect(result.days[0].details).toEqual([expect.objectContaining({taskId:'child',goalId:'goal',goalTitle:'Biology',minutes:30})]);
+  expect(result.sources?.calendar).toEqual([]);
 });
 it('rejects malformed years before reading the database', async () => {
   const route = (workSessionsRouter as unknown as { stack: Array<{ route?: { path: string; stack: Array<{ handle: Function }> } }> }).stack.find(layer => layer.route?.path === '/heatmap')!.route!;

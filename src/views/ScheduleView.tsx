@@ -46,6 +46,8 @@ import { monthDates, type CalendarView } from '../utils/calendarView';
 import { ScheduleToolbar } from './schedule/ScheduleToolbar';
 import { ScheduleMonthView } from './schedule/ScheduleMonthView';
 import type { CalendarPlacement } from '../utils/calendarGestures';
+import { ScheduleReview } from './schedule/ScheduleReview';
+import { isRoutineDate } from '../utils/routines';
 
 /**
  * Calendar workspace: Day, Week and Month share date navigation. Task planning,
@@ -1189,7 +1191,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
     return () => window.clearInterval(tick);
   }, []);
   const todayStr = calendarDateTime(clockDate, prefs?.timezone).date;
-  const [focusedDate, setFocusedDate] = useState(todayStr);
+  const [focusedDate, setFocusedDate] = useState(()=>{const requested=new URLSearchParams(window.location.search).get('date');return isRoutineDate(requested)?requested:todayStr;});
   const previousToday = useRef(todayStr);
   useEffect(() => {
     const previous = previousToday.current;
@@ -1802,6 +1804,7 @@ export function ScheduleView({ initialPage = 'plan' }: { initialPage?: 'plan' | 
         <ScheduleToolbar date={focusedDate} today={todayStr} view={calendarView} planning={!!planningPanel}
           onDate={setFocusedDate} onView={view => setInnerPage(view === 'week' ? 'plan' : view)}
           onPlan={() => setPlanningPanel(panel => panel ? null : 'tasks')} onCreate={() => openCreate()} />
+        <ScheduleReview date={focusedDate}/>
         {(previewError || tasksError || eventsError || meetingsError) && <p role="alert" className="mb-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">Some calendar data could not load. <button onClick={() => void refreshMobileSchedule()} className="underline">Try again</button></p>}
         <div className={`schedule-layout ${planningPanel ? 'schedule-planning-open' : ''}`}>
           <section className="min-w-0" aria-label="Calendar">

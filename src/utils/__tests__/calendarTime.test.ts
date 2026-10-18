@@ -25,9 +25,9 @@ describe('elapsed calendar accounting', () => {
   it('fills only time not covered by logs, including partially corrected durations', () => {
     expect(day(sources([block()], [log()]))).toMatchObject({ minutes: 120, calendarMinutes: 60, sessions: 1 });
     expect(day(sources([block()], [log('08:30', '09:30', 60)]))).toMatchObject({ minutes: 150, calendarMinutes: 90 });
-    expect(day(sources([block()], [log('09:00', '11:00', 30)]))).toMatchObject({ minutes: 120, calendarMinutes: 90 });
-    // Larger corrected totals stay authoritative and cannot create negative credit.
-    expect(day(sources([block()], [log('09:00', '11:00', 150)]))).toMatchObject({ minutes: 150, calendarMinutes: 0 });
+    expect(day(sources([block()], [log('09:00', '11:00', 30)]))).toMatchObject({ minutes: 30, calendarMinutes: 0 });
+    // An observed span cannot regain removed minutes or exceed clock time.
+    expect(day(sources([block()], [log('09:00', '11:00', 150)]))).toMatchObject({ minutes: 120, calendarMinutes: 0 });
   });
   it('shares overlapping calendar minutes once and apportions linked tasks without multiplying hours', () => {
     const result = day(sources([block(), block('10:00', '12:00', { id: 'other', title: 'Other', allocations: [] })]));

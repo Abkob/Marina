@@ -10,7 +10,7 @@ export function WorkTimerIndicator({ compact = false }: { compact?: boolean }) {
   const elapsed = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(value => String(value).padStart(2, '0')).join(':');
   const title = timer?.routineTitle ?? timer?.title ?? 'Focus timer';
   return <button
-    onClick={() => { if (timer?.taskId) setWorkTaskId(timer.taskId); setCurrentTab('Work'); }}
+    onClick={() => { if(timer?.scheduleOccurrenceId){const url=new URL(window.location.href);url.searchParams.set('checkin','1');window.history.replaceState(null,'',url.pathname+url.search+url.hash);setCurrentTab('Schedule');window.dispatchEvent(new CustomEvent('marina:open-checkin'));return;} if (timer?.taskId) setWorkTaskId(timer.taskId); setCurrentTab('Work'); }}
     aria-label={timer ? `Open running timer for ${title}` : 'Open timer sync status'}
     title={error ?? `${title} · Synced across your devices`}
     className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 font-mono tabular-nums transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-gray-400 ${compact ? 'text-[10px] text-gray-400' : 'text-xs text-gray-500'}`}

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MobileSchedule } from '../MobileSchedule';
+vi.mock('../ScheduleReview',()=>({ScheduleReview:()=>null}));
 import type { DBEvent, DBTask } from '../../../db/schema';
 const store = vi.hoisted(() => ({ navigateToGoal: vi.fn(), openCompletionReport: vi.fn() }));
 vi.mock('../../../store/useAppStore', () => ({ useAppStore: () => store }));

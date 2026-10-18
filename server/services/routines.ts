@@ -6,6 +6,7 @@ import { query, transaction } from '../db.js';
 import type { DBRoutine, DBRoutineEntry } from '../../src/types/routines.js';
 import { addRoutineDays, routineEligibleOn, routineForDate, routineSchedule, routineWeekStart } from '../../src/utils/routines.js';
 import { localDateStr } from '../utils/localDate.js';
+import { lockScheduleAccounting, reconcileScheduleSessions } from './scheduleReview.js';
 
 import { createRoutineSchema, updateRoutineSchema, routineCheckInSchema, routineSessionSchema, routineScheduleSchema } from './routineContracts.js';
 export * from './routineContracts.js';
@@ -98,6 +99,7 @@ function requireActionable(routine: DBRoutine | undefined, date: string, session
 export async function checkInRoutine(id: string, input: z.infer<typeof routineCheckInSchema>, existingClient?: PoolClient): Promise<DBRoutineEntry | null> {
   if (input.status === 'completed' && input.date > await routineToday(existingClient)) throw new RoutineError(400, 'Future routine days cannot be completed yet');
   const apply = async (client: PoolClient) => {
+    await lockScheduleAccounting(client);
     const { rows: routines } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
     const routine = routines[0] ? routineForDate(routines[0] as DBRoutine, input.date) : undefined;
     requireActionable(routine, input.date);
@@ -136,6 +138,7 @@ export async function logRoutineSession(id: string, input: z.infer<typeof routin
   const startedDate = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date(startedAt));
   if (input.date !== startedDate) throw new RoutineError(400, 'The routine date must match the focus start date in your schedule timezone');
   const apply = async (client: PoolClient) => {
+    await lockScheduleAccounting(client);
     const { rows: routines } = await client.query('SELECT * FROM routines WHERE id=$1 FOR UPDATE', [id]);
     const routine = routines[0] ? routineForDate(routines[0] as DBRoutine, input.date) : undefined;
     if (!routine) throw new RoutineError(404, 'Routine not found');
@@ -159,6 +162,7 @@ export async function logRoutineSession(id: string, input: z.infer<typeof routin
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
       ON CONFLICT (routine_id,date) DO UPDATE SET status=EXCLUDED.status,minutes=EXCLUDED.minutes,completed_count=EXCLUDED.completed_count,updated_at=EXCLUDED.updated_at RETURNING *`,
     [existing?.id ?? crypto.randomUUID(), id, input.date, completed ? 'completed' : 'partial', minutes, count, existing?.notes ?? input.notes ?? '', now]);
+    await reconcileScheduleSessions(client);
     return { id: input.id, entry: rows[0] as DBRoutineEntry, duplicate: false, minutes: input.minutes };
   };
   return existingClient ? apply(existingClient) : transaction(apply);

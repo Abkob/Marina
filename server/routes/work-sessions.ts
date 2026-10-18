@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { query } from '../db.js';
+import { query, transaction } from '../db.js';
+import { lockScheduleAccounting, reconcileScheduleSessions } from '../services/scheduleReview.js';
 import { getTimeHeatmap } from '../services/timeHeatmap.js';
 
 const router = Router();
@@ -124,11 +125,16 @@ router.post('/', async (req, res) => {
   }
   const id  = crypto.randomUUID();
   const now = new Date().toISOString();
-  await query(
+  await transaction(async client=>{
+  await lockScheduleAccounting(client);
+  if(source==='schedule_checkin')throw Object.assign(new Error('Use schedule check-in to record this time.'),{status:400});
+  await client.query(
     `INSERT INTO work_sessions (id,task_id,resource_id,goal_id,journal_entry_id,started_at,ended_at,minutes,notes,source,created_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [id, task_id ?? null, resource_id ?? null, goal_id ?? null, journal_entry_id ?? null, started_at ?? now, ended_at ?? null, minutes ?? null, notes ?? '', source ?? 'manual', now],
   );
+  await reconcileScheduleSessions(client);
+  });
   if (task_id) {
     await recalcActualMinutes(task_id as string);
     // Status truth: logging real work moves a dormant task to in_progress
@@ -160,7 +166,13 @@ router.put('/:id', async (req, res) => {
   const entries = Object.entries(updates);
   const sets = entries.map(([col], i) => `${col}=$${i + 1}`).join(',');
   const vals = entries.map(([, v]) => v);
-  await query(`UPDATE work_sessions SET ${sets} WHERE id=$${vals.length + 1}`, [...vals, req.params.id]);
+  await transaction(async client=>{
+    await lockScheduleAccounting(client);
+    const row=await client.query('SELECT source FROM work_sessions WHERE id=$1 FOR UPDATE',[req.params.id]);
+    if(row.rows[0]?.source==='schedule_checkin')throw Object.assign(new Error('Adjust this time in Proposed / Actual so its attendance record stays consistent.'),{status:409});
+    await client.query(`UPDATE work_sessions SET ${sets} WHERE id=$${vals.length + 1}`, [...vals, req.params.id]);
+    await reconcileScheduleSessions(client);
+  });
   const taskId = session.task_id as string | null;
   if (taskId) await recalcActualMinutes(taskId);
   res.json({ ok: true });
@@ -169,7 +181,15 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/work-sessions/:id
 router.delete('/:id', async (req, res) => {
   const { rows } = await query('SELECT task_id FROM work_sessions WHERE id=$1', [req.params.id]);
-  await query('DELETE FROM work_sessions WHERE id=$1', [req.params.id]);
+  await transaction(async client=>{
+    await lockScheduleAccounting(client);
+    const row=await client.query('SELECT source FROM work_sessions WHERE id=$1 FOR UPDATE',[req.params.id]);
+    if(row.rows[0]?.source==='schedule_checkin')throw Object.assign(new Error('Clear this confirmation in Proposed / Actual instead.'),{status:409});
+    const linked=await client.query('SELECT occurrence_id FROM schedule_occurrence_outcomes WHERE session_id=$1',[req.params.id]);
+    if(linked.rows.length)throw Object.assign(new Error('Clear the linked schedule confirmation before deleting this study session.'),{status:409});
+    await client.query('DELETE FROM work_sessions WHERE id=$1',[req.params.id]);
+    await reconcileScheduleSessions(client);
+  });
   const taskId = rows.length ? (rows[0] as Record<string, unknown>).task_id as string | null : null;
   if (taskId) await recalcActualMinutes(taskId);
   res.json({ ok: true });

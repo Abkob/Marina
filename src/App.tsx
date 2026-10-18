@@ -56,6 +56,7 @@ const queryClient = new QueryClient({
 // missing one meant stale UI until a manual refresh. This is the safety net
 // that makes every write visible immediately, on every page.
 const URL_INVALIDATION: Array<[RegExp, string[]]> = [
+  [/^\/api\/schedule-review/, ['schedule-review','work-sessions','tasks','goal-tasks','goals-health','schedule-preview','work-accounting']],
   [/^\/api\/tasks/,             ['tasks', 'goal-tasks', 'goals', 'goals-health', 'schedule-preview', 'data-readiness', 'task-notes', 'graph', 'entity-topics', 'topics', 'work-sessions']],
   [/^\/api\/goals/,             ['goals', 'goals-health', 'tasks', 'goal-tasks', 'schedule-preview', 'data-readiness', 'graph', 'work-sessions']],
   [/^\/api\/milestones/,        ['milestones', 'tasks', 'goals', 'goals-health', 'schedule-preview', 'graph', 'work-sessions']],
@@ -114,6 +115,7 @@ setMutationListener((_method, url) => {
   // Archiving/restoring a goal changes the visibility of every linked entity.
   if (/^\/api\/goals(?:\/|$)/.test(path)) void queryClient.invalidateQueries();
   const keysToInvalidate = new Set<string>();
+  if (/^\/api\/(?:events|meetings|edges|work-sessions|work-timer|routines|google|tasks|goals)(?:\/|$)/.test(path)) keysToInvalidate.add('schedule-review');
   for (const [re, keys] of URL_INVALIDATION) {
     if (re.test(path)) {
       for (const key of keys) keysToInvalidate.add(key);

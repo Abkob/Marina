@@ -10,6 +10,8 @@ import { goalsRouter } from './routes/goals.js';
 import { tasksRouter } from './routes/tasks.js';
 import { notesRouter } from './routes/notes.js';
 import { eventsRouter } from './routes/events.js';
+import { scheduleReviewRouter } from './routes/schedule-review.js';
+import { scheduleShortcutsRouter } from './routes/schedule-shortcuts.js';
 import { resourcesRouter } from './routes/resources.js';
 import { edgesRouter } from './routes/edges.js';
 import { agentRunsRouter } from './routes/agent-runs.js';
@@ -85,6 +87,7 @@ export function createApp(): express.Express {
   // authentication internally for token issuance and lets the SDK validate callbacks.
   app.use('/api/uploads', uploadsRouter);
   app.use('/api/inngest', resourceWorkflowsRouter);
+  app.use('/api/schedule-shortcuts', scheduleShortcutsRouter);
   app.get('/api/health/live', (_req, res) => {
     res.json({ status: 'ok', runtime: runtimeCapabilities().runtime, timestamp: new Date().toISOString() });
   });
@@ -110,6 +113,7 @@ export function createApp(): express.Express {
   app.use('/api/tasks', tasksRouter);
   app.use('/api/notes', notesRouter);
   app.use('/api/events', eventsRouter);
+  app.use('/api/schedule-review', scheduleReviewRouter);
   app.use('/api/resources', resourcesRouter);
   app.use('/api/edges', edgesRouter);
   app.use('/api/agent-runs', agentRunsRouter);

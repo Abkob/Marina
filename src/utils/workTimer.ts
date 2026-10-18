@@ -11,6 +11,8 @@ export type ActiveWorkTimer = {
   /** Stable across reloads and failed saves so retries cannot double-log time. */
   sessionId?: string;
   title?: string;
+  scheduleOccurrenceId?: string;
+  scheduleDate?: string;
 };
 
 function validDate(value: unknown): value is string {
@@ -28,6 +30,10 @@ function parseTimer(value: unknown): ActiveWorkTimer | null {
     || (parsed.notes !== undefined && typeof parsed.notes !== 'string')) return null;
 
   const base = { taskId: parsed.taskId, startedAt: parsed.startedAt, notes: parsed.notes ?? '' };
+  if(parsed.scheduleOccurrenceId!==undefined){
+    if(parsed.taskId!==''||parsed.routineId||typeof parsed.scheduleOccurrenceId!=='string'||!parsed.scheduleOccurrenceId.trim()||!validDate(parsed.scheduleDate)||!parsed.sessionId)return null;
+    return {...base,scheduleOccurrenceId:parsed.scheduleOccurrenceId,scheduleDate:parsed.scheduleDate,sessionId:parsed.sessionId,title:parsed.title};
+  }
   if (parsed.routineId !== undefined) {
     if (parsed.taskId !== '' || typeof parsed.routineId !== 'string' || !parsed.routineId.trim()
       || typeof parsed.routineTitle !== 'string' || !parsed.routineTitle.trim()

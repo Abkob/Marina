@@ -5,10 +5,11 @@ import { markEmbeddingStale } from '../../../server/services/embeddingLifecycle'
 import { setNoteCompleted } from '../../db/queries/notes';
 import { apiPatch } from '../../utils/apiFetch';
 
+const dbMock=vi.hoisted(()=>({query:vi.fn()}));
 vi.mock('../../../server/db', async importOriginal => ({
-  ...await importOriginal<typeof import('../../../server/db')>(), query: vi.fn(),
+  ...await importOriginal<typeof import('../../../server/db')>(), query: dbMock.query, transaction:async(fn:Function)=>fn({query:dbMock.query}),
 }));
-vi.mock('../../../server/services/embeddingLifecycle', () => ({ markEmbeddingStale: vi.fn() }));
+vi.mock('../../../server/services/embeddingLifecycle', () => ({ markEmbeddingStale: vi.fn(), queueEmbeddingUpsert:vi.fn() }));
 vi.mock('../../utils/apiFetch', () => ({ apiPatch: vi.fn() }));
 
 async function request(method: string, path: string, body = {}) {
@@ -37,7 +38,7 @@ describe('persistent note completion', () => {
     expect(sql).toContain('completed_at = COALESCE(completed_at, $3)');
     expect(sql).not.toContain('created_at =');
     expect(params).toEqual(['2026-09-27T22:15:00.000Z', 'Finished thought', '2026-09-27T22:15:00.000Z', 'note-1']);
-    expect(markEmbeddingStale).toHaveBeenCalledWith('note', 'note-1');
+    expect(markEmbeddingStale).toHaveBeenCalledWith('note', 'note-1',expect.objectContaining({query:dbMock.query}));
   });
 
   it('clears completion only when explicitly reopened', async () => {

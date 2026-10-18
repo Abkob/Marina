@@ -4,6 +4,18 @@ import { resourceInngest, durableProcessingConfigured, dispatchResourceEvents, r
 import { processResourceJob, resourceRetryAt } from '../services/resourceProcessing.js';
 import { reconcileUploads } from '../services/resourceUploads.js';
 import { reconcileDriveResources } from '../services/googleDrive.js';
+import { freezeTomorrowSchedule } from '../services/scheduleReview.js';
+import { sendScheduleReminders } from '../services/schedulePush.js';
+
+export const remindSchedule = resourceInngest.createFunction({
+  id: 'schedule-start-end-reminders', triggers: [{ cron: '*/5 * * * *' }], retries: 2,
+  concurrency: { limit: 1 },
+}, async ({ step }) => step.run('send-due-prompts', () => sendScheduleReminders()));
+
+export const freezeSchedule = resourceInngest.createFunction({
+  id: 'freeze-proposed-schedule', triggers: [{ cron: '0 * * * *' }], retries: 3,
+  concurrency: { limit: 1 },
+}, async ({ step }) => step.run('save-evening-plan', () => freezeTomorrowSchedule()));
 
 export const processDocument = resourceInngest.createFunction({
   id: 'process-resource-stage', triggers: [{ event: 'marina/resource.process' }],
@@ -42,5 +54,5 @@ router.use((_req, res, next) => {
 });
 // Cookie authentication intentionally does not wrap this route. The SDK checks
 // signed Inngest requests with INNGEST_SIGNING_KEY in production.
-router.use(serve({ client: resourceInngest, functions: [processDocument, recoverDocuments] }));
+router.use(serve({ client: resourceInngest, functions: [processDocument, recoverDocuments, freezeSchedule, remindSchedule] }));
 export { router as resourceWorkflowsRouter };

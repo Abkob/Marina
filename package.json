@@ -85,6 +85,7 @@
     "streamdown": "^2.7.0",
     "unzipper": "^0.12.5",
     "vite": "^6.2.3",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
@@ -103,6 +104,7 @@
     "@types/pg": "^8.20.0",
     "@types/pg-query-stream": "^1.0.3",
     "@types/unzipper": "^0.10.11",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.3",
     "esbuild": "^0.25.0",

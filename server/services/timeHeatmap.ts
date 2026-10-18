@@ -13,7 +13,7 @@ export async function getTimeHeatmap(year: number): Promise<TimeHeatmap> {
   // Include intervals crossing the year boundary; the allocator clips them to
   // the requested local year. No day limit: all 365/366 dates can contribute.
   const [work, events, meetings, taskRows, goals] = await Promise.all([
-    query<TimeWork & { task_id: string | null; goal_id: string | null }>(`SELECT id,started_at,ended_at,minutes,task_id,goal_id FROM work_sessions
+    query<TimeWork & { task_id: string | null; goal_id: string | null }>(`SELECT id,started_at,ended_at,minutes,task_id,goal_id,source FROM work_sessions
       WHERE minutes > 0 AND started_at < $2
         AND GREATEST(started_at,COALESCE(ended_at,started_at)) >= $1`, [`${year - 1}-12-29`, `${year + 1}-01-03`]),
     query<Event>(`SELECT e.id,e.title,e.week_start,e.day_index,e.start_hour,e.duration_hours,
@@ -68,7 +68,9 @@ export async function getTimeHeatmap(year: number): Promise<TimeHeatmap> {
       calendar.push({ id: `meeting:${meeting.id}`, title: meeting.title, start, end, allocations: allocations(meeting.links, meeting.duration_minutes, meeting.goal_id) });
     }
   }
-  const sources = { work: work.rows.map(row => ({ ...row, ...category(row.task_id, row.goal_id) })), calendar, tasks };
+  // A calendar is an intention, never evidence of attendance. Check-ins now
+  // create/reuse canonical work sessions; elapsed unconfirmed blocks add zero.
+  const sources = { work: work.rows.map(row => ({ ...row, ...category(row.task_id, row.goal_id) })), calendar: [], tasks };
   const now = Date.now();
   return { year, timezone, today: timeDate(now, timezone), sources,
     days: [...accountedTime(sources, year, timezone, now).values()], loggedSessionIds: work.rows.map(row => row.id) };
