@@ -13,6 +13,7 @@ struct DayWorkSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    if model.isUITesting && ProcessInfo.processInfo.arguments.contains("--work-widget-gallery") { DayWorkLayoutGallery() }
                     Text("Tap a task to start. Choosing another switches your work timer.").font(.caption).foregroundStyle(.secondary)
                     if let running = context?.running {
                         HStack {
@@ -71,5 +72,22 @@ struct DayWorkSheet: View {
     private func pick(_ id: String, selected: Bool) {
         guard !busy, !model.isUITesting else { return }; busy = true
         Task { defer { busy = false }; do { context = try await MarinaAPI(token: SharedStore.connection().token).pickWork(id: id, selected: selected); _ = try? await DayWorkStore.refresh(); WidgetCenter.shared.reloadAllTimelines() } catch { message = error.localizedDescription } }
+    }
+}
+
+struct DayWorkLayoutGallery: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Home Screen layout preview · sample data").font(.caption).foregroundStyle(.secondary)
+            card(NativePreview.workContext(), compact: false)
+            card(NativePreview.workContext(running: "solve"), compact: false)
+            card(NativePreview.workContext(), compact: true)
+        }.accessibilityIdentifier("work-widget-gallery")
+    }
+    private func card(_ context: DayWorkContext?, compact: Bool) -> some View {
+        DayWorkFace(context: context, offset: 0, compact: compact, message: nil) { task, _ in
+            if let task { DayWorkTaskLabel(task: task, running: context?.running?.taskId == task.id) }
+            else { Image(systemName: "xmark").frame(width: 44, height: 44) }
+        }.padding(12).frame(width: compact ? 170 : 330, height: 170).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
     }
 }

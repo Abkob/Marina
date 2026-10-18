@@ -69,7 +69,7 @@ struct DayWorkWidgetView: View {
                         Link(destination: URL(string: "marina-native://checkin")!) { Image(systemName: "arrow.up.right").frame(width: 44, height: 44) }.accessibilityLabel("Open calendar check-in to end this event")
                     } else {
                         Button(intent: WorkActionIntent(action: stopping ? "stop" : "start", taskID: task?.id ?? context.running?.taskId ?? "", context: context)) {
-                            if let task { HStack(spacing: 8) { VStack(alignment: .leading, spacing: 1) { Text(task.title).font(.subheadline).lineLimit(1); if !task.context.isEmpty { Text(task.context).font(.caption2).foregroundStyle(.secondary).lineLimit(1) } }; Spacer(minLength: 0); Image(systemName: context.running?.taskId == task.id ? "checkmark" : "play.fill").font(.caption) }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle()) }
+                            if let task { DayWorkTaskLabel(task: task, running: context.running?.taskId == task.id) }
                             else { Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle()) }
                         }.buttonStyle(.plain).accessibilityLabel(task.map { "Start work on \($0.title)" } ?? "Stop work timer")
                     }

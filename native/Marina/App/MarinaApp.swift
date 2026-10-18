@@ -135,7 +135,7 @@ struct MarinaRoot: View {
             Group { if model.showWork { DayWorkSheet(model: model) } else { CheckInSheet(model: model) } }
                 .presentationDetents(model.isUITesting ? [.large] : [.medium, .large]).presentationDragIndicator(.visible)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .marinaCheckIn)) { _ in model.showControls = true }
+        .onReceive(NotificationCenter.default.publisher(for: .marinaCheckIn)) { _ in model.showWork = false; model.showControls = true }
         .task {
             if model.isUITesting && ProcessInfo.processInfo.arguments.contains("--checkin-preview") { model.showControls = true }
             if ProcessInfo.processInfo.arguments.contains("--widget-preview") { model.preview = true; model.showControls = true }

@@ -1,5 +1,11 @@
 import XCTest
 final class MarinaUITests: XCTestCase {
+    func testHomeScreenTaskLayouts() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--work-preview", "--work-widget-gallery"]; app.launch()
+        XCTAssertTrue(app.staticTexts["Home Screen layout preview · sample data"].waitForExistence(timeout: 15))
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "Home Screen task widget layouts"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
     func testTodayTaskStartsSwitchesAndStopsWithOneTap() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--work-preview"]; app.launch()

@@ -16,6 +16,14 @@ Build this as the **first user-facing milestone**, after the shared queue, crede
 
 Implementation references: [Apple interactive widget actions](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities) and [Timery's direct timer controls and widget paging](https://www.timeryapp.com/).
 
+### First milestone implementation status — 19 October 2026
+
+The Home Screen launcher, native today-task chooser, derived calendar membership, explicit day picks, scoped focus credentials, durable command retries, and atomic ordinary timer switching are implemented. PostgreSQL verification covers 35 cases across the new widget and existing schedule/timer suites. TypeScript, website build, serverless entry, and Vercel preflight pass. The full unit run passed 1,402 tests; the four Time view timeout failures passed on an isolated rerun with a 15-second timeout (no assertion changes). Seven Swift client tests and the candidate device build pass; final Simulator/IPA evidence is recorded with the release.
+
+The current production backup was privately uploaded, hash-verified, and restored into a separate database (63 tables, 4,940 rows). Migration M-036 was rehearsed there before production; every existing table retained its row count. The new tables start empty; no development data replaced production data.
+
+**Deliberate first-release boundary:** a running legacy calendar timer must be ended explicitly in calendar check-in before switching to task work. Its focus/attendance coupling is not silently broken. Fully independent attendance/focus, the richer task wheel, the two new Lock Screen configurations, and actual widget-host/physical-phone acceptance remain unfinished. The unchecked acceptance items above must not be interpreted as fully certified by a SwiftUI layout screenshot.
+
 ## Recommended product
 
 Build two separate Lock Screen widgets in the existing Marina widget extension:

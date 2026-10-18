@@ -36,3 +36,18 @@ struct DayWorkFace<Action: View>: View {
         }
     }
 }
+
+struct DayWorkTaskLabel: View {
+    let task: DayWorkTask
+    let running: Bool
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(task.title).font(.subheadline).lineLimit(1)
+                if !task.context.isEmpty { Text(task.context).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: running ? "checkmark" : "play.fill").font(.caption)
+        }.frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+    }
+}

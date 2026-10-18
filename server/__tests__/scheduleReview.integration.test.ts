@@ -148,7 +148,7 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('proposed/actual schedule agains
   expect((await fetch(origin+'/api/schedule-shortcuts/context',{headers:{Authorization:`Bearer ${expired.token}`}})).status).toBe(401);
  });
  it('never accepts a Shortcuts key as a general API login in the production app',async()=>{
-  const key=await createScheduleShortcutKey('Scope test');
+  const key=await createScheduleShortcutKey('Scope test',true);
   vi.stubEnv('MARINA_AUTH_REQUIRED','true');vi.stubEnv('MARINA_ACCESS_PASSWORD','integration-test-password');vi.stubEnv('MARINA_SESSION_SECRET','integration-test-session-secret-at-least-32');
   const app=createApp();const scoped=await new Promise<Server>(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   try{

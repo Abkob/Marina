@@ -48,6 +48,13 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('Home Screen day work PostgreSQL
   expect((await query("SELECT id FROM work_timers WHERE status='running'")).rows).toHaveLength(1);
   await expect(applyDayWorkCommand(command('a',crypto.randomUUID(),'stop'))).rejects.toMatchObject({status:409});
  });
+ it('tapping the already-running task is a durable no-op, even when retried after a later switch',async()=>{
+  const a=command();await applyDayWorkCommand(a);
+  const same=command('a',a.command_id);expect(await applyDayWorkCommand(same)).toHaveProperty('unchanged',true);
+  vi.setSystemTime(new Date(at(10)));await applyDayWorkCommand(command('b',a.command_id));
+  await applyDayWorkCommand(same);expect((await dayWorkContext()).running?.taskId).toBe('b');
+  expect((await query('SELECT * FROM work_sessions')).rows).toHaveLength(1);
+ });
  it('rolls back the stop when the replacement target is no longer eligible',async()=>{
   const a=command();await applyDayWorkCommand(a);vi.setSystemTime(new Date(at(10)));
   await query("UPDATE tasks SET completed=true,status='done' WHERE id='b'");
