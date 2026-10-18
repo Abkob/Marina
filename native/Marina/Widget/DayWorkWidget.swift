@@ -80,7 +80,8 @@ struct DayWorkWidgetView: View {
             VStack {
                 if pending { Button(intent: RetryWorkIntent()) { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Retry original timer save") }
                 if let context = cache.context, context.tasks.count > (family == .systemSmall ? 1 : (context.running == nil ? 3 : 2)), !(family == .systemSmall && context.running != nil) {
-                    Button(intent: PageWorkIntent(offset: (cache.offset + (family == .systemSmall ? 1 : (context.running == nil ? 3 : 2))) % context.tasks.count)) { Image(systemName: "chevron.right").font(.caption).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("More today tasks")
+                    let next = cache.offset + (family == .systemSmall ? 1 : (context.running == nil ? 3 : 2))
+                    Button(intent: PageWorkIntent(offset: next >= context.tasks.count ? 0 : next)) { Image(systemName: "chevron.right").font(.caption).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("More today tasks")
                 }
             }
         }.padding(12).containerBackground(.background, for: .widget).widgetURL(URL(string: "marina-native://work")!)
