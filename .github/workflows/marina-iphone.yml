@@ -45,7 +45,10 @@ jobs:
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["name"].startswith("iPhone")))')
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
-          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath native/Build/Simulator CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build-for-testing | tee native-simulator.log
+          # WebKit bug 293831: iOS 18.5 Simulator omits an overlay library for
+          # deployment targets below 18.4. This override affects only CI's
+          # Simulator binary; the separately built device IPA still targets 17.
+          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath native/Build/Simulator IPHONEOS_DEPLOYMENT_TARGET=18.4 CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build-for-testing | tee native-simulator.log
           python3 native/Marina/test-simulator.py "$DEVICE"
       - name: Upload app, test results and previews
         if: always()

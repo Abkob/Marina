@@ -24,6 +24,8 @@ The UI tests also launch an offline check-in fixture with overlapping events and
 
 The preview and CI tests do not prove physical-device signing, App Group provisioning, notifications, background execution, camera/file dialogs, Google sign-in, or all WebKit behavior. Check those on the actual iPhone before relying on the app daily. A true widget does not receive the app’s arbitrary hold/drag recognizer: it uses App Intent buttons. Hold-and-slide lives in the native check-in sheet and expanded notification content.
 
+CI's Simulator binary uses a deployment-target override of iOS 18.4 to work around [WebKit bug 293831](https://bugs.webkit.org/show_bug.cgi?id=293831) in the runner's iOS 18.5 runtime. The separately built device IPA retains the project's iOS 17 minimum. Simulator coverage therefore does not certify compatibility with iOS 17 on a physical phone.
+
 ## Install with AltStore Classic
 
 1. Install AltServer/AltStore using the official Windows instructions. Enable Developer Mode on the iPhone when required.

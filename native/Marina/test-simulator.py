@@ -53,7 +53,7 @@ command = ["xcodebuild", "-project", "native/Marina/Marina.xcodeproj", "-scheme"
            "-destination", f"platform=iOS Simulator,id={device}", "-parallel-testing-enabled", "NO",
            "-derivedDataPath", "native/Build/Simulator", "-resultBundlePath", "native/Build/Tests.xcresult",
            "-test-timeouts-enabled", "YES", "-maximum-test-execution-time-allowance", "60",
-           "CODE_SIGN_IDENTITY=-", "CODE_SIGNING_ALLOWED=YES", "test-without-building"]
+           "IPHONEOS_DEPLOYMENT_TARGET=18.4", "CODE_SIGN_IDENTITY=-", "CODE_SIGNING_ALLOWED=YES", "test-without-building"]
 with Path("native-ui-tests.log").open("w") as log:
     process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     try:
