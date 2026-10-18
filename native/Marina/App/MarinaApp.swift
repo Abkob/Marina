@@ -145,42 +145,50 @@ struct CheckInSheet: View {
                     if model.preview { WidgetGallery() }
                     else if !model.connection {
                         Text("Your full Marina app is already here. Connect its widget after signing in.").foregroundStyle(.secondary)
-                        Button("Connect widget") { Task { await model.connect() } }.disabled(model.busy)
+                        Button { Task { await model.connect() } } label: { Text("Connect widget").frame(minHeight: 44).contentShape(Rectangle()) }.disabled(model.busy)
                     } else {
                         let targets = model.context?.targets() ?? []
                         if targets.isEmpty { Text("Nothing waiting for check-in.").foregroundStyle(.secondary) }
-                        ForEach(targets) { target in
-                            Button { selected = target; exact = false; exactTime = defaultTime(target) } label: {
-                                HStack { VStack(alignment: .leading, spacing: 4) { Text(target.title).foregroundStyle(.primary); Text(target.kind == .end ? "End unconfirmed" : "Not started").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }.frame(minHeight: 44)
-                            }.buttonStyle(.plain).accessibilityIdentifier("checkin-target-\(target.id)")
-                        }
                         if let target = selected ?? model.context?.primary() {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(target.title).font(.headline)
                                 if target.kind == .start && target.expectedRunningID != nil { Text("Moving on leaves the previous activity’s end unconfirmed.").font(.caption).foregroundStyle(.secondary) }
                                 HoldTimeView(target: target, disabled: model.busy, initial: defaultTime(target), onTap: { selected = target; exactTime = defaultTime(target); exact = true }, onChoose: { time in Task { await model.submit(target, time: time); selected = nil } })
-                                    .frame(minHeight: 74).id(target.id)
+                                    .frame(minHeight: 74).id(target.id).accessibilityIdentifier("actual-time-control")
                                 if exact {
                                     DatePicker("Actual time", selection: $exactTime, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                                         .environment(\.timeZone, TimeZone(identifier: target.timezone) ?? .current)
-                                    HStack { Spacer(); Button { Task { await model.submit(target, time: exactTime); exact = false; selected = nil } } label: { Image(systemName: "checkmark").frame(width: 44, height: 44) }.disabled(model.busy).accessibilityLabel("Save actual time") }
+                                    HStack { Spacer(); Button { Task { await model.submit(target, time: exactTime); exact = false; selected = nil } } label: { Image(systemName: "checkmark").frame(width: 44, height: 44).contentShape(Rectangle()) }.disabled(model.busy).accessibilityLabel("Save actual time") }
                                 }
                             }.padding(16).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
                         }
-                        if let command = model.isUITesting ? nil : SharedStore.cache().command {
-                            Button("Retry original check-in") { Task { await model.submit(command.target, time: MarinaClock.parse(command.instant) ?? Date()) } }.disabled(model.busy)
+                        ForEach(targets.filter { $0.id != (selected ?? model.context?.primary())?.id }) { target in
+                            Button { selected = target; exact = false; exactTime = defaultTime(target) } label: {
+                                HStack { VStack(alignment: .leading, spacing: 4) { Text(target.title).foregroundStyle(.primary); Text(target.kind == .end ? "End unconfirmed" : "Not started").font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }.frame(minHeight: 44).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityIdentifier("checkin-target-\(target.id)")
                         }
-                        Divider()
-                        Button("Enable event reminders") { Task { await model.enableReminders() } }.frame(minHeight: 44)
-                        Button("Preview widget") { model.preview = true }.frame(minHeight: 44)
-                        Button("Disconnect widget", role: .destructive) { Task { await model.disconnect() } }.font(.caption).frame(minHeight: 44)
+                        if let command = model.isUITesting ? nil : SharedStore.cache().command {
+                            Button { Task { await model.submit(command.target, time: MarinaClock.parse(command.instant) ?? Date()) } } label: { Text("Retry original check-in").frame(minHeight: 44).contentShape(Rectangle()) }.disabled(model.busy)
+                        }
+                    }
+                    if !model.preview {
+                        DisclosureGroup {
+                            if model.connection {
+                                Button { Task { await model.enableReminders() } } label: { Text("Enable event reminders").frame(minHeight: 44).contentShape(Rectangle()) }
+                            }
+                            Button { model.preview = true } label: { Text("Preview widget").frame(minHeight: 44).contentShape(Rectangle()) }
+                            if model.connection {
+                                Button(role: .destructive) { Task { await model.disconnect() } } label: { Text("Disconnect widget").frame(minHeight: 44).contentShape(Rectangle()) }
+                            }
+                        } label: { Text("Widget settings").frame(minHeight: 44).contentShape(Rectangle()) }
+                        .font(.caption).tint(.secondary)
                     }
                     if model.busy { ProgressView().frame(maxWidth: .infinity) }
                     if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("checkin-status") }
                 }.padding(20)
             }
             .navigationTitle(model.preview ? "Widget preview" : "Check in").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { if model.preview { model.preview = false } else { model.showControls = false } } label: { Image(systemName: "xmark") }.accessibilityLabel("Close check-in") } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { if model.preview { model.preview = false } else { model.showControls = false } } label: { Image(systemName: "xmark").font(.subheadline).frame(width: 44, height: 44).contentShape(Rectangle()) }.tint(.secondary).accessibilityLabel("Close check-in") } }
             .task { if model.connection && !model.preview { await model.refresh(); if let id = model.selectedID { selected = model.context?.targets().first(where: { $0.occurrenceID == id }); model.selectedID = nil } } }
             .refreshable { await model.refresh() }
         }
@@ -193,5 +201,5 @@ struct CheckInSheet: View {
 struct HoldTimeView: UIViewRepresentable {
     let target: CheckInTarget; let disabled: Bool; let initial: Date; let onTap: () -> Void; let onChoose: (Date) -> Void
     func makeUIView(context: Context) -> HoldTimeControl { let view = HoldTimeControl(); view.instant = initial; view.accessibilityIdentifier = "actual-time-control"; return view }
-    func updateUIView(_ view: HoldTimeControl, context: Context) { view.caption = target.label; view.timezone = TimeZone(identifier: target.timezone) ?? .current; view.isEnabled = !disabled; view.onTap = onTap; view.onChoose = onChoose }
+    func updateUIView(_ view: HoldTimeControl, context: Context) { view.caption = target.label; view.timezone = TimeZone(identifier: target.timezone) ?? .current; view.followsNow = target.kind == .end || target.live; view.isEnabled = !disabled; view.onTap = onTap; view.onChoose = onChoose }
 }

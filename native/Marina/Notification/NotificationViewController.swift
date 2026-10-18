@@ -16,8 +16,8 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         let stack = UIStackView(arrangedSubviews: [heading, control, picker, save, status]); stack.axis = .vertical; stack.spacing = 12; stack.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 16), stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16)])
         control.onChoose = { [weak self] in self?.submit($0) }
-        control.onTap = { [weak self] in guard let self else { return }; self.picker.isHidden = false; self.save.isHidden = false; self.picker.date = self.control.instant; self.preferredContentSize.height = 390 }
-        preferredContentSize = CGSize(width: 340, height: 180)
+        control.onTap = { [weak self] in guard let self else { return }; self.picker.isHidden = false; self.save.isHidden = false; self.picker.date = self.control.instant; self.preferredContentSize.height = 560 }
+        preferredContentSize = CGSize(width: 340, height: 220)
     }
     func didReceive(_ notification: UNNotification) {
         loadViewIfNeeded()

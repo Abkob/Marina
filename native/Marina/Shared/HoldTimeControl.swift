@@ -5,6 +5,7 @@ import UIKit
 final class HoldTimeControl: UIControl {
     var onChoose: ((Date) -> Void)?
     var onTap: (() -> Void)?
+    var followsNow = true
     var instant = Date() { didSet { update() } }
     var timezone = TimeZone.current { didSet { update() } }
     var caption = "Started" { didSet { titleLabel.text = caption; accessibilityLabel = "Actual \(caption.lowercased())" } }
@@ -36,7 +37,9 @@ final class HoldTimeControl: UIControl {
         guard isEnabled else { return }
         let point = gesture.location(in: self)
         switch gesture.state {
-        case .began: anchor = instant; origin = point; canceled = false; UISelectionFeedbackGenerator().selectionChanged()
+        case .began:
+            if followsNow { instant = Date() }
+            anchor = instant; origin = point; canceled = false; UISelectionFeedbackGenerator().selectionChanged()
         case .changed:
             canceled = point.y - origin.y > 60
             let minutes = (Double(point.x - origin.x) * 180 / max(1, Double(bounds.width)) / 5).rounded() * 5
@@ -49,7 +52,7 @@ final class HoldTimeControl: UIControl {
         default: break
         }
     }
-    override func accessibilityIncrement() { instant = min(Date(), instant.addingTimeInterval(300)) }
-    override func accessibilityDecrement() { instant = instant.addingTimeInterval(-300) }
+    override func accessibilityIncrement() { followsNow = false; instant = min(Date(), instant.addingTimeInterval(300)) }
+    override func accessibilityDecrement() { followsNow = false; instant = instant.addingTimeInterval(-300) }
     override func accessibilityActivate() -> Bool { onTap?(); return true }
 }
