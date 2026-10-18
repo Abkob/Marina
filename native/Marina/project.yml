@@ -1,0 +1,112 @@
+name: Marina
+options:
+  bundleIdPrefix: com.abkob
+  deploymentTarget:
+    iOS: '17.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    CODE_SIGN_STYLE: Automatic
+    MARINA_APP_GROUP: group.com.abkob.marina
+packages:
+  MarinaCore:
+    path: ../MarinaCore
+targets:
+  Marina:
+    type: application
+    platform: iOS
+    sources: [App, Shared]
+    dependencies:
+      - package: MarinaCore
+      - target: MarinaWidget
+        embed: true
+      - target: MarinaNotification
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.abkob.marina
+        CODE_SIGN_ENTITLEMENTS: Config/Marina.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Config/App-Info.plist
+      properties:
+        CFBundleDisplayName: Marina
+        MarinaAppGroup: $(MARINA_APP_GROUP)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        CFBundleURLTypes:
+          - CFBundleURLName: com.abkob.marina.checkin
+            CFBundleURLSchemes: [marina-native]
+        NSPhotoLibraryUsageDescription: Attach selected study materials to Marina.
+        NSCameraUsageDescription: Capture a document to upload to Marina.
+        NSMicrophoneUsageDescription: Record media only when you choose to attach it to Marina.
+  MarinaWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget
+      - path: Shared
+        excludes: [HoldTimeControl.swift]
+    dependencies:
+      - package: MarinaCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.abkob.marina.widget
+        CODE_SIGN_ENTITLEMENTS: Config/Marina.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Config/Widget-Info.plist
+      properties:
+        CFBundleDisplayName: Marina
+        MarinaAppGroup: $(MARINA_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  MarinaNotification:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Notification
+      - path: Shared
+        excludes: [WidgetFace.swift]
+    dependencies:
+      - package: MarinaCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.abkob.marina.notification
+        CODE_SIGN_ENTITLEMENTS: Config/Marina.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Config/Notification-Info.plist
+      properties:
+        CFBundleDisplayName: Marina check-in
+        MarinaAppGroup: $(MARINA_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
+          NSExtensionMainStoryboard: NotificationInterface
+          NSExtensionAttributes:
+            UNNotificationExtensionCategory: MARINA_CHECKIN
+            UNNotificationExtensionInitialContentSizeRatio: 0.55
+            UNNotificationExtensionDefaultContentHidden: YES
+            UNNotificationExtensionUserInteractionEnabled: YES
+  MarinaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Marina
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.abkob.marina.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Marina:
+    build:
+      targets:
+        Marina: all
+    test:
+      targets: [MarinaUITests]

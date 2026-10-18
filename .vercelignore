@@ -26,3 +26,5 @@ recreate_paper_sensor.py
 *.obj
 *.stp
 *.log
+native/
+.github/

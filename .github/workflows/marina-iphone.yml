@@ -1,0 +1,58 @@
+name: Marina iPhone
+on:
+  push:
+    branches: [main]
+    paths: ['native/**', '.github/workflows/marina-iphone.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: marina-iphone-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test native accounting client
+        run: swift test --package-path native/MarinaCore
+      - name: Generate Xcode project and existing-brand icon
+        run: |
+          brew install xcodegen
+          swift native/Marina/make-icon.swift "$GITHUB_WORKSPACE/native/Marina"
+          cd native/Marina
+          xcodegen generate
+      - name: Test app and capture preview states
+        run: |
+          set -o pipefail
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["name"].startswith("iPhone")))')
+          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath native/Build/Simulator -resultBundlePath native/Build/Tests.xcresult CODE_SIGNING_ALLOWED=NO test | tee native-simulator.log
+          xcrun xcresulttool export attachments --path native/Build/Tests.xcresult --output-path native/Build/Previews
+      - name: Build device app and both extensions
+        run: |
+          set -o pipefail
+          xcodebuild -project native/Marina/Marina.xcodeproj -scheme Marina -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath native/Build/Device CODE_SIGNING_ALLOWED=NO build | tee native-device.log
+          APP=native/Build/Device/Build/Products/Release-iphoneos/Marina.app
+          # Ad-hoc signatures retain the App Group declaration for AltStore to
+          # inspect and re-provision. No Apple certificate or account is used.
+          sed 's/$(MARINA_APP_GROUP)/group.com.abkob.marina/g' native/Marina/Config/Marina.entitlements > native/Build/AltStore.entitlements
+          for EXT in "$APP"/PlugIns/*.appex; do codesign --force --sign - --entitlements native/Build/AltStore.entitlements "$EXT"; done
+          codesign --force --sign - --entitlements native/Build/AltStore.entitlements "$APP"
+          codesign --verify --deep --strict "$APP"
+          mkdir -p native/Build/Package/Payload
+          cp -R "$APP" native/Build/Package/Payload/
+          cd native/Build/Package
+          ditto -c -k --sequesterRsrc --keepParent Payload ../Marina-AltStore.ipa
+      - name: Upload app, test results and previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marina-iPhone-${{ github.sha }}
+          path: |
+            native/Build/Marina-AltStore.ipa
+            native/Build/Tests.xcresult
+            native/Build/Previews
+            native-simulator.log
+            native-device.log
+          retention-days: 14

@@ -38,3 +38,14 @@ tmp/
 
 # Local Vercel project metadata and pulled environment values
 .vercel/
+
+# Generated Apple build products and local signing settings
+native/Build/
+native/**/.build/
+native/**/.swiftpm/
+native/**/*.xcodeproj/
+native/**/App/Assets.xcassets/
+native/**/Config/*-Info.plist
+native/**/Local.xcconfig
+*.ipa
+*.xcresult/
