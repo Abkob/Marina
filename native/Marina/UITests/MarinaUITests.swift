@@ -1,5 +1,19 @@
 import XCTest
 final class MarinaUITests: XCTestCase {
+    func testTodayTaskStartsSwitchesAndStopsWithOneTap() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--work-preview"]; app.launch()
+        let first = app.buttons["work-start-read"]
+        XCTAssertTrue(first.waitForExistence(timeout: 15)); first.tap()
+        let status = app.staticTexts["work-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5)); XCTAssertTrue(status.label.contains("work started"))
+        app.buttons["work-start-solve"].tap()
+        XCTAssertTrue(app.buttons["Stop work timer"].exists)
+        let running = XCTAttachment(screenshot: app.screenshot()); running.name = "Today work running"; running.lifetime = .keepAlways; add(running)
+        app.buttons["Stop work timer"].tap()
+        XCTAssertTrue(status.label.contains("work stopped"))
+        XCTAssertTrue(app.buttons["work-start-read"].exists)
+    }
     func testWidgetStateGallery() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--widget-preview"]; app.launch()

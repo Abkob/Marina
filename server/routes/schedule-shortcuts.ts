@@ -6,6 +6,7 @@ import { getScheduleReviewDay, lockScheduleAccounting, reviewDateSchema } from '
 import { scheduleStartSchema, startScheduleActivity } from '../services/scheduleStart.js';
 import { getWorkTimer, stopWorkTimer } from '../services/workTimer.js';
 import { timeDate } from '../../src/utils/timeHeatmap.js';
+import { applyDayWorkCommand, dayWorkCommandSchema, dayWorkContext, pickDayWork } from '../services/dayWork.js';
 
 // This router is mounted before cookie authentication. Its bearer key is valid
 // ONLY on these schedule endpoints, never on the general API or key management.
@@ -15,6 +16,17 @@ router.use(async(req,res,next)=>{
   if(!await authenticateScheduleShortcut(req.get('authorization'))){res.status(401).json({error:'Reconnect this shortcut in Marina. Its connection is missing, expired or revoked.'});return;}
   next();
 });
+// Separate opt-in capability: existing schedule-only keys cannot control work.
+router.use('/work',async(req,res,next)=>{
+  if(!await authenticateScheduleShortcut(req.get('authorization'),true)){res.status(403).json({error:'Reconnect the widget with task timer access in Marina.'});return;}
+  next();
+});
+router.get('/work/context',async(req,res)=>{res.json(await dayWorkContext(undefined,req.query.available==='1'));});
+router.post('/work/pick',async(req,res)=>{
+  const body=z.object({task_id:z.string().min(1).max(200),selected:z.boolean()}).parse(req.body);
+  res.json(await pickDayWork(body.task_id,body.selected));
+});
+router.post('/work/command',async(req,res)=>{res.json(await applyDayWorkCommand(dayWorkCommandSchema.parse(req.body)));});
 router.get('/context',async(req,res)=>{
   const prefs=await query("SELECT timezone FROM user_schedule_prefs WHERE id='default'");
   const timezone=String(prefs.rows[0]?.timezone??'Asia/Beirut');

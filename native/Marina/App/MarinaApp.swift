@@ -11,7 +11,8 @@ import MarinaCore
     var body: some Scene {
         WindowGroup {
             MarinaRoot(model: model).onOpenURL { url in
-                guard url.scheme == "marina-native", url.host == "checkin" else { return }
+                guard url.scheme == "marina-native", ["checkin", "work"].contains(url.host ?? "") else { return }
+                model.showWork = url.host == "work"
                 model.selectedID = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "occurrence" })?.value
                 model.showControls = true
             }
@@ -31,6 +32,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
 
 @MainActor final class CompanionModel: ObservableObject {
     @Published var showControls = false
+    @Published var showWork = false
     @Published var selectedID: String?
     @Published var context: ScheduleContext?
     @Published var busy = false
@@ -68,7 +70,9 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         do {
             _ = try SharedStore.container()
             guard webView.url?.scheme == "https", webView.url?.host == MarinaAPI.origin.host else { throw MarinaError.message("Open Marina and sign in first.") }
-            let script = "const r=await fetch('/api/schedule-review/shortcuts/keys',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:'Marina iPhone'})});if(!r.ok)throw new Error('Sign into Marina first, then connect again.');return await r.json();"
+            guard SharedStore.cache().command == nil && DayWorkStore.pending() == nil else { throw MarinaError.message("Retry unconfirmed saves before reconnecting.") }
+            let previous = try? SharedStore.connection()
+            let script = "const r=await fetch('/api/schedule-review/shortcuts/keys',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:'Marina iPhone · schedule and task timers',focus_control:true})});if(!r.ok)throw new Error('Sign into Marina first, then connect again.');return await r.json();"
             let result = try await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: .page)
             guard let value = result as? [String: Any], let token = value["token"] as? String, let id = value["id"] as? String, token.hasPrefix("marina_sc_") else { throw MarinaError.message("Connection could not be confirmed.") }
             do { try SharedStore.write(NativeConnection(id: id, token: token), to: "connection.json") }
@@ -76,7 +80,9 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
                 _ = try? await webView.callAsyncJavaScript("return await fetch('/api/schedule-review/shortcuts/keys/'+id,{method:'DELETE',credentials:'same-origin'}).then(r=>r.ok)", arguments: ["id": id], in: nil, contentWorld: .page)
                 throw error
             }
-            connection = true; context = try await SharedStore.refresh(); message = "Connected"
+            if let previous { _ = try? await webView.callAsyncJavaScript("return await fetch('/api/schedule-review/shortcuts/keys/'+id,{method:'DELETE',credentials:'same-origin'}).then(r=>r.ok)", arguments: ["id": previous.id], in: nil, contentWorld: .page) }
+            connection = true; context = try await SharedStore.refresh(); _ = try await DayWorkStore.refresh(); DayWorkStore.message(nil); message = "Connected"
+            WidgetCenter.shared.reloadAllTimelines()
         } catch { message = error.localizedDescription }
     }
     func submit(_ target: CheckInTarget, time: Date) async {
@@ -91,7 +97,7 @@ extension Notification.Name { static let marinaCheckIn = Notification.Name("mari
         guard !isUITesting else { return }
         guard !busy else { return }; busy = true; defer { busy = false }
         do {
-            guard SharedStore.cache().command == nil else { throw MarinaError.message("Retry the unconfirmed check-in before disconnecting.") }
+            guard SharedStore.cache().command == nil && DayWorkStore.pending() == nil else { throw MarinaError.message("Retry unconfirmed timer and check-in saves before disconnecting.") }
             let key = try SharedStore.connection()
             guard webView.url?.host == MarinaAPI.origin.host else { throw MarinaError.message("Open Marina and sign in to revoke this connection.") }
             let result = try await webView.callAsyncJavaScript("return await fetch('/api/schedule-review/shortcuts/keys/'+id,{method:'DELETE',credentials:'same-origin'}).then(r=>r.ok)", arguments: ["id": key.id], in: nil, contentWorld: .page)
@@ -125,11 +131,15 @@ struct MarinaRoot: View {
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(.background)
             }
         }
-        .sheet(isPresented: $model.showControls) { CheckInSheet(model: model).presentationDetents(model.isUITesting ? [.large] : [.medium, .large]).presentationDragIndicator(.visible) }
+        .sheet(isPresented: $model.showControls) {
+            Group { if model.showWork { DayWorkSheet(model: model) } else { CheckInSheet(model: model) } }
+                .presentationDetents(model.isUITesting ? [.large] : [.medium, .large]).presentationDragIndicator(.visible)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .marinaCheckIn)) { _ in model.showControls = true }
         .task {
             if model.isUITesting && ProcessInfo.processInfo.arguments.contains("--checkin-preview") { model.showControls = true }
             if ProcessInfo.processInfo.arguments.contains("--widget-preview") { model.preview = true; model.showControls = true }
+            if model.isUITesting && ProcessInfo.processInfo.arguments.contains("--work-preview") { model.showWork = true; model.showControls = true }
         }
     }
 }
@@ -172,6 +182,7 @@ struct CheckInSheet: View {
                         }
                     }
                     if !model.preview {
+                        Button { model.showWork = true } label: { Label("Tasks for today", systemImage: "play.circle").frame(minHeight: 44).contentShape(Rectangle()) }.buttonStyle(.plain)
                         DisclosureGroup {
                             if model.connection {
                                 Button { Task { await model.enableReminders() } } label: { Text("Enable event reminders").frame(minHeight: 44).contentShape(Rectangle()) }

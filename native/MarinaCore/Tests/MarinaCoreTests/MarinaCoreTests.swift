@@ -1,6 +1,23 @@
 import XCTest
 @testable import MarinaCore
 final class MarinaCoreTests: XCTestCase {
+    func testWorkCommandsPreserveNullGuardAndOriginalInstantAcrossRetry() throws {
+        let input = DayWorkCommand(action: "start", taskID: "child-id", date: "2026-10-19", expectedRunningID: nil, instant: MarinaClock.parse("2026-10-19T09:00:00Z")!, commandID: "stable-id")
+        let bytes = try JSONEncoder().encode(input)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        XCTAssertTrue(body["expected_running_id"] is NSNull)
+        XCTAssertEqual(body["task_id"] as? String, "child-id")
+        XCTAssertEqual(try JSONDecoder().decode(DayWorkCommand.self, from: bytes), input)
+    }
+    func testWorkPagingUsesStableIDsAndNoMutation() throws {
+        let bytes = Data("""
+        {"date":"2026-10-19","timezone":"UTC","server_now":"2026-10-19T09:00:00Z","tasks":[{"id":"a","title":"Same title","context":"Parent A","pinned":true},{"id":"b","title":"Same title","context":"Parent B","pinned":false}],"running":null}
+        """.utf8)
+        let value = try JSONDecoder().decode(DayWorkContext.self, from: bytes)
+        XCTAssertEqual(value.page(offset: 3, count: 3).map(\.id), ["b"])
+        XCTAssertEqual(value.page(offset: -1, count: 1).map(\.id), ["a"])
+        XCTAssertNil(value.running)
+    }
     private func context(events: String, pending: String = "[]", running: String = "null") throws -> ScheduleContext {
         try JSONDecoder().decode(ScheduleContext.self, from: Data("""
         {"date":"2026-10-18","timezone":"Asia/Beirut","server_now":"2026-10-18T07:00:00Z","running_id":\(running),"events":\(events),"pending":\(pending)}

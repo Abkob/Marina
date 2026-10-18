@@ -129,4 +129,12 @@ public struct MarinaAPI: Sendable {
         return try JSONDecoder().decode(ScheduleContext.self, from: await request(path))
     }
     public func send(_ command: CheckInCommand) async throws { _ = try await request(command.path, method: "POST", body: command.body()) }
+    public func workContext(available: Bool = false) async throws -> DayWorkContext {
+        try JSONDecoder().decode(DayWorkContext.self, from: await request("work/context" + (available ? "?available=1" : "")))
+    }
+    public func pickWork(id: String, selected: Bool) async throws -> DayWorkContext {
+        let data = try JSONSerialization.data(withJSONObject: ["task_id": id, "selected": selected])
+        return try JSONDecoder().decode(DayWorkContext.self, from: await request("work/pick", method: "POST", body: data))
+    }
+    public func sendWork(_ command: DayWorkCommand) async throws { _ = try await request("work/command", method: "POST", body: JSONEncoder().encode(command)) }
 }

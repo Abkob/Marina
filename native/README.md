@@ -2,6 +2,16 @@
 
 The full Marina interface runs in a persistent `WKWebView` against the existing Vercel deployment. Its tasks, goals, uploads, calendar, notes, chat and cloud saves use the existing web implementation and database. Native additions provide a small Home Screen/Lock Screen widget, a check-in sheet, and a custom expanded notification. This is a native container for the complete web app, not a separate Swift rewrite of every web screen.
 
+## Tasks for today — Home Screen launcher
+
+The **Tasks for today** widget has small and medium Home Screen layouts. Tap a named task to start its shared cloud timer; selecting another task switches at one atomic boundary. The running state shows elapsed time and a discreet Stop control. Stop preserves the task and does not mark it complete. Paging only changes the displayed choices.
+
+Open the app's native control sheet → **Tasks for today** → **Widget connection** → **Connect task widget** after signing in. This explicitly grants task-timer and day-list access in addition to schedule check-in; existing schedule-only connections are not silently upgraded. Choose today's tasks in the same sheet. Current accepted calendar links also supply eligible tasks/subtasks, with parent context and stable IDs. Unapplied proposals and overdue tasks are not automatically added. Add **Marina → Tasks for today** through the Home Screen widget gallery.
+
+This first milestone deliberately refuses to switch away from a running legacy calendar timer: end it explicitly in **Calendar check-in** first. The old timer couples focus and attendance; inventing an attendance end would lose evidence. Fully independent attendance/focus controls remain later checklist work. Ordinary task/routine timers use the existing canonical ledger; retries retain command IDs and original times, and stale state is rejected. Actions delayed over ten minutes are rejected unless already committed and replayed by ID. Offline saves are unconfirmed until retried successfully.
+
+Backend prerequisite: additive migration `M-036-day-work-widget.sql`, deployed only after a fresh verified backup. The task chooser and widget use the narrow `/api/schedule-shortcuts/work/*` capability; it grants no general API login. No credentials are embedded in the IPA. The widget configurations share the existing extension and bundle IDs.
+
 ## Build and preview before installation
 
 The **Marina iPhone** GitHub Actions workflow builds on macOS. It runs the pure Swift client tests, generates an Xcode project, compiles the app and both extensions, launches a Simulator UI test, captures the sample widget-state gallery, and packages an ad-hoc-signed IPA for AltStore to re-sign. It does not use an Apple developer certificate, upload to TestFlight, or create cloud records. Simulator tests never pair with the production server.

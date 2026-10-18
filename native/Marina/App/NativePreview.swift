@@ -3,6 +3,12 @@ import MarinaCore
 
 /// Offline Simulator fixtures. No connection key, reminder or cloud write.
 enum NativePreview {
+    static func workContext(running: String? = nil) -> DayWorkContext? {
+        let tasks: [[String: Any]] = [("read", "Read chapter 4", "Biology"), ("solve", "Solve problem 2", "Problem set"), ("draft", "Draft introduction", "Report")].map { ["id": $0.0, "title": $0.1, "context": $0.2, "pinned": true] }
+        var value: [String: Any] = ["date": MarinaClock.day(Date(), timezone: "UTC"), "timezone": "UTC", "server_now": MarinaClock.iso(Date()), "tasks": tasks, "available": tasks]
+        if let running { value["running"] = ["sessionId": "preview-\(running)", "taskId": running, "title": tasks.first { $0["id"] as? String == running }?["title"] as? String ?? "Work", "startedAt": MarinaClock.iso(Date().addingTimeInterval(-600))] }
+        return try? JSONDecoder().decode(DayWorkContext.self, from: JSONSerialization.data(withJSONObject: value))
+    }
     static var isUITesting: Bool {
         #if targetEnvironment(simulator)
         return ProcessInfo.processInfo.arguments.contains("--ui-testing")

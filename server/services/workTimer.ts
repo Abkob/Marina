@@ -23,7 +23,7 @@ export const stopTimerSchema = z.object({ minutes: z.number().int().min(1).max(1
 export const timerNotesSchema = z.object({ notes: z.string().max(10_000) });
 
 type TimerRow = { id: string; task_id: string | null; routine_id: string | null; routine_date: string | null; started_at: string; ended_at: string | null; notes: string; status: string; title?: string; goal_id?: string | null; schedule_occurrence_id?:string; schedule_date?:string; schedule_occurrence?:ScheduleOccurrence };
-type Client = Pick<PoolClient, 'query'>;
+type Client = { query:(sql:string,params?:any[])=>Promise<{rows:any[]}> };
 const selectTimer = `SELECT wt.*, COALESCE(t.title,r.title,wt.schedule_occurrence->>'title','Focus session') AS title,
   COALESCE(t.goal_id,r.goal_id) AS goal_id FROM work_timers wt
   LEFT JOIN tasks t ON t.id=wt.task_id LEFT JOIN routines r ON r.id=wt.routine_id`;

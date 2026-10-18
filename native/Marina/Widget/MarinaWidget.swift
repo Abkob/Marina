@@ -73,10 +73,13 @@ struct MarinaWidgetView: View {
         .widgetURL(entry.target?.deepLink ?? URL(string: "marina-native://checkin")!)
     }
 }
-@main struct MarinaWidget: Widget {
+struct MarinaWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: SharedStore.widgetKind, provider: MarinaProvider()) { MarinaWidgetView(entry: $0) }
             .configurationDisplayName("Marina").description("Your event. One check-in.")
             .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
     }
+}
+@main struct MarinaWidgets: WidgetBundle {
+    var body: some Widget { MarinaDayWorkWidget(); MarinaWidget() }
 }

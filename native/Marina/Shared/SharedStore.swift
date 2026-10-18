@@ -54,11 +54,11 @@ enum SharedStore {
     }
     static func removeConnection() throws {
         let base = try container()
-        for name in ["connection.json", "schedule.json", "pending-command.json"] {
+        for name in ["connection.json", "schedule.json", "pending-command.json", "day-work.json", "pending-work.json"] {
             let url = base.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
         }
-        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+        WidgetCenter.shared.reloadAllTimelines()
     }
     static func refresh() async throws -> ScheduleContext {
         let context = try await MarinaAPI(token: connection().token).context()
@@ -72,6 +72,7 @@ enum SharedStore {
         guard fd >= 0 else { throw MarinaError.message("Check-in storage is unavailable.") }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { close(fd); throw MarinaError.message("Another check-in is saving. Wait and refresh.") }
         defer { flock(fd, LOCK_UN); close(fd) }
+        guard DayWorkStore.pending() == nil else { throw MarinaError.message("Retry the unconfirmed task timer save first.") }
         var cache = cache()
         // Preserve a failed request's ID and chosen time: a lost successful
         // response must never generate another start on retry.

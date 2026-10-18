@@ -16,6 +16,6 @@ router.get('/reminders/status',async(_req,res)=>{res.json(await schedulePushStat
 router.post('/reminders/subscribe',async(req,res)=>{res.json(await savePushSubscription(pushSubscriptionSchema.parse(req.body)));});
 router.post('/reminders/unsubscribe',async(req,res)=>{res.json(await removePushSubscription(z.string().url().max(2048).parse(req.body.endpoint)));});
 router.get('/shortcuts/keys',async(_req,res)=>{res.json(await listScheduleShortcutKeys());});
-router.post('/shortcuts/keys',async(req,res)=>{res.json(await createScheduleShortcutKey(z.string().trim().min(1).max(80).default('My iPhone').parse(req.body.label)));});
+router.post('/shortcuts/keys',async(req,res)=>{res.json(await createScheduleShortcutKey(z.string().trim().min(1).max(80).default('My iPhone').parse(req.body.label),z.boolean().default(false).parse(req.body.focus_control)));});
 router.delete('/shortcuts/keys/:id',async(req,res)=>{res.json(await revokeScheduleShortcutKey(z.string().uuid().parse(req.params.id)));});
 export {router as scheduleReviewRouter};
