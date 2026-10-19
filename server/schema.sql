@@ -1423,3 +1423,6 @@ CREATE TABLE IF NOT EXISTS day_work_commands (
   id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, result JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Existing timers retain their meaning until an explicit switch separates focus.
+ALTER TABLE work_timers ADD COLUMN IF NOT EXISTS attendance_only BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE work_timers ADD COLUMN IF NOT EXISTS focus_ended_at TEXT;

@@ -58,7 +58,8 @@ export async function getScheduleReviewDay(date: string, client: Client = {query
   const current=await currentOccurrences(date,zone,client);
   const outcomes=await client.query('SELECT * FROM schedule_occurrence_outcomes WHERE date=$1 ORDER BY occurrence_id',[date]);
   const sessions=await client.query(`SELECT id,started_at,ended_at,minutes,task_id,routine_id,source,schedule_occurrence_id FROM work_sessions WHERE (started_at < $2 AND COALESCE(ended_at,started_at) >= $1) OR id IN (SELECT session_id FROM schedule_occurrence_outcomes WHERE date=$3) ORDER BY started_at,id`,[start,end,date]);
-  const effectiveOutcomes=(outcomes.rows as ScheduleOutcome[]).map(o=>{const session=sessions.rows.find(s=>s.id===o.session_id);return session&&session.ended_at?{...o,actual_start:session.started_at,actual_end:session.ended_at}:o;});
+  const detached=new Set((await client.query('SELECT id FROM work_timers WHERE attendance_only=true AND id=ANY($1::text[])',[outcomes.rows.map(o=>o.session_id).filter(Boolean)])).rows.map(t=>t.id));
+  const effectiveOutcomes=(outcomes.rows as ScheduleOutcome[]).map(o=>{const session=sessions.rows.find(s=>s.id===o.session_id);return session&&session.ended_at&&!detached.has(o.session_id)?{...o,actual_start:session.started_at,actual_end:session.ended_at}:o;});
   const pending=await client.query(`SELECT wt.id,wt.started_at,COALESCE(wt.schedule_occurrence->>'title',t.title,r.title,'Study session') AS title,wt.schedule_occurrence_id,wt.schedule_date
     FROM work_timers wt LEFT JOIN tasks t ON t.id=wt.task_id LEFT JOIN routines r ON r.id=wt.routine_id WHERE wt.status='awaiting_end'`);
   return {date,timezone:zone,today:timeDate(Date.now(),zone),proposed:saved?{saved_at:saved.saved_at,frozen:saved.frozen,occurrences:saved.occurrences}:null,current,outcomes:effectiveOutcomes,sessions:sessions.rows as ScheduleSession[],pendingTimers:pending.rows.filter(t=>t.schedule_date===date||(!t.schedule_date&&timeDate(Date.parse(t.started_at),zone)===date))};
@@ -91,6 +92,10 @@ export async function reconcileScheduleSessions(client: Client) {
   const {rows:outcomes}=await client.query("SELECT * FROM schedule_occurrence_outcomes WHERE status='confirmed' ORDER BY updated_at,occurrence_id");
   const {rows:external}=await client.query("SELECT id,started_at,ended_at,minutes FROM work_sessions WHERE source<>'schedule_checkin' AND ended_at IS NOT NULL");
   const occupied=external.map(s=>({start:Date.parse(s.started_at),end:Date.parse(s.ended_at)}));
+  const timers=(await client.query("SELECT id,started_at,status,attendance_only FROM work_timers WHERE status='running' OR schedule_occurrence_id IS NOT NULL")).rows;
+  // A running focus segment owns its observed span provisionally. Attendance
+  // confirmation cannot credit it and then add it again when Stop is saved.
+  for(const timer of timers)if(timer.status==='running'&&!timer.attendance_only)occupied.push({start:Date.parse(timer.started_at),end:Infinity});
   const existing=await client.query("SELECT id,task_id FROM work_sessions WHERE source='schedule_checkin'");
   const tasks=await client.query('SELECT id FROM tasks'),routines=await client.query('SELECT id FROM routines'),goals=await client.query('SELECT id FROM goals');
   const taskIds=new Set(tasks.rows.map(t=>t.id)),routineIds=new Set(routines.rows.map(r=>r.id));
@@ -98,7 +103,7 @@ export async function reconcileScheduleSessions(client: Client) {
   for(const raw of outcomes){
     const o=raw as ScheduleOutcome;
     // A linked timer is already a canonical session; confirmation adds no row.
-    if(o.session_id)continue;
+    if(o.session_id&&!timers.some(t=>t.id===o.session_id&&t.attendance_only))continue;
     const span={start:Date.parse(o.actual_start!),end:Date.parse(o.actual_end!)};
     for(const part of uncoveredRanges(span,occupied)){
       const id='schedule-'+crypto.createHash('sha256').update(`${o.occurrence_id}|${part.start}|${part.end}`).digest('hex');

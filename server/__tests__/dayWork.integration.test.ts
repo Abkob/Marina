@@ -10,6 +10,8 @@ import { scheduleShortcutsRouter } from '../routes/schedule-shortcuts.js';
 import { startWorkTimer,stopWorkTimer } from '../services/workTimer.js';
 import { startScheduleActivity,scheduleStartSchema } from '../services/scheduleStart.js';
 import { checkInSchedule } from '../services/scheduleReview.js';
+import { getScheduleReviewDay } from '../services/scheduleReview.js';
+import { correctScheduleTime } from '../services/scheduleTimeCorrection.js';
 
 describe.skipIf(!process.env.DATABASE_URL_TEST)('Home Screen day work PostgreSQL contract',()=>{
  let server:Server,origin:string;
@@ -89,11 +91,64 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('Home Screen day work PostgreSQL
   for(const extra of [{date:'2026-10-18'},{instant:at(1)},{instant:new Date(Date.parse(at())-11*60_000).toISOString()}])await expect(applyDayWorkCommand(command('a',null,'start',extra))).rejects.toHaveProperty('status');
   expect((await query('SELECT * FROM work_timers')).rows).toHaveLength(0);
  });
- it('preserves the legacy calendar timer and unknown attendance end',async()=>{
+ it('separates a legacy calendar focus segment on switch while preserving its unknown attendance end',async()=>{
   await query("INSERT INTO events(id,title,week_start,day_index,start_hour,duration_hours,created_at,updated_at) VALUES('e','Study','2026-10-19',0,9,1,$1,$1)",[at()]);
   const id=crypto.randomUUID();await startScheduleActivity('2026-10-19',scheduleStartSchema.parse({session_id:id,occurrence_id:'event:e:2026-10-19',expected_running_id:null}));vi.setSystemTime(new Date(at(10)));
-  await expect(applyDayWorkCommand(command('a',id))).rejects.toMatchObject({status:409});
-  expect((await dayWorkContext()).running?.sessionId).toBe(id);expect((await query('SELECT actual_end FROM schedule_occurrence_outcomes')).rows[0].actual_end).toBeNull();
+  await applyDayWorkCommand(command('a',id));
+  expect((await dayWorkContext()).running?.taskId).toBe('a');expect((await query('SELECT actual_end FROM schedule_occurrence_outcomes')).rows[0].actual_end).toBeNull();
+  expect((await query('SELECT status,attendance_only,focus_ended_at FROM work_timers WHERE id=$1',[id])).rows[0]).toMatchObject({status:'awaiting_end',attendance_only:true,focus_ended_at:at(10)});
+  expect((await query('SELECT minutes FROM work_sessions WHERE id=$1',[id])).rows[0].minutes).toBe(10);
+ });
+ async function attendance(id='e',independent=true){
+  await query("INSERT INTO events(id,title,week_start,day_index,start_hour,duration_hours,created_at,updated_at) VALUES($1,'Study','2026-10-19',0,9,1,$2,$2)",[id,at()]);
+  await query('INSERT INTO event_task_links(id,event_id,task_id,created_at) VALUES($1,$2,\'a\',$3)',[id+'-link',id,at()]);
+  const session=crypto.randomUUID();await startScheduleActivity('2026-10-19',scheduleStartSchema.parse({session_id:session,occurrence_id:`event:${id}:2026-10-19`,attendance_only:independent}));return session;
+ }
+ it('starts attendance alongside existing work and ending attendance never stops the newer focus task',async()=>{
+  const a=command();await applyDayWorkCommand(a);
+  const event=await attendance();expect((await dayWorkContext()).running?.sessionId).toBe(a.command_id);
+  vi.setSystemTime(new Date(at(20)));const b=command('b',a.command_id);await applyDayWorkCommand(b);
+  vi.setSystemTime(new Date(at(45)));await stopWorkTimer(event,{ended_at:at(45)});await stopWorkTimer(event,{ended_at:at(45)});
+  expect((await dayWorkContext()).running?.taskId).toBe('b');
+  const outcome=(await getScheduleReviewDay('2026-10-19')).outcomes[0];expect(outcome.actual_end).toBe(at(45));
+  vi.setSystemTime(new Date(at(60)));await applyDayWorkCommand(command('b',b.command_id,'stop'));
+  expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(60);
+ });
+ it('fills only attendance gaps around child focus and preserves corrected-away focus minutes',async()=>{
+  const event=await attendance();vi.setSystemTime(new Date(at(10)));
+  const a=command();await applyDayWorkCommand(a);vi.setSystemTime(new Date(at(30)));await applyDayWorkCommand(command('a',a.command_id,'stop'));
+  await query('UPDATE work_sessions SET minutes=5 WHERE id=$1',[a.command_id]);
+  vi.setSystemTime(new Date(at(60)));await stopWorkTimer(event,{ended_at:at(60)});
+  expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(45);
+  expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions WHERE source=\'schedule_checkin\'')).rows[0].total).toBe(40);
+ });
+ it('keeps legacy focus boundaries and minutes intact when attendance is later ended and corrected',async()=>{
+  const event=await attendance('e',false);vi.setSystemTime(new Date(at(10)));
+  const b=command('b',event);await applyDayWorkCommand(b);
+  vi.setSystemTime(new Date(at(40)));await stopWorkTimer(event,{ended_at:at(40)});
+  let outcome=(await getScheduleReviewDay('2026-10-19')).outcomes[0];expect(outcome.actual_end).toBe(at(40));
+  await correctScheduleTime({occurrence_id:outcome.occurrence_id,date:outcome.date,expected_revision:outcome.revision,actual_start:at(5),actual_end:at(35)});
+  expect((await query('SELECT started_at,ended_at,minutes FROM work_sessions WHERE id=$1',[event])).rows[0]).toEqual({started_at:at(),ended_at:at(10),minutes:10});
+  outcome=(await getScheduleReviewDay('2026-10-19')).outcomes[0];expect(outcome.actual_start).toBe(at(5));expect(outcome.actual_end).toBe(at(35));
+  expect((await dayWorkContext()).running?.sessionId).toBe(b.command_id);
+ });
+ it('serializes an attendance end racing a focus switch without duplicate credit or ending the new work',async()=>{
+  const event=await attendance(),a=command();await applyDayWorkCommand(a);vi.setSystemTime(new Date(at(20)));
+  const b=command('b',a.command_id);
+  await Promise.all([stopWorkTimer(event,{ended_at:at(20)}),applyDayWorkCommand(b)]);
+  expect((await dayWorkContext()).running?.taskId).toBe('b');expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(20);
+ });
+ it('counts overlapping attendance once, and leaves the other event open until explicitly ended',async()=>{
+  const e=await attendance(),f=await attendance('f');vi.setSystemTime(new Date(at(60)));
+  await stopWorkTimer(e,{ended_at:at(60)});
+  expect((await getScheduleReviewDay('2026-10-19')).pendingTimers.some(t=>t.id===f)).toBe(true);
+  await stopWorkTimer(f,{ended_at:at(60)});expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(60);
+ });
+ it('stops a legacy focus timer without marking its event ended',async()=>{
+  const event=await attendance('e',false);vi.setSystemTime(new Date(at(10)));
+  await applyDayWorkCommand(command('a',event,'stop',{task_id:null}));
+  expect((await dayWorkContext()).running).toBeNull();
+  const day=await getScheduleReviewDay('2026-10-19');expect(day.pendingTimers).toHaveLength(1);expect(day.outcomes[0].actual_end).toBeNull();
  });
  it('switches from a timer started on the web and stop does not create a second calendar credit',async()=>{
   const id=crypto.randomUUID();await startWorkTimer({sessionId:id,taskId:'a',notes:''});vi.setSystemTime(new Date(at(20)));

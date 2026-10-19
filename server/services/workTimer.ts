@@ -68,15 +68,16 @@ export async function startWorkTimer(input: z.infer<typeof startTimerSchema> | z
     }
     await client.query(`INSERT INTO work_timers (id,task_id,routine_id,routine_date,started_at,notes,status,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,'running',$7)`, [sessionId, input.taskId || null, input.routineId ?? null, routineDate, startedAt, input.notes, now]);
+    await reconcileScheduleSessions(client);
     return { ...await getWorkTimer(client), started: true };
   });
 }
 
-export async function stopWorkTimer(sessionId: string, input: z.infer<typeof stopTimerSchema>, existingClient?:PoolClient) {
+export async function stopWorkTimer(sessionId: string, input: z.infer<typeof stopTimerSchema>, existingClient?:PoolClient, preserveAttendance=false) {
   const apply=async (client:PoolClient) => {
     await lock(client);
     const { rows } = await client.query('SELECT * FROM work_timers WHERE id=$1 FOR UPDATE', [sessionId]);
-    const timer = rows[0] as TimerRow | undefined;
+    const timer = rows[0] as (TimerRow & {attendance_only?:boolean;focus_ended_at?:string|null}) | undefined;
     if (!timer) fail(404, 'This timer no longer exists');
     if (timer!.status === 'discarded') fail(409, 'This timer was discarded on another device');
     if (timer!.status === 'stopped') {
@@ -85,6 +86,16 @@ export async function stopWorkTimer(sessionId: string, input: z.infer<typeof sto
     }
     const endedAt = input.ended_at??new Date().toISOString();
     if(Date.parse(endedAt)>Date.now()+1000||(input.ended_at&&Date.parse(endedAt)<=Date.parse(timer!.started_at)))fail(400,'Choose an actual end after the recorded start, in the past.');
+    if(timer!.attendance_only&&timer!.schedule_occurrence_id&&timer!.schedule_occurrence){
+      // Ending attendance never rewrites its earlier focus segment or stops
+      // whichever task/routine happens to be running now.
+      if(input.minutes!==undefined)fail(400,'Correct attendance boundaries rather than focus minutes.');
+      if(Date.parse(endedAt)-Date.parse(timer!.started_at)>86_400_000)fail(400,'Choose the actual attendance end within 24 hours of its start.');
+      await finishScheduleTimer(client,{id:sessionId,date:timer!.schedule_date!,occurrence:timer!.schedule_occurrence,start:timer!.started_at,end:endedAt});
+      await client.query("UPDATE work_timers SET status='stopped',ended_at=$2,updated_at=$2 WHERE id=$1",[sessionId,endedAt]);
+      await reconcileScheduleSessions(client);
+      return {...await getWorkTimer(client),minutes:0,duplicate:false};
+    }
     if(timer!.schedule_occurrence_id||timer!.status==='awaiting_end'||input.ended_at){
       const overlaps=await client.query(`SELECT id FROM work_sessions WHERE source<>'schedule_checkin' AND id<>$1 AND ended_at IS NOT NULL AND started_at<$3 AND ended_at>$2 LIMIT 1`,[sessionId,timer!.started_at,endedAt]);
       const running=await client.query("SELECT id FROM work_timers WHERE status='running' AND id<>$1 AND started_at<$2 LIMIT 1",[sessionId,endedAt]);
@@ -105,7 +116,7 @@ export async function stopWorkTimer(sessionId: string, input: z.infer<typeof sto
         await client.query('UPDATE work_sessions SET schedule_occurrence_id=$2 WHERE id=$1',[sessionId,occurrence.id]);
       }else await client.query(`INSERT INTO work_sessions(id,task_id,goal_id,started_at,ended_at,minutes,notes,source,created_at,schedule_occurrence_id)
         VALUES($1,$2,$3,$4,$5,$6,$7,'timer',$5,$8)`,[sessionId,task.rows[0]?.id??null,task.rows[0]?.goal_id??occurrence.goalId??null,timer!.started_at,endedAt,minutes,notes,occurrence.id]);
-      await finishScheduleTimer(client,{id:sessionId,date:timer!.schedule_date!,occurrence,start:timer!.started_at,end:endedAt});
+      if(!preserveAttendance)await finishScheduleTimer(client,{id:sessionId,date:timer!.schedule_date!,occurrence,start:timer!.started_at,end:endedAt});
       if(task.rows[0])await client.query(`UPDATE tasks SET actual_minutes=(SELECT COALESCE(SUM(minutes),0) FROM work_sessions WHERE task_id=$1),updated_at=$2 WHERE id=$1`,[task.rows[0].id,endedAt]);
     } else if (timer!.routine_id) {
       const session = routineSessionSchema.parse({ id: sessionId, date: timer!.routine_date, started_at: timer!.started_at, ended_at: endedAt, minutes, notes });
@@ -119,7 +130,9 @@ export async function stopWorkTimer(sessionId: string, input: z.infer<typeof sto
       await client.query(`UPDATE tasks SET actual_minutes=(SELECT COALESCE(SUM(minutes),0) FROM work_sessions WHERE task_id=$1),
         status=CASE WHEN status IN ('todo','not_started','planned') THEN 'in_progress' ELSE status END, updated_at=$2 WHERE id=$1`, [timer!.task_id, endedAt]);
     }
-    await client.query("UPDATE work_timers SET status='stopped',ended_at=$2,notes=$3,updated_at=$2 WHERE id=$1", [sessionId, endedAt, notes]);
+    if(preserveAttendance&&timer!.schedule_occurrence_id){
+      await client.query("UPDATE work_timers SET status='awaiting_end',attendance_only=true,focus_ended_at=$2,ended_at=NULL,notes=$3,updated_at=$2 WHERE id=$1",[sessionId,endedAt,notes]);
+    }else await client.query("UPDATE work_timers SET status='stopped',ended_at=$2,notes=$3,updated_at=$2 WHERE id=$1", [sessionId, endedAt, notes]);
     await reconcileScheduleSessions(client);
     return { ...await getWorkTimer(client), minutes: savedMinutes, duplicate: false };
   };
@@ -133,6 +146,7 @@ export async function changeWorkTimer(sessionId: string, notes: string | null) {
       ? await client.query("UPDATE work_timers SET status='discarded',ended_at=$2,updated_at=$2 WHERE id=$1 AND status IN ('running','awaiting_end') RETURNING id", [sessionId, new Date().toISOString()])
       : await client.query("UPDATE work_timers SET notes=$2,updated_at=$3 WHERE id=$1 AND status='running' RETURNING id", [sessionId, notes, new Date().toISOString()]);
     if (!result.rowCount && notes !== null) fail(409, 'This timer has stopped on another device');
+    if(notes===null)await reconcileScheduleSessions(client);
     return getWorkTimer(client);
   });
 }

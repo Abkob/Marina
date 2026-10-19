@@ -1,5 +1,28 @@
 import XCTest
 final class MarinaUITests: XCTestCase {
+    func testHoldSwipeReleaseStartsTheSelectedStableTask() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--work-preview"]; app.launch()
+        let picker = app.descendants(matching: .any)["work-task-picker"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        let start = picker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        let end = start.withOffset(CGVector(dx: 0, dy: -52))
+        start.press(forDuration: 0.5, thenDragTo: end)
+        let status = app.staticTexts["work-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5)); XCTAssertTrue(status.label.contains("work started · solve"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "Hold swipe task switch"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+    func testHoldSwipeRightCancelsWithoutStartingWork() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--work-preview"]; app.launch()
+        let picker = app.descendants(matching: .any)["work-task-picker"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 15))
+        let start = picker.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        start.press(forDuration: 0.5, thenDragTo: start.withOffset(CGVector(dx: 120, dy: -50)))
+        let status = app.staticTexts["work-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5)); XCTAssertTrue(status.label.contains("canceled"))
+        XCTAssertFalse(app.buttons["Stop work timer"].exists)
+    }
     func testHomeScreenTaskLayouts() {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--work-preview", "--work-widget-gallery"]; app.launch()

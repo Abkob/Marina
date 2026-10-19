@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { query, transaction } from '../db.js';
-import { getScheduleReviewDay, lockScheduleAccounting, reviewDateSchema } from './scheduleReview.js';
+import { getScheduleReviewDay, lockScheduleAccounting, reconcileScheduleSessions, reviewDateSchema } from './scheduleReview.js';
 import { getWorkTimer, stopWorkTimer } from './workTimer.js';
 import { getWorkTasks, isOpenTask } from '../../src/utils/taskTree.js';
 import { buildWorkHierarchy } from '../../shared/workHierarchy.js';
@@ -80,12 +80,9 @@ export async function applyDayWorkCommand(input:z.infer<typeof dayWorkCommandSch
         await client.query('INSERT INTO day_work_commands(id,request_hash,result) VALUES($1,$2,$3::jsonb)',[input.command_id,hash,JSON.stringify(result)]);
         return result;
       }
-    }else if(!current||current.scheduleOccurrenceId||(current.taskId||null)!==input.task_id){fail(409,'This work timer changed. Open calendar check-in for a schedule timer.');}
-    // This milestone never invents an attendance end. The legacy calendar timer
-    // must be explicitly ended in check-in before a work timer can replace it.
-    if(current?.scheduleOccurrenceId)fail(409,'End the calendar timer in Check in first; its attendance end is still unconfirmed.');
+    }else if(!current||(current.taskId||null)!==input.task_id){fail(409,'This work timer changed. Refresh before stopping.');}
     if(current&&instant<=Date.parse(current.startedAt))fail(409,'Wait a moment, then try again. The boundary must follow the timer start.');
-    if(current)await stopWorkTimer(current.sessionId,{ended_at:input.instant},client);
+    if(current)await stopWorkTimer(current.sessionId,{ended_at:input.instant},client,Boolean(current.scheduleOccurrenceId));
     if(input.action==='start'){
       const seen=await client.query('SELECT id FROM work_timers WHERE id=$1 UNION ALL SELECT id FROM work_sessions WHERE id=$1',[input.command_id]);
       if(seen.rows.length)fail(409,'This session ID has already been used. Refresh before starting.');
@@ -93,6 +90,7 @@ export async function applyDayWorkCommand(input:z.infer<typeof dayWorkCommandSch
       if(overlap.rows.length)fail(409,'This start overlaps recorded work. Refresh and start now.');
       await client.query("INSERT INTO work_timers(id,task_id,started_at,notes,status,updated_at) VALUES($1,$2,$3,'','running',$3)",[input.command_id,input.task_id,input.instant]);
     }
+    await reconcileScheduleSessions(client);
     const result={timer:(await getWorkTimer(client)).timer};
     await client.query('INSERT INTO day_work_commands(id,request_hash,result) VALUES($1,$2,$3::jsonb)',[input.command_id,hash,JSON.stringify(result)]);
     return result;

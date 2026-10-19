@@ -32,7 +32,7 @@ router.get('/context',async(req,res)=>{
   const timezone=String(prefs.rows[0]?.timezone??'Asia/Beirut');
   const date=req.query.date===undefined?timeDate(Date.now(),timezone):reviewDateSchema.parse(req.query.date);
   const day=await getScheduleReviewDay(date),running=(await getWorkTimer()).timer;
-  const all=[...(day.proposed?.occurrences??[]),...day.current,...day.outcomes.map(o=>o.occurrence)];
+  const all=[...day.outcomes.map(o=>o.occurrence),...day.current];
   const events=[...new Map(all.map(o=>[o.id,o])).values()].map(o=>({
     occurrence_id:o.id,title:o.title,date,planned_start:o.start,planned_end:o.end,
     actual_start:day.outcomes.find(r=>r.occurrence_id===o.id)?.actual_start??null,

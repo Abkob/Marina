@@ -53,11 +53,21 @@ struct MarinaWidgetView: View {
     @Environment(\.widgetFamily) private var family
     var body: some View {
         let stale = entry.context == nil || entry.message != nil
-        let title = entry.target?.title ?? (entry.context == nil ? "Marina" : "Choose your event")
-        let subtitle = entry.message ?? (entry.target?.kind == .end ? "End unconfirmed" : entry.target == nil ? "Open check-in" : "Ready to start?")
+        let current = entry.context?.events.filter { (MarinaClock.parse($0.plannedStart) ?? .distantFuture) <= entry.date && (MarinaClock.parse($0.plannedEnd) ?? .distantPast) > entry.date } ?? []
+        let title = entry.target?.title ?? (current.count == 1 ? current[0].title : current.isEmpty ? "No event now" : "Choose your event")
+        let subtitle = entry.message ?? (entry.target?.kind == .end ? "Event started · end when ready" : entry.target == nil ? (current.count > 1 ? "Overlapping events · choose" : current.first?.status == "confirmed" ? "Attendance recorded" : "Open check-in") : "Ready to start?")
         Group {
             if family == .accessoryRectangular {
-                Link(destination: entry.target?.deepLink ?? URL(string: "marina-native://checkin")!) { VStack(alignment: .leading) { Text(title).font(.headline).lineLimit(1); Text(subtitle).font(.caption).lineLimit(1) } }
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 2) { Text(title).font(.caption.weight(.medium)).lineLimit(2).privacySensitive(); Text(subtitle).font(.caption2).lineLimit(2) }.frame(maxWidth: .infinity, alignment: .leading)
+                    if SharedStore.cache().command != nil {
+                        Button(intent: RetryCheckInIntent()) { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Retry original attendance save")
+                    } else if let target = entry.target, !stale {
+                        Button(intent: SaveCheckInIntent(target: target)) { Image(systemName: target.kind == .start ? "play.fill" : "checkmark").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel(target.kind == .start ? "Start event attendance" : "End event attendance without stopping work")
+                    } else {
+                        Link(destination: URL(string: "marina-native://checkin")!) { Image(systemName: "arrow.up.right").frame(width: 44, height: 44) }.accessibilityLabel("Choose calendar check-in")
+                    }
+                }
             } else {
                 WidgetFace(title: title, subtitle: subtitle, symbol: "play") {
                     if let target = entry.target, !stale {
@@ -76,8 +86,17 @@ struct MarinaWidgetView: View {
 struct MarinaWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: SharedStore.widgetKind, provider: MarinaProvider()) { MarinaWidgetView(entry: $0) }
-            .configurationDisplayName("Marina").description("Your event. One check-in.")
+            .configurationDisplayName("Schedule now").description("Start or end attendance. Work stays independent.")
             .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
+    }
+}
+struct RetryCheckInIntent: AppIntent {
+    static var title: LocalizedStringResource = "Retry original Marina attendance"
+    static var openAppWhenRun = false
+    func perform() async throws -> some IntentResult {
+        do { if let command = SharedStore.cache().command { try await SharedStore.submit(target: command.target, at: MarinaClock.parse(command.instant) ?? Date()) } }
+        catch { var cache = SharedStore.cache(); cache.message = error.localizedDescription; try? SharedStore.write(cache, to: "schedule.json") }
+        WidgetCenter.shared.reloadAllTimelines(); return .result()
     }
 }
 @main struct MarinaWidgets: WidgetBundle {

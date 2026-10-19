@@ -24,6 +24,22 @@ export async function correctScheduleTime(input:z.infer<typeof correctTimeSchema
   const plan=await client.query('SELECT timezone FROM schedule_day_plans WHERE date=$1',[input.date]);
   const zone=plan.rows[0]?.timezone??prefs.rows[0]?.timezone??'Asia/Beirut';
   if(Date.parse(input.actual_start)>Date.now()+1000||timeDate(Date.parse(input.actual_start),zone)!==input.date)fail(400,'Choose an actual start on this day, in the past.');
+  const attendance=(await client.query('SELECT attendance_only FROM work_timers WHERE id=$1 FOR UPDATE',[old!.session_id])).rows[0];
+  if(attendance?.attendance_only){
+    if(old!.actual_end&&!input.actual_end)fail(400,'Enter both corrected attendance times.');
+    if(input.actual_end){
+      const span=Date.parse(input.actual_end)-Date.parse(input.actual_start);
+      if(span<=0||span>86_400_000||Date.parse(input.actual_end)>Date.now()+1000)fail(400,'Choose attendance times in the past, with an end after the start (up to 24 hours).');
+      await finishScheduleTimer(client,{id:old!.session_id!,date:input.date,occurrence:old!.occurrence,start:input.actual_start,end:input.actual_end});
+    }else{
+      const result={...old!,revision:old!.revision+1,actual_start:input.actual_start,updated_at:new Date().toISOString()};
+      await client.query('UPDATE schedule_occurrence_outcomes SET revision=$2,actual_start=$3,updated_at=$4 WHERE occurrence_id=$1',[result.occurrence_id,result.revision,result.actual_start,result.updated_at]);
+      await client.query('INSERT INTO schedule_outcome_history(occurrence_id,revision,outcome) VALUES($1,$2,$3::jsonb)',[result.occurrence_id,result.revision,JSON.stringify(result)]);
+    }
+    await client.query('UPDATE work_timers SET started_at=$2,ended_at=$3,status=$4,updated_at=$5 WHERE id=$1',[old!.session_id,input.actual_start,input.actual_end??null,input.actual_end?'stopped':'awaiting_end',new Date().toISOString()]);
+    await reconcileScheduleSessions(client);
+    return (await client.query('SELECT * FROM schedule_occurrence_outcomes WHERE occurrence_id=$1',[old!.occurrence_id])).rows[0] as ScheduleOutcome;
+  }
   const session=(await client.query('SELECT * FROM work_sessions WHERE id=$1 FOR UPDATE',[old!.session_id])).rows[0];
   if(!input.actual_end){
     if(session)fail(400,'This session already ended; enter both corrected times.');

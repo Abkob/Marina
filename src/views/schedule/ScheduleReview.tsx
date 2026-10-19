@@ -41,7 +41,7 @@ export function ScheduleReview({date}:{date:string}) {
   const occurrences=useMemo(()=>{const all=[...(day?.proposed?.occurrences??[]),...(day?.current??[]),...(day?.outcomes.map(o=>o.occurrence)??[])];return [...new Map(all.map(o=>[o.id,o])).values()].sort((a,b)=>a.start.localeCompare(b.start)||a.id.localeCompare(b.id));},[day]);
   const outcomes=new Map(day?.outcomes.map(o=>[o.occurrence_id,o]));
   const pending=occurrences.filter(o=>(!outcomes.get(o.id)||outcomes.get(o.id)?.status==='unknown')&&Date.parse(o.start)<=Date.now());
-  const occurrence=occurrences.find(o=>o.id===selected)??occurrences.find(o=>o.id===cloud.timer?.scheduleOccurrenceId)??pending.find(o=>Date.parse(o.start)<=cloud.nowMs&&Date.parse(o.end)>cloud.nowMs)??pending[0]??null;
+  const occurrence=occurrences.find(o=>o.id===selected)??pending.find(o=>Date.parse(o.start)<=cloud.nowMs&&Date.parse(o.end)>cloud.nowMs)??occurrences.find(o=>o.id===cloud.timer?.scheduleOccurrenceId)??pending[0]??null;
   const outcome=occurrence?outcomes.get(occurrence.id):undefined;
   const sessions=occurrence&&day?matchingSessions(occurrence,day.sessions):[];
   const suggested=sessions.length===1?sessions[0]:null;
@@ -49,20 +49,22 @@ export function ScheduleReview({date}:{date:string}) {
   const unfinished=day?.pendingTimers??[];
   const pendingHere=unfinished.find(t=>t.schedule_occurrence_id===occurrence?.id);
   const recordedTimer=runningHere?{id:cloud.timer!.sessionId,started_at:cloud.timer!.startedAt}:pendingHere;
-  const liveCandidate=occurrences.find(o=>Date.parse(o.start)<=cloud.nowMs&&Date.parse(o.end)>cloud.nowMs&&(!outcomes.get(o.id)||outcomes.get(o.id)?.status==='unknown'));
-  const overlappingNow=occurrences.filter(o=>Date.parse(o.start)<=cloud.nowMs&&Date.parse(o.end)>cloud.nowMs).length>1;
+  const currentNow=(day?.current??[]).filter(o=>Date.parse(o.start)<=cloud.nowMs&&Date.parse(o.end)>cloud.nowMs);
+  const liveCandidate=currentNow.find(o=>!outcomes.get(o.id)||outcomes.get(o.id)?.status==='unknown');
+  const livePending=unfinished.find(t=>t.schedule_occurrence_id===liveCandidate?.id)??(cloud.timer?.scheduleOccurrenceId===liveCandidate?.id&&cloud.timer?{id:cloud.timer.sessionId}:undefined);
+  const overlappingNow=currentNow.length>1;
   const canStart=Boolean(occurrence&&day&&date<=day.today&&!recordedTimer&&(!outcome||outcome.status==='unknown'&&!outcome.actual_start));
   const startDefault=occurrence?new Date(Math.min(cloud.nowMs,Date.parse(occurrence.end)>cloud.nowMs?cloud.nowMs:Date.parse(occurrence.start))).toISOString():'';
   const endDefault=occurrence&&recordedTimer?new Date(runningHere?cloud.nowMs:Math.min(cloud.nowMs,Math.max(Date.parse(occurrence.end),Date.parse(recordedTimer.started_at)+60_000))).toISOString():'';
   const instantDate=(instant:string)=>new Intl.DateTimeFormat('en-CA',{timeZone:day!.timezone}).format(new Date(instant));
-  const promptId=cloud.timer?.scheduleOccurrenceId?`end:${cloud.timer.sessionId}`:liveCandidate?`start:${liveCandidate.id}`:'';
+  const promptId=liveCandidate?livePending?`end:${livePending.id}`:`start:${liveCandidate.id}`:'';
   const labelRange=(a:string,b:string)=>`${wallTime(a,day!.timezone)}–${wallTime(b,day!.timezone)}`;
   const refresh=async()=>{await Promise.all(['schedule-review','work-sessions','tasks','goal-tasks','schedule-preview','work-accounting'].map(key=>qc.invalidateQueries({queryKey:[key]})));};
   const startActivity=async(item:ScheduleOccurrence,actualStart=new Date(cloud.nowMs).toISOString())=>{
     if(busy||cloud.busy||!cloud.ready)return;
     if(startRequest.current?.occurrence!==item.id||startRequest.current.start!==actualStart)startRequest.current={occurrence:item.id,sessionId:crypto.randomUUID(),expected:cloud.timer?.sessionId??null,start:actualStart};
     setBusy(true);setError('');
-    try{await apiPost(`/api/schedule-review/${date}/start`,{session_id:startRequest.current.sessionId,occurrence_id:item.id,expected_running_id:startRequest.current.expected,started_at:actualStart,track_live:date===day?.today&&(Date.parse(item.end)>cloud.nowMs||cloud.nowMs-Date.parse(actualStart)<5*60_000)});startRequest.current=null;setMessage('Start saved · end stays unconfirmed until you record it');setUndo(null);await qc.invalidateQueries({queryKey:CLOUD_TIMER_KEY});await refresh();}
+    try{await apiPost(`/api/schedule-review/${date}/start`,{session_id:startRequest.current.sessionId,occurrence_id:item.id,expected_running_id:startRequest.current.expected,started_at:actualStart,attendance_only:true,track_live:date===day?.today&&(Date.parse(item.end)>cloud.nowMs||cloud.nowMs-Date.parse(actualStart)<5*60_000)});startRequest.current=null;setMessage('Event started · work timer stays independent');setUndo(null);await qc.invalidateQueries({queryKey:CLOUD_TIMER_KEY});await refresh();}
     catch(e){if((e as {status?:number}).status===409)startRequest.current=null;setError(e instanceof Error?e.message:'Start was not confirmed. Retry to check.');setOpen(true);}
     finally{setBusy(false);}
   };
@@ -122,8 +124,8 @@ export function ScheduleReview({date}:{date:string}) {
   return <div className="schedule-review-entry">
     <button type="button" className="schedule-review-launch" onClick={()=>setOpen(true)}><span>Proposed / Actual</span><span>{data.isPending?'Loading…':data.isError?'Retry':pending.length?`${pending.length} to check`:'Review day'}<ChevronRight size={14}/></span></button>
     {!open&&day&&date===day.today&&promptId&&dismissedPrompt!==promptId&&<aside className="schedule-bottom-checkin" aria-label="Quick event check-in">
-      <div className="schedule-bottom-heading"><span>{cloud.timer?.scheduleOccurrenceId?cloud.timer.title:liveCandidate?.title}<small>{cloud.timer?.scheduleOccurrenceId?'End stays unconfirmed until you record it':overlappingNow?'Overlapping events · choose the one you attended':'Did you start?'}</small></span><button type="button" aria-label="Dismiss quick check-in" onClick={()=>setDismissedPrompt(promptId)}><X size={16}/></button></div>
-      {cloud.timer?.scheduleOccurrenceId?<ActualTimeGesture key={promptId} label="Ended" date={instantDate(new Date(cloud.nowMs).toISOString())} timezone={day.timezone} initial={new Date(cloud.nowMs).toISOString()} disabled={busy||cloud.busy} onChoose={instant=>void endActivity(cloud.timer!.sessionId,instant)}/>:liveCandidate&&!overlappingNow?<ActualTimeGesture key={promptId} label="Started" date={date} timezone={day.timezone} initial={new Date(cloud.nowMs).toISOString()} disabled={busy||cloud.busy} onChoose={instant=>void startActivity(liveCandidate,instant)}/>:null}
+      <div className="schedule-bottom-heading"><span>{liveCandidate?.title}<small>{overlappingNow?'Overlapping events · choose the one you attended':livePending?'Event end stays unconfirmed · work timer is separate':'Did you start?'}</small></span><button type="button" aria-label="Dismiss quick check-in" onClick={()=>setDismissedPrompt(promptId)}><X size={16}/></button></div>
+      {!overlappingNow&&livePending?<ActualTimeGesture key={promptId} label="Ended" date={instantDate(new Date(cloud.nowMs).toISOString())} timezone={day.timezone} initial={new Date(cloud.nowMs).toISOString()} disabled={busy||cloud.busy} onChoose={instant=>void endActivity(livePending.id,instant)}/>:liveCandidate&&!overlappingNow?<ActualTimeGesture key={promptId} label="Started" date={date} timezone={day.timezone} initial={new Date(cloud.nowMs).toISOString()} disabled={busy||cloud.busy} onChoose={instant=>void startActivity(liveCandidate,instant)}/>:null}
       <button type="button" className="schedule-bottom-review" onClick={()=>{if(liveCandidate)choose(liveCandidate);setOpen(true);}}>Review day<ChevronRight size={14}/></button>
     </aside>}
     {!open&&error&&<p role="alert">{error}</p>}

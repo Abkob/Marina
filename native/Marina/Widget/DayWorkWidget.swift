@@ -60,19 +60,19 @@ struct DayWorkWidgetView: View {
     let entry: DayWorkEntry
     @Environment(\.widgetFamily) private var family
     var body: some View {
+        if family == .accessoryRectangular { DayWorkLockView(entry: entry) }
+        else { homeContent }
+    }
+    private var homeContent: some View {
         let cache = entry.cache
         let pending = DayWorkStore.pending() != nil
         HStack(alignment: .center, spacing: 4) {
             DayWorkFace(context: cache.context, offset: cache.offset, compact: family == .systemSmall, message: cache.message) { task, stopping in
                 if let context = cache.context, !pending, context.isToday || stopping {
-                    if stopping, let running = context.running, running.scheduleOccurrenceId != nil {
-                        Link(destination: URL(string: "marina-native://checkin")!) { Image(systemName: "arrow.up.right").frame(width: 44, height: 44) }.accessibilityLabel("Open calendar check-in to end this event")
-                    } else {
                         Button(intent: WorkActionIntent(action: stopping ? "stop" : "start", taskID: task?.id ?? context.running?.taskId ?? "", context: context)) {
                             if let task { DayWorkTaskLabel(task: task, running: context.running?.taskId == task.id) }
                             else { Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle()) }
                         }.buttonStyle(.plain).accessibilityLabel(task.map { "Start work on \($0.title)" } ?? "Stop work timer")
-                    }
                 } else {
                     Link(destination: URL(string: "marina-native://work")!) { Text(task?.title ?? "Open Marina").font(.subheadline).frame(minHeight: 44) }
                 }
@@ -91,7 +91,23 @@ struct MarinaDayWorkWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: DayWorkStore.kind, provider: DayWorkProvider()) { DayWorkWidgetView(entry: $0) }
             .configurationDisplayName("Tasks for today").description("Tap a task to start work. Switch safely. Stop without completing.")
-            .supportedFamilies([.systemSmall, .systemMedium])
+            .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
             .contentMarginsDisabled()
+    }
+}
+struct DayWorkLockView: View {
+    let entry: DayWorkEntry
+    var body: some View {
+        let context = entry.cache.context
+        LockWorkFace(context: context, message: entry.cache.message) {
+            if DayWorkStore.pending() != nil {
+                Button(intent: RetryWorkIntent()) { Image(systemName: "arrow.clockwise").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Retry original timer save")
+            } else if let context, let running = context.running {
+                Button(intent: WorkActionIntent(action: "stop", taskID: running.taskId, context: context)) { Image(systemName: "xmark").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Stop work without ending the event")
+            } else if let context, context.isToday, let task = context.tasks.first {
+                Button(intent: WorkActionIntent(action: "start", taskID: task.id, context: context)) { Image(systemName: "play.fill").frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Start work on \(task.title)")
+            }
+            Link(destination: URL(string: "marina-native://work")!) { Image(systemName: "chevron.up.chevron.down").font(.caption).frame(width: 44, height: 44) }.accessibilityLabel("Open hold-and-swipe task picker")
+        }.containerBackground(.background, for: .widget).widgetURL(URL(string: "marina-native://work")!)
     }
 }

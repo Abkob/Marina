@@ -15,6 +15,9 @@ struct DayWorkSheet: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if model.isUITesting && ProcessInfo.processInfo.arguments.contains("--work-widget-gallery") { DayWorkLayoutGallery() }
                     Text("Tap a task to start. Choosing another switches your work timer.").font(.caption).foregroundStyle(.secondary)
+                    if context?.tasks.isEmpty == false {
+                        WorkTaskPicker(context: context, disabled: busy, onChoose: { command in Task { await perform(command) } }, onCancel: { message = "Selection canceled · timer unchanged" }).frame(minHeight: 166)
+                    }
                     if let running = context?.running {
                         HStack {
                             VStack(alignment: .leading) { Text(running.title ?? "Working").font(.headline); if let date = MarinaClock.parse(running.startedAt) { Text(date, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(.secondary) } }
@@ -66,7 +69,7 @@ struct DayWorkSheet: View {
     }
     private func perform(_ command: DayWorkCommand) async {
         guard !busy else { return }; busy = true; defer { busy = false }
-        if model.isUITesting { context = NativePreview.workContext(running: command.action == "start" ? command.taskID : nil); message = "Preview only · \(command.action == "start" ? "work started" : "work stopped")"; return }
+        if model.isUITesting { context = NativePreview.workContext(running: command.action == "start" ? command.taskID : nil); message = "Preview only · \(command.action == "start" ? "work started" : "work stopped") · \(command.taskID ?? "")"; return }
         do { try await DayWorkStore.submit(command); await refresh() } catch { message = error.localizedDescription }
     }
     private func pick(_ id: String, selected: Bool) {
@@ -79,6 +82,10 @@ struct DayWorkLayoutGallery: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Home Screen layout preview · sample data").font(.caption).foregroundStyle(.secondary)
+            LockWorkFace(context: NativePreview.workContext(running: "solve"), message: nil) {
+                Image(systemName: "xmark").frame(width: 44, height: 44)
+                Image(systemName: "chevron.up.chevron.down").font(.caption).frame(width: 44, height: 44)
+            }.frame(width: 170, height: 64).padding(8).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
             card(NativePreview.workContext(), compact: false)
             card(NativePreview.workContext(running: "solve"), compact: false)
             card(NativePreview.workContext(), compact: true)

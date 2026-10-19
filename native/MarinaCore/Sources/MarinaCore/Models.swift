@@ -50,13 +50,11 @@ public struct ScheduleContext: Codable, Sendable {
     }
     public func primary(now: Date = Date()) -> CheckInTarget? {
         let choices = targets(now: now)
-        if let running = choices.first(where: { $0.sessionID == runningID && runningID != nil }) { return running }
-        let due = choices.filter { $0.kind == .start && (MarinaClock.parse($0.reference) ?? .distantFuture) <= now }
-        // Ambiguous overlaps must open the chooser rather than guessing attendance.
-        let ongoing = due.filter { target in events.contains { $0.id == target.occurrenceID && (MarinaClock.parse($0.plannedEnd) ?? .distantPast) > now } }
-        if ongoing.count == 1 { return ongoing[0] }
-        if ongoing.count > 1 { return nil }
-        return choices.first(where: { $0.kind == .end })
+        // The schedule surface follows current calendar time, independent of
+        // focused work and yesterday's unresolved attendance.
+        let ongoing = events.filter { (MarinaClock.parse($0.plannedStart) ?? .distantFuture) <= now && (MarinaClock.parse($0.plannedEnd) ?? .distantPast) > now }
+        guard ongoing.count == 1 else { return nil }
+        return choices.first { $0.occurrenceID == ongoing[0].id }
     }
 }
 public struct CheckInTarget: Codable, Identifiable, Equatable, Sendable {
@@ -88,7 +86,7 @@ public struct CheckInCommand: Codable, Sendable {
     public func body() throws -> Data {
         var value: [String: Any] = [:]
         if target.kind == .start {
-            value = ["session_id": requestID, "occurrence_id": target.occurrenceID, "date": target.date, "started_at": instant, "track_live": target.live, "expected_running_id": target.expectedRunningID.map { $0 as Any } ?? NSNull()]
+            value = ["session_id": requestID, "occurrence_id": target.occurrenceID, "date": target.date, "started_at": instant, "track_live": target.live, "attendance_only": true, "expected_running_id": target.expectedRunningID.map { $0 as Any } ?? NSNull()]
         } else {
             guard let session = target.sessionID else { throw MarinaError.message("Refresh this activity before recording its end.") }
             value = ["session_id": session, "ended_at": instant]
