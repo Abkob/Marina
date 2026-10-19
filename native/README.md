@@ -58,9 +58,9 @@ Hold an event notification to expand its native content, then hold/slide Started
 
 Widget Start/End performs the same scoped API calls as the existing check-in feature. Every start carries a stable UUID and expected running timer. Switching preserves the previous activity’s missing end. End carries the original session ID and explicit time. The server guards overlap and stale state and saves canonical timer minutes once. Failed network responses retain the original command/time for retry; server rejection is visible instead of being shown as success.
 
-Connections expire after 90 days. **Disconnect widget** revokes the server connection through the signed-in web session before removing local credentials/cache and local reminders. Sign into the full app again if revocation is unauthorized. The web account session and schedule-only widget connection are separate credentials.
+Connections expire after 90 days. **Disconnect widget** revokes the server connection through the signed-in web session before removing local credentials/cache and local reminders. Sign into the full app again if revocation is unauthorized. The web account session and scoped widget connection are separate credentials. Existing schedule-only keys retain their original scope.
 
-The protected shared file contains the schedule-only bearer token; it is never compiled into an IPA, sent in a deep link, logged, or committed. Files use iOS data protection after first unlock and App Group sandbox access. The full browser session cookie stays in WebKit’s cookie store. App/notification/widget writes coordinate through a cross-process lock; pending commands are stored separately from refreshed context.
+The protected shared file contains the scoped widget bearer token; it is never compiled into an IPA, sent in a deep link, logged, or committed. Files use iOS data protection after first unlock and App Group sandbox access. The full browser session cookie stays in WebKit’s cookie store. App/notification/widget writes coordinate through a cross-process lock; pending commands are stored separately from refreshed context.
 
 ## Existing features inside the native container
 

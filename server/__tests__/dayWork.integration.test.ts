@@ -33,6 +33,11 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('Home Screen day work PostgreSQL
   expect((await query('SELECT id FROM work_timers')).rows).toEqual([{id:input.command_id}]);
   await expect(applyDayWorkCommand({...input,task_id:'b'})).rejects.toMatchObject({status:409});
  });
+ it('allows unfinished work to continue after its estimate is exhausted',async()=>{
+  await query("UPDATE tasks SET estimated_minutes=10,actual_minutes=20 WHERE id='a'");
+  expect((await dayWorkContext()).tasks.some(t=>t.id==='a')).toBe(true);
+  await applyDayWorkCommand(command('a'));expect((await dayWorkContext()).running?.taskId).toBe('a');
+ });
  it('switches atomically at one boundary and replays an old command without replacing the newer timer',async()=>{
   const a=command();await applyDayWorkCommand(a);vi.setSystemTime(new Date(at(20)));
   const b=command('b',a.command_id);await applyDayWorkCommand(b);

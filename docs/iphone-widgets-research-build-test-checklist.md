@@ -4,13 +4,13 @@ Research checked: **19 October 2026, Asia/Beirut**. This is a research-first imp
 
 ## Top priority: one-tap Home Screen task launcher
 
-Build this as the **first user-facing milestone**, after the shared queue, credential, and timer-accounting prerequisites below. It takes priority over the richer wheel, notification enhancements, and Live Activity. These boxes remain unchecked until implemented and verified.
+Build this as the **first user-facing milestone**, after the shared queue, credential, and timer-accounting prerequisites below. It takes priority over the richer wheel, notification enhancements, and Live Activity. The first five boxes record implementation and automated verification; OS-hosted and physical-phone acceptance remain separate unchecked requirements.
 
-- [ ] Small Home Screen widget: show one suggested task with a direct Start action; one tap selects that task and starts its canonical work timer without opening the app.
-- [ ] Medium Home Screen widget: show up to three named today tasks, including eligible subtasks with short parent context. Tapping a task selects and starts it in one action; provide a discreet next-page control for more choices.
-- [ ] Rank suggestions by the single unambiguous current event's linked actionable task, then explicit today pins/order, then recent unfinished work within today's queue. Multiple eligible tasks or overlapping events show choices rather than guessing. Deduplicate stable task IDs.
-- [ ] Suggestions and calendar changes never start work on their own. A user's tap is required; stale or ineligible targets fail visibly without starting a different task.
-- [ ] While running, show the task, elapsed time, and a small accessible **×** to stop. Stop does not complete/delete the task or end calendar attendance. Starting another task uses the shared atomic switch, with no duplicate minutes.
+- [x] Small Home Screen widget: show one suggested task with a direct Start action; one tap selects that task and starts its canonical work timer without opening the app.
+- [x] Medium Home Screen widget: show up to three named today tasks, including eligible subtasks with short parent context. Tapping a task selects and starts it in one action; provide a discreet next-page control for more choices.
+- [x] Rank suggestions by the single unambiguous current event's linked actionable task, then explicit today pins/order, then recent unfinished work within today's queue. Multiple eligible tasks or overlapping events show choices rather than guessing. Deduplicate stable task IDs.
+- [x] Suggestions and calendar changes never start work on their own. A user's tap is required; stale or ineligible targets fail visibly without starting a different task.
+- [x] While running, show the task, elapsed time, and a small accessible **×** to stop. Stop does not complete/delete the task or end calendar attendance. Starting another task uses the shared atomic switch, with no duplicate minutes.
 - [ ] Keep controls restrained with comfortable touch targets, accessible names, and long-title/large-text support. The custom hold-and-slide wheel remains in the native sheet.
 - [ ] Verify on actual hosted small/medium widgets: one tap starts the captured task without opening Marina, paging only changes choices, double taps/retries create one session, and concurrent web/phone actions cannot replace a newer timer silently. Check stale/offline/empty/overlapping states and cross-client totals before release.
 
@@ -18,7 +18,9 @@ Implementation references: [Apple interactive widget actions](https://developer.
 
 ### First milestone implementation status — 19 October 2026
 
-The Home Screen launcher, native today-task chooser, derived calendar membership, explicit day picks, scoped focus credentials, durable command retries, and atomic ordinary timer switching are implemented. PostgreSQL verification covers 35 cases across the new widget and existing schedule/timer suites. TypeScript, website build, serverless entry, and Vercel preflight pass. The full unit run passed 1,402 tests; the four Time view timeout failures passed on an isolated rerun with a 15-second timeout (no assertion changes). Seven Swift client tests and the candidate device build pass; final Simulator/IPA evidence is recorded with the release.
+The Home Screen launcher, native today-task chooser, derived calendar membership, explicit day picks, scoped focus credentials, durable command retries, and atomic ordinary timer switching are implemented. PostgreSQL verification covers 36 cases across the new widget and existing schedule/timer suites, including unfinished work that exceeds its estimate. TypeScript, website build, serverless entry, and Vercel preflight pass. The full unit run passed 1,402 tests; the four Time view timeout failures passed on an isolated rerun with a 15-second timeout (no assertion changes). One later database run hit a setup timeout; all 36 passed after rerunning with a longer setup allowance.
+
+[Native release build 8669424](https://github.com/Abkob/Marina/actions/runs/39173594989) passes seven Swift client tests, device app/extensions compilation and ad-hoc signature verification, and four Simulator UI tests: check-in gesture, today-task start/switch/stop, new widget layout gallery, and existing widget gallery. The IPA SHA-256 is `0368795f6794a497b4353cb27c834d4cc148ce9a45a4950c20f14c60051f8793`. The gallery was visually inspected; it is not an OS-hosted widget test. A live deployed context read succeeded using temporary keys; schedule-only and general-API access boundaries and revocation passed. Those keys were revoked and no production timers or day selections were changed by the live checks.
 
 The current production backup was privately uploaded, hash-verified, and restored into a separate database (63 tables, 4,940 rows). Migration M-036 was rehearsed there before production; every existing table retained its row count. The new tables start empty; no development data replaced production data.
 
@@ -270,4 +272,4 @@ The current GitHub Actions workflow runs on macOS and produces an IPA plus avail
 - [ ] Native screenshots, actual widget-host checks, and physical signing checks are recorded with their exact build and limitations.
 - [ ] Backup verification, deployment readiness, preserved cloud data, and connection revocation are evidenced separately from the code push.
 
-**Build priority:** agree the identity/state contract → prove the ledger and daily queue → build the picker and two Lock Screen configurations → verify on Simulator → do one deliberate phone round. Richer Live Activity/notification variants follow the same commands and accounting instead of introducing another timer engine.
+**Build priority:** agree the identity/state contract → prove the ledger and daily queue → deliver the one-tap Home Screen launcher → verify on Simulator and phone → build the richer picker and two Lock Screen configurations. Richer Live Activity/notification variants follow the same commands and accounting instead of introducing another timer engine.

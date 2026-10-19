@@ -16,7 +16,12 @@ export async function dayWorkContext(client:Client={query}, includeAvailable=fal
   const tasks=(await client.query('SELECT * FROM tasks')).rows as DBTask[];
   const goals=(await client.query('SELECT * FROM goals')).rows as DBGoal[];
   const hierarchy=buildWorkHierarchy(tasks);
-  const eligible=getWorkTasks(tasks,goals).filter(t=>isOpenTask(t)&&hierarchy.summaries.get(t.id)?.executable);
+  const eligible=getWorkTasks(tasks,goals).filter(t=>{
+    const work=hierarchy.summaries.get(t.id);
+    // Exhausting an estimate never completes a task or prevents more work.
+    // Containers with no own residual work still are not independent timers.
+    return isOpenTask(t)&&work&&!work.issues.length&&(work.executable||work.child_ids.length===0||(work.residual_estimated_minutes??0)>0);
+  });
   const byID=new Map(tasks.map(t=>[t.id,t]));
   const picks=(await client.query('SELECT task_id,position FROM day_work_picks WHERE date=$1 ORDER BY position,task_id',[date])).rows;
   const day=await getScheduleReviewDay(date,client);
