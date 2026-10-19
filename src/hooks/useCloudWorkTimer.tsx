@@ -7,7 +7,7 @@ export const CLOUD_TIMER_KEY = ['cloud-work-timer'];
 const timerIdentity = (timer: ActiveWorkTimer | null) => timer
   ? JSON.stringify([timer.taskId, timer.routineId, timer.scheduleOccurrenceId, timer.startedAt, timer.sessionId]) : null;
 type CloudTimer = ActiveWorkTimer & { sessionId: string };
-type Reply = { timer: CloudTimer | null; serverNow: string; started?: boolean; minutes?: number; duplicate?: boolean };
+type Reply = { timer: CloudTimer | null; serverNow: string; scheduleRevision?:string; started?: boolean; minutes?: number; duplicate?: boolean };
 type Snapshot = Reply & { serverTime: number; receivedAt: number; observedLocalTimer: string | null };
 const snapshot = (reply: Reply, observedLocalTimer: string | null): Snapshot => ({ ...reply, observedLocalTimer, serverTime: Date.parse(reply.serverNow), receivedAt: performance.now() });
 type TimerContext = {
@@ -27,6 +27,7 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
   const mirroredTimer = useRef<string | null | undefined>(undefined);
   const mutationInFlight = useRef(false);
   const previousSession = useRef<string | null | undefined>(undefined);
+  const previousScheduleRevision = useRef<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [, tick] = useState(0);
@@ -65,12 +66,15 @@ export function CloudWorkTimerProvider({ children }: { children: ReactNode }) {
       void qc.invalidateQueries({ queryKey: CLOUD_TIMER_KEY });
     }
     const session = query.data.timer?.sessionId ?? null;
-    if (previousSession.current !== undefined && previousSession.current !== session) {
-      for (const key of ['work-sessions', 'work-session-stats', 'tasks', 'goals', 'routines', 'routine-entries', 'schedule-preview']) {
+    const revision=query.data.scheduleRevision;
+    const attendanceChanged=revision!==undefined&&previousScheduleRevision.current!==undefined&&revision!==previousScheduleRevision.current;
+    if ((previousSession.current !== undefined && previousSession.current !== session) || attendanceChanged) {
+      for (const key of ['work-sessions', 'work-session-stats', 'tasks', 'goals', 'routines', 'routine-entries', 'schedule-preview','schedule-review','work-accounting','goal-tasks']) {
         void qc.invalidateQueries({ queryKey: [key] });
       }
     }
     previousSession.current = session;
+    previousScheduleRevision.current=revision;
   }, [query.data, qc]);
   useEffect(() => {
     const changed = (event: StorageEvent) => {

@@ -8,8 +8,11 @@ export async function startScheduleActivity(date:string,input:z.infer<typeof sch
   const result=await transaction(async client=>{
     await lockScheduleAccounting(client);
     const current=await getWorkTimer(client);
-    const seen=await client.query('SELECT id FROM work_timers WHERE id=$1',[input.session_id]);
-    if(seen.rows.length)return {...current,started:false};
+    const seen=await client.query('SELECT id,schedule_occurrence_id,schedule_date FROM work_timers WHERE id=$1',[input.session_id]);
+    if(seen.rows.length){
+      if(seen.rows[0].schedule_occurrence_id!==input.occurrence_id||seen.rows[0].schedule_date!==date)throw Object.assign(new Error('This session ID belongs to another activity. Refresh before starting.'),{status:409});
+      return {...current,started:false};
+    }
     if(!input.attendance_only&&(current.timer?.sessionId??null)!==input.expected_running_id)throw Object.assign(new Error('The running activity changed on another device. Refresh before switching.'),{status:409});
     const day=await getScheduleReviewDay(date,client);
     if(date>day.today)throw Object.assign(new Error('Choose a day that has started.'),{status:400});

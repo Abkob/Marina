@@ -7,7 +7,7 @@ import { initSchema,pool,query } from '../db.js';
 import { applyDayWorkCommand,dayWorkCommandSchema,dayWorkContext,pickDayWork } from '../services/dayWork.js';
 import { createScheduleShortcutKey,revokeScheduleShortcutKey } from '../services/scheduleShortcuts.js';
 import { scheduleShortcutsRouter } from '../routes/schedule-shortcuts.js';
-import { startWorkTimer,stopWorkTimer } from '../services/workTimer.js';
+import { startWorkTimer,stopWorkTimer,getWorkTimer } from '../services/workTimer.js';
 import { startScheduleActivity,scheduleStartSchema } from '../services/scheduleStart.js';
 import { checkInSchedule } from '../services/scheduleReview.js';
 import { getScheduleReviewDay } from '../services/scheduleReview.js';
@@ -108,11 +108,19 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('Home Screen day work PostgreSQL
   const a=command();await applyDayWorkCommand(a);
   const event=await attendance();expect((await dayWorkContext()).running?.sessionId).toBe(a.command_id);
   vi.setSystemTime(new Date(at(20)));const b=command('b',a.command_id);await applyDayWorkCommand(b);
+  const beforeRevision=(await getWorkTimer()).scheduleRevision;
   vi.setSystemTime(new Date(at(45)));await stopWorkTimer(event,{ended_at:at(45)});await stopWorkTimer(event,{ended_at:at(45)});
+  expect((await getWorkTimer()).scheduleRevision).not.toBe(beforeRevision);
   expect((await dayWorkContext()).running?.taskId).toBe('b');
   const outcome=(await getScheduleReviewDay('2026-10-19')).outcomes[0];expect(outcome.actual_end).toBe(at(45));
+  expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(20);
   vi.setSystemTime(new Date(at(60)));await applyDayWorkCommand(command('b',b.command_id,'stop'));
   expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(60);
+ });
+ it('rejects an attendance UUID that belongs to another work activity',async()=>{
+  const a=command();await applyDayWorkCommand(a);await attendance();
+  await expect(startScheduleActivity('2026-10-19',scheduleStartSchema.parse({session_id:a.command_id,occurrence_id:'event:e:2026-10-19',attendance_only:true}))).rejects.toMatchObject({status:409});
+  expect((await dayWorkContext()).running?.sessionId).toBe(a.command_id);
  });
  it('fills only attendance gaps around child focus and preserves corrected-away focus minutes',async()=>{
   const event=await attendance();vi.setSystemTime(new Date(at(10)));
@@ -127,10 +135,12 @@ describe.skipIf(!process.env.DATABASE_URL_TEST)('Home Screen day work PostgreSQL
   const b=command('b',event);await applyDayWorkCommand(b);
   vi.setSystemTime(new Date(at(40)));await stopWorkTimer(event,{ended_at:at(40)});
   let outcome=(await getScheduleReviewDay('2026-10-19')).outcomes[0];expect(outcome.actual_end).toBe(at(40));
+  expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(10);
   await correctScheduleTime({occurrence_id:outcome.occurrence_id,date:outcome.date,expected_revision:outcome.revision,actual_start:at(5),actual_end:at(35)});
   expect((await query('SELECT started_at,ended_at,minutes FROM work_sessions WHERE id=$1',[event])).rows[0]).toEqual({started_at:at(),ended_at:at(10),minutes:10});
   outcome=(await getScheduleReviewDay('2026-10-19')).outcomes[0];expect(outcome.actual_start).toBe(at(5));expect(outcome.actual_end).toBe(at(35));
   expect((await dayWorkContext()).running?.sessionId).toBe(b.command_id);
+  expect((await query('SELECT SUM(minutes)::int AS total FROM work_sessions')).rows[0].total).toBe(10);
  });
  it('serializes an attendance end racing a focus switch without duplicate credit or ending the new work',async()=>{
   const event=await attendance(),a=command();await applyDayWorkCommand(a);vi.setSystemTime(new Date(at(20)));

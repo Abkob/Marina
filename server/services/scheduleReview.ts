@@ -95,7 +95,7 @@ export async function reconcileScheduleSessions(client: Client) {
   const timers=(await client.query("SELECT id,started_at,status,attendance_only FROM work_timers WHERE status='running' OR schedule_occurrence_id IS NOT NULL")).rows;
   // A running focus segment owns its observed span provisionally. Attendance
   // confirmation cannot credit it and then add it again when Stop is saved.
-  for(const timer of timers)if(timer.status==='running'&&!timer.attendance_only)occupied.push({start:Date.parse(timer.started_at),end:Infinity});
+  for(const timer of timers)if(timer.status==='running'&&!timer.attendance_only)occupied.push({start:Date.parse(timer.started_at),end:Date.now()+1000});
   const existing=await client.query("SELECT id,task_id FROM work_sessions WHERE source='schedule_checkin'");
   const tasks=await client.query('SELECT id FROM tasks'),routines=await client.query('SELECT id FROM routines'),goals=await client.query('SELECT id FROM goals');
   const taskIds=new Set(tasks.rows.map(t=>t.id)),routineIds=new Set(routines.rows.map(r=>r.id));

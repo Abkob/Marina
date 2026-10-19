@@ -61,6 +61,16 @@ it('shares start and stop across independent sessions and survives reload', asyn
   expect(screen.getByTestId('laptop-timer')).toHaveTextContent('idle');
   expect(logged.size).toBe(1);
 });
+it('refreshes contribution and attendance views when attendance changes but the work timer ID does not',async()=>{
+  active={sessionId:'same-focus',taskId:'task-1',title:'Shared focus',notes:'',startedAt:'2026-09-27T11:00:00Z'};
+  let revision='1';vi.mocked(apiFetch).mockImplementation(async()=>({...reply(),scheduleRevision:revision}) as never);
+  mount('phone');await settle();const invalidation=vi.spyOn(clients[0],'invalidateQueries');invalidation.mockClear();
+  revision='2';await settle(3100);
+  expect(screen.getByTestId('phone-timer')).toHaveTextContent('same-focus');
+  expect(invalidation).toHaveBeenCalledWith({queryKey:['work-sessions']});
+  expect(invalidation).toHaveBeenCalledWith({queryKey:['schedule-review']});
+  expect(apiPost).not.toHaveBeenCalled();
+});
 
 it('keeps the timer visible after a failed stop and allows a safe retry', async () => {
   mount('laptop'); await settle(); fireEvent.click(screen.getByText('laptop start')); await settle();

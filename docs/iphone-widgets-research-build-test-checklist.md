@@ -24,7 +24,19 @@ The Home Screen launcher, native today-task chooser, derived calendar membership
 
 The current production backup was privately uploaded, hash-verified, and restored into a separate database (63 tables, 4,940 rows). Migration M-036 was rehearsed there before production; every existing table retained its row count. The new tables start empty; no development data replaced production data.
 
-**Deliberate first-release boundary:** a running legacy calendar timer must be ended explicitly in calendar check-in before switching to task work. Its focus/attendance coupling is not silently broken. Fully independent attendance/focus, the richer task wheel, the two new Lock Screen configurations, and actual widget-host/physical-phone acceptance remain unfinished. The unchecked acceptance items above must not be interpreted as fully certified by a SwiftUI layout screenshot.
+**Historical first-release boundary (superseded by the second milestone below):** the first IPA required explicitly ending a legacy calendar timer before switching. OS-hosted/physical-phone acceptance is still separate from a SwiftUI layout screenshot.
+
+### Second milestone — independent attendance and Lock Screen controls
+
+Implemented: both rectangular Lock Screen configurations, explicit attendance start/end, a native hold/vertical-swipe/release task picker with horizontal cancellation and accessible alternatives, and task switching that preserves calendar attendance. The schedule surface follows the current occurrence; an old running timer or missing end cannot displace the next event. Unapplied proposals never enter the native current-event list.
+
+New native and web attendance starts leave focused work untouched. An explicit work switch converts an older combined timer lazily: its focus segment is saved up to the selected boundary, its attendance remains open, and its original identity/history are retained. No migration invents ends or rewrites existing work rows. Confirmed attendance contributes only uncovered clock intervals; active focus provisionally owns its observed span. Attendance corrections leave focus measurements intact, including reduced credited minutes.
+
+Database verification covers 43 cases, including both final and intermediate totals, active-work/event-end races, overlapping attendance, legacy conversion and later correction, and retries. Four additional web regression tests cover independent commands, next-event selection, overlap choice, and proposal exclusion. The full 1,406-test unit run had one unrelated PDF-render timeout; all 11 PDF tests passed on isolated rerun without assertion changes. TypeScript, production build, serverless entry and preflight pass. The unchanged-timer-ID attendance revision signal also refreshes contribution, task/goal and schedule views across devices; its hook/web regression set passes 15 tests. [Native candidate 993366e](https://github.com/Abkob/Marina/actions/runs/39223130601) passes 10 Swift tests, device app/extensions build and ad-hoc signature verification, and six Simulator UI tests, including actual hold/swipe/release and horizontal cancel gestures. Physical signing, Lock Screen authentication and OS-hosted widget behavior remain explicit device checks.
+
+A fresh private cloud/local backup was hash-verified and restored (65 tables, 4,951 rows). M-037 was rehearsed on that restore, then applied additively to production with every existing table's row count preserved. No development data replaced production data.
+
+Release IPA: build **3**, retaining all three existing bundle IDs and iOS 17 minimum; SHA-256 `d70872650951387ca70ac077ce0a4eb60c32d6c59e89f65275d3fe162ff6797e`. Both the picker gesture screenshot and the shared Lock Screen face gallery were inspected. Gallery images are not proof of system-hosted Lock Screen behavior. The two preliminary compiler failures were fixed before the successful native run; no failed artifact is presented as the release.
 
 ## Recommended product
 

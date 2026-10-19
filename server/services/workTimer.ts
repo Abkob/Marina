@@ -31,12 +31,13 @@ const selectTimer = `SELECT wt.*, COALESCE(t.title,r.title,wt.schedule_occurrenc
 export async function getWorkTimer(client?: Client) {
   const { rows } = await (client ?? { query }).query(`${selectTimer} WHERE wt.status='running'`);
   const row = rows[0] as TimerRow | undefined;
+  const revision=await (client??{query}).query('SELECT COALESCE(SUM(revision),0)::text AS revision FROM schedule_occurrence_outcomes');
   return { timer: row ? {
     sessionId: row.id, taskId: row.task_id ?? '', startedAt: row.started_at, notes: row.notes,
     title: row.title, goalId: row.goal_id,
     ...(row.schedule_occurrence_id ? {scheduleOccurrenceId:row.schedule_occurrence_id,scheduleDate:row.schedule_date} : {}),
     ...(row.routine_id ? { routineId: row.routine_id, routineTitle: row.title, routineDate: row.routine_date } : {}),
-  } : null, serverNow: new Date().toISOString() };
+  } : null, serverNow: new Date().toISOString(), scheduleRevision:String(revision.rows[0]?.revision??'0') };
 }
 
 async function lock(client: Client) {
