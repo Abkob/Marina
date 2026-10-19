@@ -6,7 +6,7 @@ final class WorkTaskPickerControl: UIControl {
     var context: DayWorkContext? { didSet { if !holding { retainSelection(); render() } } }
     var onChoose: ((DayWorkCommand) -> Void)?
     var onCancel: (() -> Void)?
-    private let previous = UILabel(), title = UILabel(), detail = UILabel(), next = UILabel(), hint = UILabel()
+    private let previous = UILabel(), title = UILabel(), detail = UILabel(), nextLabel = UILabel(), hint = UILabel()
     private var selectedID: String?
     private var snapshot: WorkPickerSnapshot?
     private var index = 0, anchor = 0
@@ -18,13 +18,13 @@ final class WorkTaskPickerControl: UIControl {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .secondarySystemBackground; layer.cornerRadius = 18
-        previous.font = .preferredFont(forTextStyle: .caption1); next.font = previous.font
-        previous.textColor = .tertiaryLabel; next.textColor = .tertiaryLabel
+        previous.font = .preferredFont(forTextStyle: .caption1); nextLabel.font = previous.font
+        previous.textColor = .tertiaryLabel; nextLabel.textColor = .tertiaryLabel
         title.font = .preferredFont(forTextStyle: .headline); title.numberOfLines = 2
         detail.font = .preferredFont(forTextStyle: .caption1); detail.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .caption2); hint.textColor = .secondaryLabel; hint.numberOfLines = 2
-        for label in [previous,title,detail,next,hint] { label.adjustsFontForContentSizeCategory = true; label.lineBreakMode = .byTruncatingTail }
-        let stack = UIStackView(arrangedSubviews: [previous,title,detail,next,hint]); stack.axis = .vertical; stack.spacing = 7; stack.isUserInteractionEnabled = false; stack.translatesAutoresizingMaskIntoConstraints = false; addSubview(stack)
+        for label in [previous,title,detail,nextLabel,hint] { label.adjustsFontForContentSizeCategory = true; label.lineBreakMode = .byTruncatingTail }
+        let stack = UIStackView(arrangedSubviews: [previous,title,detail,nextLabel,hint]); stack.axis = .vertical; stack.spacing = 7; stack.isUserInteractionEnabled = false; stack.translatesAutoresizingMaskIntoConstraints = false; addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),stack.topAnchor.constraint(equalTo: topAnchor, constant: 14),stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),heightAnchor.constraint(greaterThanOrEqualToConstant: 154)])
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:))); hold.minimumPressDuration = 0.3; hold.allowableMovement = 10; addGestureRecognizer(hold)
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped)); tap.require(toFail: hold); addGestureRecognizer(tap)
@@ -38,10 +38,10 @@ final class WorkTaskPickerControl: UIControl {
     }
     private func render() {
         let tasks = holding ? snapshot?.tasks ?? [] : context?.tasks ?? []
-        guard tasks.indices.contains(index) else { previous.text = nil; title.text = "Choose today’s tasks below"; detail.text = nil; next.text = nil; hint.text = "Add tasks or link them to today’s calendar"; accessibilityValue = "No tasks"; return }
+        guard tasks.indices.contains(index) else { previous.text = nil; title.text = "Choose today’s tasks below"; detail.text = nil; nextLabel.text = nil; hint.text = "Add tasks or link them to today’s calendar"; accessibilityValue = "No tasks"; return }
         previous.text = index > 0 ? tasks[index - 1].title : "Tasks for today"
         title.text = tasks[index].title; detail.text = tasks[index].context
-        next.text = index + 1 < tasks.count ? tasks[index + 1].title : nil
+        nextLabel.text = index + 1 < tasks.count ? tasks[index + 1].title : nil
         hint.text = holding ? (canceled ? "Release to cancel" : "Release to start · swipe right to cancel") : "Tap to start · hold & swipe to choose"
         accessibilityValue = "\(tasks[index].title), \(tasks[index].context), \(index + 1) of \(tasks.count)"
     }

@@ -162,7 +162,7 @@ struct CheckInSheet: View {
                         if let target = selected ?? model.context?.primary() {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(target.title).font(.headline)
-                                if target.kind == .start && target.expectedRunningID != nil { Text("Moving on leaves the previous activity’s end unconfirmed.").font(.caption).foregroundStyle(.secondary) }
+                                if target.kind == .start && target.expectedRunningID != nil { Text("Attendance is separate; your work timer keeps running.").font(.caption).foregroundStyle(.secondary) }
                                 HoldTimeView(target: target, disabled: model.busy, initial: defaultTime(target), onTap: { selected = target; exactTime = defaultTime(target); exact = true }, onChoose: { time in Task { await model.submit(target, time: time); selected = nil } })
                                     .frame(minHeight: 74).id(target.id).accessibilityIdentifier("actual-time-control")
                                 if exact {
