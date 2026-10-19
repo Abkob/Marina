@@ -63,7 +63,7 @@ struct DayWorkWidgetView: View {
         if family == .accessoryRectangular { DayWorkLockView(entry: entry) }
         else { homeContent }
     }
-    private var homeContent: some View {
+    @ViewBuilder private var homeContent: some View {
         let cache = entry.cache
         let pending = DayWorkStore.pending() != nil
         HStack(alignment: .center, spacing: 4) {

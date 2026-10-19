@@ -12,6 +12,9 @@ final class WorkTaskPickerControl: UIControl {
     private var index = 0, anchor = 0
     private var origin = CGPoint.zero
     private var holding = false, canceled = false
+    override var isEnabled: Bool {
+        didSet { if !isEnabled && holding { holding = false; snapshot = nil; retainSelection(); render() } }
+    }
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .secondarySystemBackground; layer.cornerRadius = 18

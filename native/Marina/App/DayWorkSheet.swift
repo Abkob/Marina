@@ -64,7 +64,7 @@ struct DayWorkSheet: View {
     }
     private func run(action: String, id: String) {
         guard let context, !busy else { return }
-        let command = DayWorkCommand(action: action, taskID: id, date: context.date, expectedRunningID: context.running?.sessionId, instant: Date())
+        let command = DayWorkCommand(action: action, taskID: id.isEmpty ? nil : id, date: context.date, expectedRunningID: context.running?.sessionId, instant: Date())
         Task { await perform(command) }
     }
     private func perform(_ command: DayWorkCommand) async {
